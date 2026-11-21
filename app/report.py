@@ -42,12 +42,11 @@ from app.core.water_balance import (
     CLASS_LABELS_IN_SEASON,
     CLASS_LABELS_OFF_SEASON,
     BalanceResult,
-    classify,
     run_water_balance,
-    stress_coefficient,
     total_available_water_mm,
     total_evaporable_water_mm,
 )
+from app.core.water_assessment import WaterAssessment, assess
 from app.schemas import (
     BalanceVariant,
     Cause,
@@ -287,10 +286,15 @@ class Computed:
     in_field: bool
     in_season: bool
     tmean_10d_c: float | None
+    assessments: dict[str, WaterAssessment]  # ocena w dniu analizy, pełna precyzja (zaokrąglenia tylko w raporcie)
 
     @property
     def main(self) -> BalanceResult:
         return self.balances[self.main_key]
+
+    @property
+    def assessment(self) -> WaterAssessment:
+        return self.assessments[self.main_key]
 
 
 def compute(series: weather.DailyWeather, crop: Crop, variants: list[SoilVariant]) -> Computed:
@@ -308,23 +312,18 @@ def compute(series: weather.DailyWeather, crop: Crop, variants: list[SoilVariant
     in_field = bool(crop_daily.in_field[-1]) and crop_daily.stage[-1] != "dormant"
     in_season = in_field and (tmean_10d is None or tmean_10d >= GROWTH_TEMP_THRESHOLD_C)
     return Computed(dates, series, crop, crop_daily, variants, balances, variants[0].key,
-                    in_field, in_season, tmean_10d)
+                    in_field, in_season, tmean_10d, {key: assess(b) for key, b in balances.items()})
 
 
-def variant_result(variant: SoilVariant, balance: BalanceResult, in_season: bool) -> BalanceVariant:
-    dr = float(balance.depletion_mm[-1])
-    taw = float(balance.taw_mm)
-    raw = float(balance.raw_mm[-1])
-    p = raw / taw if taw > 0 else 0.5
-    key = classify(dr, raw, taw)
+def variant_result(variant: SoilVariant, a: WaterAssessment, in_season: bool) -> BalanceVariant:
+    """Prezentacja oceny jednego wariantu gleby: tu i tylko tu liczby są zaokrąglane."""
     labels = CLASS_LABELS_IN_SEASON if in_season else CLASS_LABELS_OFF_SEASON
     return BalanceVariant(
         key=variant.key, label=variant.label,
         field_capacity_vol_pct=round(variant.fc_root * 100, 1), wilting_point_vol_pct=round(variant.wp_root * 100, 1),
-        taw_mm=round(taw, 0), raw_mm=round(raw, 0), depletion_mm=round(dr, 0),
-        depletion_pct_taw=round(100 * dr / taw, 0) if taw > 0 else 100.0,
-        available_mm=round(max(taw - dr, 0.0), 0), ks=round(stress_coefficient(dr, taw, p), 2),
-        class_key=key, class_label=labels[key])
+        taw_mm=round(a.taw_mm, 0), raw_mm=round(a.raw_mm, 0), depletion_mm=round(a.depletion_mm, 0),
+        depletion_pct_taw=round(a.depletion_pct_taw, 0), available_mm=round(a.available_mm, 0), ks=round(a.ks, 2),
+        class_key=a.class_key, class_label=labels[a.class_key])
 
 
 def crop_info(c: Computed, analysis_date: date) -> CropInfo:
@@ -382,8 +381,9 @@ def _season_reason(c: Computed) -> str:
 
 def water_status(c: Computed, soil_assumed: bool) -> WaterStatus:
     last = c.dates[-1]
-    results = [variant_result(v, c.balances[v.key], c.in_season) for v in c.variants]
+    results = [variant_result(v, c.assessments[v.key], c.in_season) for v in c.variants]
     main = results[0]
+    a = c.assessment  # porównania na pełnej precyzji, `main` tylko do wyświetlenia
     balance = c.main
     text: list[str] = []
 
@@ -391,28 +391,26 @@ def water_status(c: Computed, soil_assumed: bool) -> WaterStatus:
         headline = main.class_label
         text.append(
             f"Stan na {fmt_date(last)}: w strefie korzeni (do {fmt(c.crop.root_depth_m, 1)} m) brakuje "
-            f"{fmt(main.depletion_mm)} mm wody do pełnego zapasu. Roślinom zostaje {fmt(main.available_mm)} mm "
-            f"wody dostępnej z {fmt(main.taw_mm)} mm, które ta gleba może utrzymać (TAW).")
-        etc_7d = float(balance.etc_mm[-7:].mean())
-        if main.depletion_mm > main.raw_mm:
+            f"{fmt(a.depletion_mm)} mm wody do pełnego zapasu. Roślinom zostaje {fmt(a.available_mm)} mm "
+            f"wody dostępnej z {fmt(a.taw_mm)} mm, które ta gleba może utrzymać (TAW).")
+        if a.stressed:
             text.append(
-                f"Wyczerpanie przekroczyło próg wody łatwo dostępnej (RAW = {fmt(main.raw_mm)} mm) o "
-                f"{fmt(main.depletion_mm - main.raw_mm)} mm. Rośliny pobierają wodę z trudem: zużycie spada do "
-                f"ok. {fmt(main.ks * 100)}% potrzeb (współczynnik stresu Ks = {fmt(main.ks, 2)}).")
+                f"Wyczerpanie przekroczyło próg wody łatwo dostępnej (RAW = {fmt(a.raw_mm)} mm) o "
+                f"{fmt(-a.margin_to_stress_mm)} mm. Rośliny pobierają wodę z trudem: zużycie spada do "
+                f"ok. {fmt(a.ks * 100)}% potrzeb (współczynnik stresu Ks = {fmt(a.ks, 2)}).")
         else:
-            margin = main.raw_mm - main.depletion_mm
-            sentence = (f"Do progu stresu (RAW = {fmt(main.raw_mm)} mm) zostaje {fmt(margin)} mm.")
-            if etc_7d > 0.3:
-                sentence += (f" Przy zużyciu z ostatnich 7 dni ({fmt(etc_7d, 1)} mm na dobę) i bez opadu "
-                             f"wystarczy to na ok. {plural_days(max(int(margin / etc_7d), 0))}.")
+            sentence = (f"Do progu stresu (RAW = {fmt(a.raw_mm)} mm) zostaje {fmt(a.margin_to_stress_mm)} mm.")
+            if a.days_to_stress is not None:
+                sentence += (f" Przy zużyciu z ostatnich 7 dni ({fmt(a.etc_mm_day, 1)} mm na dobę) i bez opadu "
+                             f"wystarczy to na ok. {plural_days(a.days_to_stress)}.")
             text.append(sentence)
     else:
         headline = "Uprawa nie jest w okresie wzrostu. " + main.class_label + "."
         text.append(_season_reason(c))
         text.append(
             f"Stan zapasu wody w glebie na {fmt_date(last)}: w warstwie do {fmt(c.crop.root_depth_m, 1)} m jest "
-            f"{fmt(main.available_mm)} mm wody dostępnej dla roślin z {fmt(main.taw_mm)} mm możliwych "
-            f"(brakuje {fmt(main.depletion_mm)} mm, czyli {fmt(main.depletion_pct_taw)}%).")
+            f"{fmt(a.available_mm)} mm wody dostępnej dla roślin z {fmt(a.taw_mm)} mm możliwych "
+            f"(brakuje {fmt(a.depletion_mm)} mm, czyli {fmt(a.depletion_pct_taw)}%).")
 
     # niepewność z wariantów gleby
     spans = False
@@ -615,18 +613,19 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
 
     # Niedobór przeniesiony z minionego sezonu: zapas nie odbudował się po zbiorze.
     stage = c.crop_daily.stage[-1]
-    if stage in ("off_season", "initial", "dormant") and status.result and status.result.depletion_mm > 0.5 * status.result.raw_mm:
+    now = c.assessment
+    if stage in ("off_season", "initial", "dormant") and now.depletion_mm > 0.5 * now.raw_mm:
         previous = last_completed_season(c.crop, c.dates[-1])
         i_harvest = analysis.index_of(c.dates, previous.harvest - timedelta(days=1))
         if i_harvest is not None and i_harvest < len(c.dates) - 1:
             at_harvest = float(c.main.depletion_mm[i_harvest])
             rain_since = float(c.series.rain_mm[i_harvest + 1:].sum())
-            if at_harvest > status.result.depletion_mm * 0.5:
+            if at_harvest > now.depletion_mm * 0.5:
                 items.append(Cause(
                     key="carry_over", title="Zapas nie odbudował się po minionym sezonie",
                     text=f"Na koniec minionego sezonu ({fmt_date(previous.harvest - timedelta(days=1))}) w glebie brakowało "
                          f"{fmt(at_harvest)} mm wody. Od tego dnia spadło {fmt(rain_since)} mm opadu, a ubytek zmalał tylko do "
-                         f"{fmt(status.result.depletion_mm)} mm: część opadu odparowała z powierzchni, zanim wsiąkła głębiej.",
+                         f"{fmt(now.depletion_mm)} mm: część opadu odparowała z powierzchni, zanim wsiąkła głębiej.",
                     evidence={"depletion_at_harvest_mm": round(at_harvest), "rain_since_mm": round(rain_since)}))
 
     not_assessed.append("Spadek terenu i skoncentrowany spływ: liczone osobno, wynik pojawia się w części o terenie.")
@@ -1022,14 +1021,10 @@ def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySecti
                          hydrology: HydrologySection) -> rules.Facts:
     """Policzone wartości działki w postaci, na której działają reguły rekomendacji."""
     crop, last = c.crop, c.dates[-1]
-    main = status.result
+    main = c.assessment  # pełna precyzja; reguły same formatują liczby w tekstach
     variant = c.variants[0]
     past = [s for s in history.seasons if s.complete]
     stressed_days = [s.stress_days_critical for s in past if s.stressed]
-    etc = float(c.main.etc_mm[-7:].mean())
-    days_to_stress = None
-    if main.depletion_mm <= main.raw_mm and etc > 0.3:
-        days_to_stress = max(int((main.raw_mm - main.depletion_mm) / etc), 0)
 
     harvest_day = next_sowing = bare_days = None
     if not crop.perennial:
@@ -1050,14 +1045,14 @@ def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySecti
         crop_key=crop.key, crop_name=crop.name, perennial=crop.perennial, analysis_day=last,
         in_season=c.in_season, stage=c.crop_daily.stage[-1], class_key=main.class_key,
         depletion_mm=main.depletion_mm, raw_mm=main.raw_mm, taw_mm=main.taw_mm,
-        variants=[(v.depletion_mm, v.raw_mm) for v in status.variants],
+        variants=[(c.assessments[v.key].depletion_mm, c.assessments[v.key].raw_mm) for v in c.variants],
         spans_classes=status.spans_classes, soil_assumed=status.soil_assumed,
         awc_mm_per_m=(variant.fc_root - variant.wp_root) * 1000.0,
         topsoil_label=soil.layers[0].texture_label if soil.layers else None, soc_0_30_g_kg=soc,
         seasons_total=len(past), seasons_with_stress=len(stressed_days),
         seasons_with_long_stress=sum(1 for d in stressed_days if d >= LONG_STRESS_DAYS),
         median_stress_days=float(np.median(stressed_days)) if stressed_days else None,
-        days_to_stress=days_to_stress, etc_mm_day=etc,
+        days_to_stress=main.days_to_stress, etc_mm_day=main.etc_mm_day,
         harvest_day=harvest_day, next_sowing_day=next_sowing, bare_period_days=bare_days,
         bare_rain_mm=bare["rain_mm"] if bare else None, bare_evaporation_mm=bare["evaporation_mm"] if bare else None,
         bare_from=bare["date_from"] if bare else None, bare_to=bare["date_to"] if bare else None,

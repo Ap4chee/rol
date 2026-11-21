@@ -90,6 +90,7 @@ app/
     ptf.py             pojemność polowa i punkt więdnięcia (Saxton i Rawls 2006), klasy uziarnienia USDA
     crops.py           tabela upraw: Kc, fazy, korzenie, współczynnik p z numerem tabeli FAO-56
     water_balance.py   dzienny bilans strefy korzeni, cztery klasy
+    water_assessment.py ocena w dniu analizy (ubytek, RAW, dni do stresu) w pełnej precyzji dla raportu i reguł
     soil.py            warianty gleby z kwantyli SoilGrids
     analysis.py        okna 30/60/90 dni, klimatyczny bilans wodny, historia 10 sezonów
     satellite_logic.py zgodność wskaźników z bilansem
