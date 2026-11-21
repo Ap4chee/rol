@@ -34,7 +34,12 @@ function parcelShape(geometry) {
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
   const scale = FIELD_SIZE / Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
   const norm = rings.map((r) => r.map(([x, y]) => [(x - cx) * scale, (y - cy) * scale]));
-  return { outer: norm[0], holes: norm.slice(1), assumed: false };
+  // to samo przekształcenie dla innych geometrii w EPSG:4326 (np. obszaru zasiewu w obrębie działki)
+  const project = ([lon, lat]) => {
+    const x = (lon - lon0) * kx - mx, y = (lat - lat0) * ky - my;
+    return [(x * c - y * s - cx) * scale, (x * s + y * c - cy) * scale];
+  };
+  return { outer: norm[0], holes: norm.slice(1), assumed: false, project };
 }
 
 function inside([x, y], ring) {
@@ -174,7 +179,8 @@ const layerDepth = (cm) => .18 + cm * .009;   // grubość warstwy w scenie (cie
 const GAP = .3;                                // odstęp między rozłożonymi warstwami
 const rootDepthCm = (report) => (report.soil?.root_depth_m ?? report.crop.root_depth_m ?? 0) * 100;
 
-export function Field3D({ report, height = 420 }) {
+/** `cropArea`: opcjonalna geometria GeoJSON (EPSG:4326) części działki z uprawą; bez niej rośliny rosną na całej działce. */
+export function Field3D({ report, height = 420, cropArea = null }) {
   const mount = useRef(null);
   const state = useRef({ exploded: true });
   const [exploded, setExploded] = useState(true);
@@ -271,6 +277,8 @@ export function Field3D({ report, height = 420 }) {
     const xs = shapeInfo.outer.map((p) => p[0]), ys = shapeInfo.outer.map((p) => p[1]);
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     let plants = null;
+    const sownPolygons = cropArea?.type === 'Polygon' ? [cropArea.coordinates] : cropArea?.type === 'MultiPolygon' ? cropArea.coordinates : null;
+    const sown = sownPolygons && shapeInfo.project ? sownPolygons.map((poly) => poly[0].map(shapeInfo.project)) : null;
     if (!model.bare) {
       const target = 9000 * model.density;
       const step = Math.sqrt((maxX - minX) * (maxY - minY) / target);
@@ -278,7 +286,8 @@ export function Field3D({ report, height = 420 }) {
       for (let y = minY + rowGap / 2; y < maxY; y += rowGap) {
         for (let x = minX + along / 2; x < maxX; x += along) {
           const p = [x + (Math.random() - .5) * along * .8, y + (Math.random() - .5) * rowGap * .25];
-          if (inside(p, shapeInfo.outer) && !shapeInfo.holes.some((h) => inside(p, h))) spots.push(p);
+          if (inside(p, shapeInfo.outer) && !shapeInfo.holes.some((h) => inside(p, h))
+            && (!sown || sown.some((ring) => inside(p, ring)))) spots.push(p);
         }
       }
       plants = new THREE.InstancedMesh(model.geometry, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), spots.length);
