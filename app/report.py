@@ -694,6 +694,11 @@ def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: 
         f"Prognoza modelu ({fc.status}): w dniach {fmt_date(fc.window_from)}–{fmt_date(fc.window_to)} uwilgotnienie roślin "
         f"(NDMI) {trend} względem zdjęcia z {fmt_date(fc.last_scene_date)}: zmiana {signed(mid)}, "
         f"przedział 80% od {signed(lo)} do {signed(hi)}.")
+    # Model uczono na pogodzie z archiwum Open-Meteo; inny dostawca w oknie cech (30 dni) to inne dane wejściowe.
+    recent_origin = [o for d, o in zip(c.series.dates, c.series.origin) if analysis_date - timedelta(days=30) <= d < analysis_date]
+    if recent_origin and any(o == "nasa_power" for o in recent_origin):
+        fc.text.append("Pogoda z ostatnich 30 dni pochodzi z NASA POWER, a model uczono na danych Open-Meteo, "
+                       "więc prognoza jest mniej pewna niż zwykle.")
     if lo < 0 < hi and (hi - lo) > 2 * satellite_logic.NDMI_DROP:
         fc.text.append("Przedział obejmuje zarówno spadek, jak i wzrost, więc kierunek zmiany jest niepewny.")
     fc.text.append("To prognoza wskaźnika satelitarnego, nie wilgotności gleby. Nie wylicza się z niej dawki nawodnienia; "
