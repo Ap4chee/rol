@@ -338,12 +338,35 @@ class SatelliteResponse(BaseModel):
 
 # ---------- hydrologia ----------
 
+class HydroYear(BaseModel):
+    year: int
+    value: float = Field(description="średnia z tych samych 7 dni kalendarzowych w danym roku (jednostka w `unit`)")
+
+
 class HydrologySection(BaseModel):
     status: Status
     reason: str | None = None
     nearest_watercourse_name: str | None = None
     nearest_watercourse_distance_m: float | None = None
     search_radius_m: float | None = None
+    # najbliższy wodowskaz IMGW-PIB i porównanie z tymi samymi dniami w poprzednich latach
+    station_id: str | None = None
+    station_name: str | None = None
+    river: str | None = None
+    station_distance_km: float | None = None
+    station_location: Point | None = None
+    metric: str | None = Field(default=None, description="flow (przepływ) | level (stan wody)")
+    unit: str | None = Field(default=None, description="m³/s | cm")
+    origin: str | None = Field(default=None, description="archive (średnia z 7 dni) | live (bieżący pomiar)")
+    current_value: float | None = None
+    current_from: Date | None = None
+    current_to: Date | None = None
+    years: list[HydroYear] = []
+    years_higher: int | None = None
+    years_compared: int | None = None
+    median_value: float | None = None
+    class_key: str | None = Field(default=None, description="very_low | low | normal | high")
+    class_label: str | None = None
     text: list[str] = []
 
 

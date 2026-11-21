@@ -66,6 +66,8 @@ class Facts:
     satellite_field_check: bool = False
     watercourse_distance_m: float | None = None
     watercourse_name: str | None = None
+    river_class: str | None = None              # very_low | low | normal | high (najbliższy wodowskaz IMGW)
+    river_evidence: str | None = None           # zdanie z danymi wodowskazu do uzasadnienia
 
 
 @dataclass
@@ -205,6 +207,18 @@ def build(f: Facts) -> Result:
             "Pas roślinności zatrzymuje spływającą wodę i glebę, zanim trafią do cieku.",
             "średnia", "Odległość odczytano z mapy w skali 1:10 000; szerokość pasa trzeba dobrać na miejscu."))
 
+    if f.river_class in ("low", "very_low") and f.river_evidence:
+        soil_state = ("W glebie działki też brakuje wody." if f.class_key in ("moderate", "severe")
+                      else "Zapas wody zatrzymany teraz w okolicy pola zmniejsza ryzyko niedoboru w kolejnych tygodniach.")
+        out.retention.append(Rec(
+            "hold_water_in_ditches", "retention", "Zatrzymaj wodę w rowach zamiast ją odprowadzać",
+            "Jeśli przy polu są rowy melioracyjne albo drenowanie, zamknij lub podnieś zastawki (albo poproś o to spółkę "
+            "wodną), żeby woda nie odpływała z okolicy pola. Nie pogłębiaj i nie udrażniaj rowów odwadniających w czasie suszy.",
+            "Rowy i wyloty drenów przy działce, jeśli są (raport nie ma mapy rowów).",
+            f"{f.river_evidence} {soil_state}",
+            "niska", "Stan rzeki pochodzi z najbliższego wodowskazu i opisuje całą zlewnię; nie wiemy, czy przy tym polu są "
+            "rowy z zastawkami."))
+
     # ---------- AGROTECHNIKA ----------
     if not f.perennial and (_is_vulnerable(f) or _soil_is_light(f)):
         why = []
@@ -290,6 +304,9 @@ def build(f: Facts) -> Result:
             {"to_threshold_mm": round(to_threshold), "full_refill_mm": round(f.depletion_mm)}))
         out.irrigation_note = ("Pobór wody do nawodnień może wymagać zgłoszenia albo pozwolenia wodnoprawnego. "
                                "Nawadnianie jest uzupełnieniem, a nie zamiennikiem działań retencyjnych.")
+        if f.river_class in ("low", "very_low"):
+            out.irrigation_note += (" Rzeki w okolicy niosą teraz mało wody, więc pobór z cieku lub rowu może być ograniczony "
+                                    "i odbiera wodę innym użytkownikom.")
 
     # ---------- CO SPRAWDZIĆ NA POLU ----------
     if f.soil_assumed or f.spans_classes:

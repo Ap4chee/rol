@@ -27,7 +27,7 @@ Potem otwórz `http://127.0.0.1:8000`. Odpowiedzi zewnętrznych usług zapisują
 - **Data**: dziś albo dowolny dzień z ostatnich 10 lat. Dla daty historycznej do obliczeń nie wchodzi nic późniejszego niż ta data, a porównania z 10 latami sięgają wstecz od niej.
 - **Raport w narzuconej kolejności**:
   1. Sytuacja wodna: ubytek wody w strefie korzeni względem RAW i TAW w czterech klasach słownych, przedział niepewności gleby, klimatyczny bilans wodny z 60 dni, wykres, zdjęcia satelitarne (czy potwierdzają bilans), podatność w ostatnich 10 sezonach, podsumowanie minionego sezonu.
-  2. Przyczyny: opad i ET0 z 30, 60 i 90 dni względem mediany z 10 lat, pojemność wodna gleby, faza uprawy, niedobór przeniesiony z poprzedniego sezonu, spadek terenu i skoncentrowany spływ.
+  2. Przyczyny: opad i ET0 z 30, 60 i 90 dni względem mediany z 10 lat, pojemność wodna gleby, faza uprawy, niedobór przeniesiony z poprzedniego sezonu, spadek terenu i skoncentrowany spływ, stan rzeki na najbliższym wodowskazie IMGW na tle tych samych dni w poprzednich latach (czy susza dotyczy też wód w okolicy).
   3. Rekomendacje retencyjne, 4. agrotechniczne, 5. nawadnianie (tylko gdy niedobór pozostaje i uprawa jest w fazie, w której ma to sens).
   - „Co sprawdzić na polu” tam, gdzie dane nie rozstrzygają.
   - Profil gleby, założenia o uprawie, źródła z datami i statusem, ograniczenia.
@@ -53,6 +53,7 @@ app/
     soilgrids.py       SoilGrids: WCS → REST → kafle GeoTIFF, średnia ważona komórek 250 m
     sentinel.py        Sentinel-2 L2A z Earth Search STAC: maska SCL, NDVI, NDMI
     terrain.py         NMT GUGiK 1 m z WCS, drogi spływu
+    imgw_hydro.py      wodowskazy IMGW-PIB: bieżące pomiary i archiwum dobowe przepływów
   core/                obliczenia bez sieci (dane wchodzą jako argumenty)
     et0.py             ET0 FAO-56 Penmana-Monteitha
     ptf.py             pojemność polowa i punkt więdnięcia (Saxton i Rawls 2006), klasy uziarnienia USDA
@@ -61,6 +62,7 @@ app/
     soil.py            warianty gleby z kwantyli SoilGrids
     analysis.py        okna 30/60/90 dni, klimatyczny bilans wodny, historia 10 sezonów
     satellite_logic.py zgodność wskaźników z bilansem
+    hydrology.py       przepływ z 7 dni na tle tych samych dni w poprzednich latach, zgodność z bilansem
     flow.py            Priority-Flood, D8, powierzchnia zasilająca
     recommendations.py, terrain_rules.py   reguły rekomendacji
   data/soilgrids_tiles_pl.json   indeks kafli SoilGrids dla Polski (tryb awaryjny)
@@ -82,6 +84,7 @@ Zmierzone 21.11.2026 na pustej pamięci podręcznej, działka `060910_2.0011.580
 | ULDK (działka) | 0,1–0,6 s (raz 6,8 s) |
 | Pogoda: odmowa Open-Meteo Archive (429), NASA POWER 11 lat, dobór ostatnich dni | 2–3 s |
 | Gleba: SoilGrids WCS, 54 warstwy równolegle | 4–5 s |
+| Hydrologia: lista wodowskazów IMGW i 11–20 plików archiwum (pusta pamięć podręczna) | 1–5 s |
 | Satelita: szukanie scen, maski SCL 26 scen, pasma 3 scen | 10–14 s |
 | Obliczenia (bilans 11 lat w 3 wariantach gleby, historia, reguły) | 0,05 s |
 | **Raport razem** (źródła idą równolegle) | **11–15 s** |
@@ -103,13 +106,14 @@ Wszystkie dane są bezpłatne. Żadne źródło nie wymaga klucza ani konta. War
 | Gleba | ISRIC SoilGrids 250 m v2.0: piasek, pył, ił, węgiel organiczny, gęstość w 6 warstwach do 200 cm, średnia i kwantyle 5% i 95% | na żywo przez WCS `maps.isric.org`; zapas: REST, potem kafle GeoTIFF | CC BY 4.0. REST: limit 5 zapytań/min, usługa oznaczona przez ISRIC jako wstrzymana (21.11.2026 odpowiadała) |
 | Satelita | Sentinel-2 L2A z Earth Search STAC (Element 84), kolekcje `sentinel-2-c1-l2a` i `sentinel-2-l2a`: pasma B04, B8A, B11 i maska SCL, okno 45 dni przed datą, archiwum od 2017 r. | na żywo; czytane są tylko bloki rastra pod działką | Dane Copernicus Sentinel: dostęp bezpłatny, pełny i otwarty. Raport zawiera zmodyfikowane dane Copernicus Sentinel. Earth Search: bezpłatny katalog bez opublikowanych limitów |
 | Teren | NMT GUGiK 1 m przez WCS (`DTM_PL-KRON86-NH_TIFF`), wycinek z buforem 200 m wokół działki | na żywo, osobny endpoint | Brak opłat, dowolne wykorzystanie |
-| Hydrologia | MPHP10k (Wody Polskie, ISOK) | **nieużywane** | WFS z danymi wektorowymi wymaga logowania; publiczny WMS daje tylko obraz. Raport podaje brak danych hydrologicznych |
+| Hydrologia (rzeki) | IMGW-PIB, API danych publicznych (`api/data/hydro/`, zapas `hydro2/`): czynne wodowskazy ze współrzędnymi, ostatni stan wody [cm] i przepływ [m³/s]. Archiwum danych dobowych (`dane_hydrologiczne/dobowe/`): stan i przepływ z każdego dnia, lata hydrologiczne do 2025 (do 31.10.2025) | na żywo: lista wodowskazów (pamięć podręczna 3 h) i pliki archiwum tylko dla 7 dni wokół daty analizy w każdym z 11 lat (pliki niezmienne, raz pobrane zostają na dysku) | Bezpłatne; regulamin IMGW-PIB wymaga podania źródła („Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy”) i informacji o przetworzeniu danych, oba zdania są w raporcie. Według regulaminu nieodpłatne użycie obejmuje cele prywatne, a w każdym celu dane o wysokiej wartości (rozporządzenie wykonawcze KE 2023/138); użycie w działalności gospodarczej poza tym wymaga umowy z IMGW-PIB. Przed wdrożeniem przez KOWR trzeba to potwierdzić z IMGW-PIB (regulamin sprawdzony 21.11.2026 na danepubliczne.imgw.pl/regulations) |
+| Hydrologia (cieki przy działce) | MPHP10k (Wody Polskie, ISOK) | **nieużywane** | WFS z danymi wektorowymi wymaga logowania; publiczny WMS daje tylko obraz. Raport podaje, że odległości od cieku nie policzono |
 
 Podstawa prawna bezpłatnego udostępniania danych GUGiK: art. 40a ust. 2 Prawa geodezyjnego i kartograficznego (zmiana z 16.04.2020, Dz.U. 2020 poz. 782).
 
 ### Co jest pobierane na żywo, a co przygotowane wcześniej
 
-Na żywo, przy każdym raporcie: działka, pogoda, gleba, zdjęcia satelitarne, model terenu, podkłady mapy.
+Na żywo, przy każdym raporcie: działka, pogoda, gleba, zdjęcia satelitarne, model terenu, wodowskazy IMGW, podkłady mapy.
 
 Przygotowane wcześniej i zapisane w repozytorium:
 
@@ -161,13 +165,14 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 
 ## Weryfikacja wyników
 
-Testy bez sieci (`.venv\Scripts\python.exe -m pytest -q`, 80 testów):
+Testy bez sieci (`.venv\Scripts\python.exe -m pytest -q`, 87 testów):
 
 - ET0: przykład 18 z FAO-56 (Uccle, 6 lipca): 3,88 mm na dobę, razem z wynikami pośrednimi.
 - Bilans: przykład 37 z FAO-56 (przebieg ubytku przez 10 dni), domknięcie bilansu, ograniczenie parowania z odkrytej gleby.
 - Funkcja pedotransferowa: wszystkie 12 wierszy tabeli 3 Saxtona i Rawlsa (2006), np. glina 40% piasku i 20% iłu: 28% i 14% objętości.
 - SoilGrids: wagi komórek i wartości dla działki 580/2 zgodne z `outputs/soilgrids_niedrzwica_koscielna_580_2.json` (0–5 cm: piasek 33,7%, pył 48,2%, ił 18,1%).
 - Spływ: sztuczne powierzchnie (płaszczyzna, dolina, zagłębienie), reguły rekomendacji, zgodność satelity z bilansem.
+- Hydrologia: miesiące roku hydrologicznego zgodne z nazwami plików IMGW, porównanie tylko z latami przed datą analizy, odczyt wierszy archiwum we wszystkich trzech formatach używanych przez IMGW (do 2022, 2023, od 2024).
 
 Sprawdzenia na prawdziwych danych (wymagają sieci):
 
@@ -178,6 +183,7 @@ Sprawdzenia na prawdziwych danych (wymagają sieci):
 | `scripts/check_terrain.py` | spływ dla 580/2 | największy odpływ 1,60 ha przy południowo-wschodniej granicy (wzorzec 1,63 ha); liczba punktów 5 + 2 wobec 4 + 4 we wzorcu |
 | `scripts/acceptance.py` | pusty cache i wymuszone awarie źródeł (`KOWR_FAIL`) | raport powstaje, brak jest nazwany |
 | `scripts/run_report.py`, `scripts/http_check.py` | raport z wiersza poleceń i przez HTTP | |
+| `scripts/run_report.py` (sekcja `[hydrologia]`) | wodowskaz IMGW dla 580/2 dziś, Kościana 15.07.2018, 580/2 15.07.2026 | Lublin (Bystrzyca, 19 km): przepływ 1,01 m³/s, wyższy w 9 z 9 lat, „bardzo mało wody”; Kościan (Kanał Mosiński, 5 km): 0,18 m³/s wobec mediany 1,37, wyższy w 9 z 10 lat (susza 2018); 15.07.2026: brak danych podany wprost (archiwum kończy się 31.10.2025) |
 
 Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan) daje niedobór umiarkowany do silnego, klimatyczny bilans wodny −184 mm przy medianie −110 mm, a NDMI spadł w czerwcu z 0,29 do 0,13, co potwierdza bilans.
 
@@ -191,14 +197,14 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 - **Przedział niepewności gleby jest szeroki**, bo kwantyle SoilGrids opisują 90-procentowy przedział predykcji; na lekkich glebach wynik często obejmuje dwie klasy.
 - **Satelita**: wskaźniki liczone dla trzech scen z 45 dni; przy zachmurzeniu albo małej działce (mniej niż 6 pikseli 20 m) sekcja podaje brak danych. Łącze do archiwum scen (AWS us-west-2) bywało bardzo wolne, wtedy wynik dochodzi po raporcie.
 - **Teren**: wynik czysto topograficzny. Wysokości z WCS różniły się od arkusza NMT użytego we wzorcu o 0,3–0,5 m (inna wersja danych), a liczba punktów na granicy zależy od progu łączenia.
-- **Hydrologia**: brak danych o ciekach i wodzie gruntowej (patrz tabela źródeł).
+- **Hydrologia**: stan rzeki pochodzi z najbliższego wodowskazu IMGW (do 40 km) i opisuje całą zlewnię powyżej niego, nie wodę na polu; zbiorniki i zrzuty mogą go zmieniać. Archiwum IMGW kończy się 31.10.2025, a bieżący pomiar dotyczy tylko dnia dzisiejszego, więc dla dat od 01.11.2025 do wczoraj raport podaje brak danych hydrologicznych. Bieżący pomiar to pojedynczy odczyt, porównywany ze średnimi z 7 dni. Brak danych o odległości od cieków i o wodzie gruntowej (patrz tabela źródeł).
 - **FAO-56**: tabele pochodzą z wydania z 1998 r. dostępnego na fao.org. Materiał KOWR cytuje wydanie poprawione z 2025 r.; nie porównaliśmy tabel między wydaniami.
 - **Progi reguł** rekomendacji i zgodności satelity z bilansem są założeniami roboczymi zapisanymi jako stałe w kodzie, nie wartościami z publikacji.
 - Prototyp dla jednego użytkownika na komputerze lokalnym: bez kont, bazy danych i danych osobowych.
 
 ## Skala, limity i koszty
 
-- Jeden raport to: 1 zapytanie ULDK, 2–3 zapytania o pogodę, 54 małe zapytania WCS o glebę, 2 zapytania STAC i kilkadziesiąt odczytów fragmentów scen, 1 zapytanie WCS o teren.
-- Pamięć podręczna na dysku: pogoda po komórce 0,01° i zakresie dat, gleba po oknie siatki 250 m, obserwacje satelitarne po działce i scenie, teren po działce. Dane historyczne się nie zmieniają, więc powtórny raport nie odpytuje usług. Ostatnie dni pogody odświeżają się co godzinę.
+- Jeden raport to: 1 zapytanie ULDK, 2–3 zapytania o pogodę, 1 zapytanie o wodowskazy IMGW i do 20 plików archiwum IMGW (0,15–1,9 MB, tylko przy pierwszym użyciu), 54 małe zapytania WCS o glebę, 2 zapytania STAC i kilkadziesiąt odczytów fragmentów scen, 1 zapytanie WCS o teren.
+- Pamięć podręczna na dysku: pogoda po komórce 0,01° i zakresie dat, gleba po oknie siatki 250 m, obserwacje satelitarne po działce i scenie, teren po działce, pliki archiwum IMGW bez zmian (`cache/imgw_zip/`), lista wodowskazów przez 3 h. Dane historyczne się nie zmieniają, więc powtórny raport nie odpytuje usług. Ostatnie dni pogody odświeżają się co godzinę.
 - Wąskie gardła przy większym ruchu: limit dzienny Open-Meteo na adres IP, limit ULDK (10 000 zapytań na dobę) i czas WCS z modelem terenu. Rozwiązania: własna kopia NMT i SoilGrids dla Polski (dane są otwarte), kolejka zadań dla terenu i satelity, płatny plan pogody albo NASA POWER.
 - Koszt danych: 0 zł.

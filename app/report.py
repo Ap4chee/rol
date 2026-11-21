@@ -20,6 +20,7 @@ from shapely.geometry import Point as ShapelyPoint
 
 from app.config import HISTORY_YEARS, SATELLITE_INLINE_BUDGET_S, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
 from app.core import analysis, satellite_logic
+from app.core import hydrology as hydro_calc
 from app.core import recommendations as rules
 from app.core.crops import (
     CROPS,
@@ -55,6 +56,7 @@ from app.schemas import (
     DailyPoint,
     HistorySection,
     HydrologySection,
+    HydroYear,
     ParcelInfo,
     Point,
     Recommendation,
@@ -74,20 +76,21 @@ from app.schemas import (
     WeatherWindow,
 )
 from app import terrain_service
-from app.sources import NoData, SourceError, sentinel, soilgrids, uldk, weather
+from app.sources import NoData, SourceError, imgw_hydro, sentinel, soilgrids, uldk, weather
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 MIN_ANALYSIS_DATE = date(2005, 1, 1)
 SERIES_DAYS_FOR_CHART = 180
 NOT_CONNECTED = "Tej części nie policzono, bo raport zatrzymał się na braku pogody."
-HYDROLOGY_NO_DATA = ("Brak danych hydrologicznych. Mapa cieków MPHP10k (Wody Polskie) udostępnia dane wektorowe przez WFS "
-                     "tylko po zalogowaniu, a publiczna usługa WMS daje sam obraz, więc odległości do najbliższego cieku "
-                     "nie policzono.")
 HYDROLOGY_CHECK = ("Sprawdź na mapie i w terenie, czy przy działce jest ciek, rów albo oczko wodne. Jeśli tak, zostaw "
                    "wzdłuż brzegu pas trwałej roślinności.")
-HYDROLOGY_IMPACT = ("Raport nie ocenia sąsiedztwa cieków, rowów ani poziomu wody gruntowej: brak danych hydrologicznych "
-                    "w postaci, którą da się policzyć dla działki.")
+HYDROLOGY_IMPACT = ("Raport nie ocenia odległości działki od cieków i rowów ani poziomu wody gruntowej: mapa cieków MPHP10k "
+                    "(Wody Polskie) udostępnia dane wektorowe tylko po zalogowaniu, a wody gruntowej nie ma w otwartych "
+                    "danych dla dowolnego punktu.")
+HYDRO_NO_IMPACT = ("Bilans wodny działki nie zależy od danych z wodowskazu: brakuje tylko niezależnej informacji, "
+                   "czy w rzekach okolicy jest mało wody.")
+TIMEOUT_HYDRO_TOTAL_S = 20.0
 
 MODEL_LIMITATIONS = [
     "Bilans nie uwzględnia spływu powierzchniowego: cały opad jest liczony jako woda, która wsiąka. "
@@ -720,6 +723,100 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
     return section, field_check
 
 
+# ---------- hydrologia ----------
+
+HYDRO_SOURCE_NAME = "IMGW-PIB: wodowskazy (API danych publicznych i archiwum danych dobowych)"
+
+
+async def fetch_hydrology_safe(client: httpx.AsyncClient, lon: float, lat: float, analysis_date: date,
+                               today: date) -> tuple[imgw_hydro.HydroResult | None, SourceInfo]:
+    """Najbliższy wodowskaz z limitem czasu. Błąd nie przerywa raportu."""
+    t0 = time.perf_counter()
+    info = SourceInfo(
+        key="hydrology", name=HYDRO_SOURCE_NAME, status=Status.ok,
+        resolution=f"pomiar na wodowskazie (najbliższy w promieniu {imgw_hydro.MAX_DISTANCE_KM:.0f} km od działki)",
+        license="dane IMGW-PIB, bezpłatne z obowiązkiem podania źródła (szczegóły w README)",
+        url="https://danepubliczne.imgw.pl/", notes=[imgw_hydro.ATTRIBUTION])
+    result = None
+    try:
+        result = await asyncio.wait_for(
+            imgw_hydro.fetch_hydrology(client, lon, lat, analysis_date, today, HISTORY_YEARS), TIMEOUT_HYDRO_TOTAL_S)
+        info.from_cache = result.from_cache
+        info.resolution = (f"wodowskaz {result.station.name} ({_river_name(result.station.river)}), "
+                           f"{fmt(result.station.distance_km)} km od działki")
+        years = [y for y, _ in result.comparison.years]
+        info.data_from = date(min(years), 1, 1) if years else None
+        info.data_to = result.current_to
+        info.data_date = ("bieżący pomiar z " + fmt_date(result.current_to) if result.origin == "live"
+                          else f"archiwum dobowe do {fmt_date(result.archive_to)}" if result.archive_to else None)
+        info.notes += result.notes
+    except NoData as exc:
+        info.status, info.reason, info.impact = Status.no_data, str(exc), HYDRO_NO_IMPACT
+    except asyncio.TimeoutError:
+        info.status, info.impact = Status.error, HYDRO_NO_IMPACT
+        info.reason = f"Dane IMGW nie przyszły w {TIMEOUT_HYDRO_TOTAL_S:.0f} s."
+    except (SourceError, RuntimeError) as exc:
+        info.status, info.reason, info.impact = Status.error, str(exc), HYDRO_NO_IMPACT
+    info.elapsed_s = round(time.perf_counter() - t0, 2)
+    return result, info
+
+
+def _river_name(river: str) -> str:
+    """„Bystrzyca (246)” → „Bystrzyca” (w nawiasie jest kod IMGW, rolnikowi niepotrzebny)."""
+    return river.split(" (")[0].strip() if river else river
+
+
+def hydrology_section(result: imgw_hydro.HydroResult | None, info: SourceInfo, class_key: str | None,
+                      in_season: bool) -> HydrologySection:
+    if result is None:
+        return HydrologySection(status=info.status, reason=info.reason, text=[HYDRO_NO_IMPACT, HYDROLOGY_CHECK])
+    s, cmp = result.station, result.comparison
+    river = _river_name(s.river)
+    decimals = 2 if result.metric == "flow" and cmp.median < 10 else 1 if result.metric == "flow" else 0
+    what = "przepływ" if result.metric == "flow" else "stan wody"
+    if result.origin == "live":
+        current_text = f"Ostatni pomiar ({fmt_date(result.current_to)}): {what} {fmt(cmp.current, decimals)} {result.unit}."
+    else:
+        current_text = (f"Średni {what} z 7 dni do {fmt_date(result.current_to)}: {fmt(cmp.current, decimals)} {result.unit}.")
+    text = [
+        f"Najbliższy wodowskaz IMGW z pomiarami: {s.name} na rzece {river}, ok. {fmt(s.distance_km)} km od działki.",
+        current_text + f" W tych samych dniach roku {what} był wyższy niż teraz w {cmp.years_higher} z {cmp.years_compared} "
+        f"poprzednich lat (mediana {fmt(cmp.median, decimals)} {result.unit}). Ocena: {hydro_calc.CLASS_LABELS[cmp.class_key]}.",
+        hydro_calc.agreement_with_balance(cmp.class_key, class_key, in_season),
+        "Wodowskaz mierzy wodę spływającą z całej zlewni powyżej niego, a nie wilgotność gleby na działce. Zbiorniki, "
+        "zrzuty i pobory wody mogą zmieniać przepływ, dlatego ten wynik traktujemy jako tło, nie jako ocenę pola.",
+    ]
+    if result.origin == "live":
+        text.append("Bieżący pomiar to pojedynczy odczyt, a lata odniesienia to średnie z 7 dni z archiwum IMGW "
+                    "(opublikowane do " + fmt_date(result.archive_to) + ").")
+    if result.metric == "level":
+        text.append("Ten wodowskaz nie ma opracowanego przepływu, więc porównano stan wody; jest on mniej porównywalny "
+                    "między latami (zmiany koryta i wodowskazu).")
+    text.append(HYDROLOGY_CHECK)
+    return HydrologySection(
+        status=Status.ok, station_id=s.id, station_name=s.name, river=river, station_distance_km=round(s.distance_km, 1),
+        station_location=Point(lon=s.lon, lat=s.lat), metric=result.metric, unit=result.unit, origin=result.origin,
+        current_value=round(cmp.current, 3), current_from=result.current_from, current_to=result.current_to,
+        years=[HydroYear(year=y, value=round(v, 3)) for y, v in cmp.years], years_higher=cmp.years_higher,
+        years_compared=cmp.years_compared, median_value=round(cmp.median, 3), class_key=cmp.class_key,
+        class_label=hydro_calc.CLASS_LABELS[cmp.class_key], text=text)
+
+
+def hydrology_cause(hydro: HydrologySection) -> Cause | None:
+    """Niski stan rzeki jako przyczyna (tło regionalne), tylko gdy porównanie wypadło nisko."""
+    if hydro.status != Status.ok or hydro.class_key not in ("low", "very_low"):
+        return None
+    what = "Przepływ" if hydro.metric == "flow" else "Stan wody"
+    return Cause(
+        key="low_river_flow", title="Mało wody w rzekach okolicy",
+        text=f"{what} na wodowskazie {hydro.station_name} ({hydro.river}, {fmt(hydro.station_distance_km)} km od działki) "
+             f"jest niski: w tych samych dniach roku był wyższy niż teraz w {hydro.years_higher} z {hydro.years_compared} "
+             "poprzednich lat. "
+             "Zasoby wody w zlewni są małe: susza nie dotyczy tylko gleby, ale też wód powierzchniowych.",
+        evidence={"station_id": hydro.station_id, "years_higher": hydro.years_higher,
+                  "years_compared": hydro.years_compared})
+
+
 # ---------- rekomendacje ----------
 
 def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySection, soil_data: soilgrids.SoilData | None,
@@ -769,7 +866,11 @@ def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySecti
         satellite_green_cover=satellite.green_cover, satellite_agreement=satellite.agreement,
         satellite_field_check=satellite_field_check,
         watercourse_distance_m=hydrology.nearest_watercourse_distance_m,
-        watercourse_name=hydrology.nearest_watercourse_name)
+        watercourse_name=hydrology.nearest_watercourse_name,
+        river_class=hydrology.class_key,
+        river_evidence=(f"Na wodowskazie {hydrology.station_name} ({hydrology.river}, {fmt(hydrology.station_distance_km)} km "
+                        f"od działki) wody było mniej niż w tych samych dniach w {hydrology.years_higher} z "
+                        f"{hydrology.years_compared} poprzednich lat." if hydrology.status == Status.ok else None))
 
 
 def recommendations_section(facts: rules.Facts) -> Recommendations:
@@ -789,7 +890,8 @@ def recommendations_section(facts: rules.Facts) -> Recommendations:
 # ---------- raport ----------
 
 def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sources: list[SourceInfo],
-                       started: float, timings: dict[str, float], soil: SoilSection) -> ReportResponse:
+                       started: float, timings: dict[str, float], soil: SoilSection,
+                       hydrology: HydrologySection) -> ReportResponse:
     reason = ("Żaden dostawca pogody nie odpowiedział. Bez opadu i ewapotranspiracji nie da się policzyć "
               "bilansu wodnego, więc oceny niedoboru wody nie ma. Spróbuj ponownie za kilka minut.")
     dependent = "Wymaga bilansu wodnego, a ten nie powstał z powodu braku pogody."
@@ -805,7 +907,7 @@ def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sourc
         causes=CausesSection(status=Status.no_data, reason=dependent),
         soil=soil,
         terrain=TerrainRef(status=Status.no_data, reason=NOT_CONNECTED),
-        hydrology=HydrologySection(status=Status.no_data, reason=NOT_CONNECTED),
+        hydrology=hydrology,
         recommendations=Recommendations(
             status=Status.no_data,
             reason="Rekomendacje powstają dopiero po ocenie sytuacji wodnej, a tej nie udało się policzyć."),
@@ -853,9 +955,10 @@ async def build_report(request: ReportRequest, today: date | None = None,
             return result
 
         t0 = time.perf_counter()
-        weather_result, (soil_data, soil_info) = await asyncio.gather(
+        weather_result, (soil_data, soil_info), (hydro_result, hydro_info) = await asyncio.gather(
             timed("weather", weather.fetch_weather(client, lat, lon, start, end, today)),
-            timed("soil", fetch_soil_safe(client, geometry)))
+            timed("soil", fetch_soil_safe(client, geometry)),
+            timed("hydrology", fetch_hydrology_safe(client, lon, lat, request.date, today)))
         timings["sources_parallel"] = round(time.perf_counter() - t0, 2)
 
     sources = [uldk_info, *weather_sources(weather_result), soil_info]
@@ -863,7 +966,9 @@ async def build_report(request: ReportRequest, today: date | None = None,
     if weather_result.series is None or len(weather_result.series.dates) < 400:
         _satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
         sources.append(satellite_info)
-        return _no_weather_report(request, parcel, sources, started, timings, soil)
+        sources.append(hydro_info)
+        return _no_weather_report(request, parcel, sources, started, timings, soil,
+                                  hydrology_section(hydro_result, hydro_info, None, False))
 
     t0 = time.perf_counter()
     soil_assumed = soil_data is None
@@ -894,11 +999,19 @@ async def build_report(request: ReportRequest, today: date | None = None,
     if soil_assumed:
         limitations.insert(0, "Brak danych o glebie: bilans policzono dla gleby umownej, wynik jest orientacyjny.")
 
-    hydrology = HydrologySection(status=Status.no_data, reason=HYDROLOGY_NO_DATA, text=[HYDROLOGY_CHECK])
+    hydrology = hydrology_section(hydro_result, hydro_info, status.class_key, computed.in_season)
+    sources.append(hydro_info)
     sources.append(SourceInfo(
-        key="hydrology", name="Mapa Podziału Hydrograficznego Polski MPHP10k (Wody Polskie, ISOK)", status=Status.no_data,
-        reason=HYDROLOGY_NO_DATA, impact=HYDROLOGY_IMPACT, resolution="skala 1:10 000",
+        key="watercourses", name="Mapa Podziału Hydrograficznego Polski MPHP10k (Wody Polskie, ISOK)", status=Status.no_data,
+        reason="Dane wektorowe cieków (WFS) wymagają logowania, a publiczna usługa WMS daje sam obraz, więc odległości "
+               "działki od cieku nie policzono.",
+        impact=HYDROLOGY_IMPACT, resolution="skala 1:10 000",
         url="https://isok.gov.pl/inspire.html", license="CC BY 4.0 (dane.gov.pl); pobieranie wektorów wymaga logowania"))
+    river_cause = hydrology_cause(hydrology)
+    if river_cause:
+        if not causes.items and status.class_key not in ("moderate", "severe"):
+            causes.reason = None
+        causes.items.append(river_cause)
     terrain_ref = (TerrainRef(status=Status.pending, endpoint="/api/terrain?" + urlencode({"parcel_id": parcel.id}),
                               reason="Spadek i drogi spływu liczą się osobno z modelu terenu (zwykle 15–60 s).")
                    if parcel is not None else

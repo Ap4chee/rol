@@ -8,7 +8,7 @@
   const STATUS_LABEL = { ok: 'Dane są', no_data: 'Brak danych', error: 'Błąd źródła', pending: 'W toku' };
   const LEVELS = ['none', 'watch', 'moderate', 'severe'];
   const LEVEL_ICON = { none: 'check', watch: 'eye', moderate: 'warn', severe: 'stop' };
-  const CAUSE_ICON = { rain_deficit: 'rain', high_et0: 'sun', low_soil_capacity: 'layers', high_demand_stage: 'sprout', carry_over: 'history' };
+  const CAUSE_ICON = { rain_deficit: 'rain', high_et0: 'sun', low_soil_capacity: 'layers', high_demand_stage: 'sprout', carry_over: 'history', low_river_flow: 'waves' };
   const CONFIDENCE_BARS = { wysoka: 3, 'średnia': 2, niska: 1 };
   const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
   const state = { parcel: null, point: null, report: null, timer: null, charts: [], reopened: [] };
@@ -620,7 +620,21 @@
     }
     const hydro = report.hydrology;
     add(section, subheading('waves', 'Wody w otoczeniu działki'), statusNote(hydro), el('div', { class: 'stack' }, paragraphs(hydro.text)));
+    if (hydro.status === 'ok' && hydro.years && hydro.years.length) add(section, hydroTable(hydro));
     return section;
+  }
+  function hydroTable(hydro) {
+    const digits = hydro.metric === 'flow' ? (hydro.median_value < 10 ? 2 : 1) : 0;
+    const what = hydro.metric === 'flow' ? 'Przepływ' : 'Stan wody';
+    const label = hydro.origin === 'live' ? 'pomiar ' + dateText(hydro.current_to) : '7 dni do ' + dateText(hydro.current_to);
+    const rows = hydro.years.map((y) => el('tr', null, el('td', { text: String(y.year) }),
+      el('td', { class: 'num', text: num(y.value, digits) + ' ' + hydro.unit })));
+    rows.push(el('tr', { class: 'current' }, el('td', { text: 'Teraz (' + label + ')' }),
+      el('td', { class: 'num' }, num(hydro.current_value, digits) + ' ' + hydro.unit, el('span', { class: 'sub', text: hydro.class_label }))));
+    return el('div', { class: 'table-wrap' }, el('table', null,
+      el('caption', { class: 'small', text: what + ' na wodowskazie ' + hydro.station_name + ' (' + hydro.river + ') w tych samych dniach roku. Źródło: IMGW-PIB, dane przetworzone.' }),
+      el('thead', null, el('tr', null, el('th', { text: 'Rok' }), el('th', { class: 'num', text: what + ' (średnia z 7 dni)' }))),
+      el('tbody', null, ...rows)));
   }
 
   // ---------- rekomendacje ----------
