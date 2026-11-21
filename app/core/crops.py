@@ -201,6 +201,22 @@ def stage_and_kc(crop: Crop, season: Season, day: date) -> tuple[str, float]:
     return "late", crop.kc_mid + frac * (crop.kc_end - crop.kc_mid)
 
 
+ROOT_DEPTH_MIN_M = 0.15   # Zr przy siewie, FAO-56 rozdz. 8 (0,15–0,20 m)
+
+
+def root_depth_on(crop: Crop, day: date) -> float | None:
+    """Głębokość korzeni w danym dniu [m]: liniowo od Zr,min przy siewie do Zr na początku środka sezonu (FAO-56 rozdz. 8).
+    None poza sezonem uprawy jednorocznej (brak żywych korzeni). Użytek trwały ma zawsze pełne Zr.
+    Tylko do opisu i wizualizacji: bilans liczy stałe Zr."""
+    if crop.perennial:
+        return crop.root_depth_m
+    season = season_containing(crop, day)
+    if season is None:
+        return None
+    frac = (day - season.sowing).days / max((season.mid_start - season.sowing).days, 1)
+    return ROOT_DEPTH_MIN_M + (crop.root_depth_m - ROOT_DEPTH_MIN_M) * min(1.0, max(0.0, frac))
+
+
 @dataclass
 class CropDaily:
     """Przebieg dzienny parametrów uprawy dla ciągu kolejnych dni."""

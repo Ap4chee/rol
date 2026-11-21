@@ -124,3 +124,16 @@ def test_fixed_dose_repeats_until_below_raw():
                           tew_mm=20, rew_mm=8, adjust_p=False, refill_at_raw=True, dose_mm=25)
     assert set(np.round(r.irrigation_mm[r.irrigation_mm > 0], 6)) == {25.0}
     assert r.depletion_mm.max() <= 55 + 1e-9                # najwyżej jeden dzień ponad RAW, potem dawka
+
+
+def test_root_depth_grows_from_sowing_to_mid_season_and_is_absent_off_season():
+    from datetime import date, timedelta
+    from app.core.crops import CROPS, ROOT_DEPTH_MIN_M, root_depth_on, season_for_harvest_year
+    maize = CROPS["maize"]
+    season = season_for_harvest_year(maize, 2025)
+    assert abs(root_depth_on(maize, season.sowing) - ROOT_DEPTH_MIN_M) < 1e-9
+    half = season.sowing + (season.mid_start - season.sowing) / 2
+    assert abs(root_depth_on(maize, half) - (ROOT_DEPTH_MIN_M + maize.root_depth_m) / 2) < .02
+    assert root_depth_on(maize, season.mid_start + timedelta(days=10)) == maize.root_depth_m
+    assert root_depth_on(maize, date(2025, 1, 15)) is None              # zima: pole bez kukurydzy
+    assert root_depth_on(CROPS["grassland"], date(2025, 1, 15)) == CROPS["grassland"].root_depth_m

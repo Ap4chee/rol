@@ -31,6 +31,7 @@ from app.core.crops import (
     CropDaily,
     daily_crop_arrays,
     last_completed_season,
+    root_depth_on,
     season_containing,
     season_for_harvest_year,
 )
@@ -334,9 +335,14 @@ def crop_info(c: Computed, analysis_date: date) -> CropInfo:
     assumptions = [crop.sources["stages"], *crop.assumptions]
     if crop.perennial:
         assumptions.append("Użytek zielony jest uprawą trwałą: sezon liczony od 1 IV do 31 X.")
+    assumptions.append(f"Głębokość korzeni pokazana w modelu rośnie liniowo od 0,15 m przy siewie do {fmt(crop.root_depth_m, 1)} m "
+                       "na początku środka sezonu (FAO-56 rozdz. 8). Bilans wodny liczy stałą strefę korzeni "
+                       f"{fmt(crop.root_depth_m, 1)} m przez cały sezon.")
     return CropInfo(
         key=crop.key, name=crop.name, in_season=c.in_season, stage_key=stage, stage_name=STAGE_NAMES_PL[stage],
-        kc=round(kc, 2) if kc is not None else None, root_depth_m=crop.root_depth_m, depletion_fraction_p=crop.p,
+        kc=round(kc, 2) if kc is not None else None, root_depth_m=crop.root_depth_m,
+        root_depth_now_m=round(root_depth_on(crop, last), 2) if root_depth_on(crop, last) is not None else None,
+        depletion_fraction_p=crop.p,
         season_from=season.sowing, season_to=season.harvest - timedelta(days=1),
         critical_from=season.critical_start, critical_to=season.critical_end - timedelta(days=1),
         parameters=[

@@ -118,6 +118,7 @@ class CropInfo(BaseModel):
     stage_name: str | None = None
     kc: float | None = Field(default=None, description="współczynnik uprawy w dniu analizy")
     root_depth_m: float | None = None
+    root_depth_now_m: float | None = Field(default=None, description="szacowana głębokość korzeni w dniu analizy (FAO-56 rozdz. 8); None poza sezonem")
     depletion_fraction_p: float | None = None
     season_from: Date | None = None
     season_to: Date | None = None

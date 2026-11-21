@@ -231,7 +231,7 @@ export function Field3D({ report, height = 420, cropArea = null }) {
       const [color, grain] = SOIL[layer.texture_key] ?? ['#806048', 1];
       const tint = new THREE.Color(color).multiplyScalar(layer.top_cm < 30 ? .78 : 1);   // próchnica przyciemnia wierzch
       // warstwy w zasięgu korzeni zabarwione według zapasu z bilansu (jedna wartość dla całej strefy, jak w FAO-56)
-      if (fill != null && layer.top_cm < rootCm) tint.lerp(new THREE.Color('#2a6fb0'), .42 * fill);
+      if (fill != null && layer.top_cm < rootCm) tint.lerp(new THREE.Color('#3a6a8f'), .25 * fill);
       const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: .015, bevelSize: .015, bevelSegments: 1 })
         .rotateX(Math.PI / 2);
       const mesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ map: soilTexture(`#${tint.getHexString()}`, grain, i === 0 && model.bare) }));
@@ -244,6 +244,65 @@ export function Field3D({ report, height = 420, cropArea = null }) {
       depthSum += depth;
     });
     const bottom = -depthSum - (soil.length - 1) * GAP;
+
+    // korzenie widoczne na ściankach bloku gleby (jak w odkrywce profilu), do głębokości z dnia analizy
+    const rootNowCm = (crop.root_depth_now_m ?? 0) * 100;
+    if (rootNowCm > 0 && !model.bare && layers.length) {
+      const ring = shapeInfo.outer;
+      const signed = ring.reduce((sum, [x1, y1], i) => { const [x2, y2] = ring[(i + 1) % ring.length]; return sum + x1 * y2 - x2 * y1; }, 0);
+      const edges = ring.map((p, i) => [p, ring[(i + 1) % ring.length]]).filter(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6);
+      const perimeter = edges.reduce((sum, [a, b]) => sum + Math.hypot(b[0] - a[0], b[1] - a[1]), 0);
+      const spacing = perimeter / 150;
+      const strands = [];
+      let carry = Math.random() * spacing;
+      for (const [a, b] of edges) {
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const t = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+        const n = signed > 0 ? [t[1], -t[0]] : [-t[1], t[0]];   // normalna na zewnątrz działki
+        for (let u = carry; u < len; u += spacing) {
+          const base = [a[0] + t[0] * u + n[0] * .03, a[1] + t[1] * u + n[1] * .03];
+          const depth = rootNowCm * (.35 + .65 * Math.sqrt(Math.random()));
+          const main = [[0, 0]];
+          for (let d = 0, lat = 0; d < depth;) {
+            d = Math.min(depth, d + depth / 10);
+            lat += (Math.random() - .5) * .035;
+            main.push([d, lat]);
+          }
+          strands.push({ base, t, points: main });
+          for (let k = 0; k < 2; k++) {   // boczne odgałęzienia
+            const from = main[1 + Math.floor(Math.random() * (main.length - 2))];
+            if (!from) continue;
+            const dir = Math.random() < .5 ? -1 : 1, len2 = depth * (.15 + Math.random() * .25);
+            strands.push({ base, t, points: [from, [from[0] + len2 * .7, from[1] + dir * (.03 + Math.random() * .05)]] });
+          }
+        }
+        carry = (carry - len) % spacing;
+        if (carry < 0) carry += spacing;
+      }
+      soil.forEach((layer, i) => {
+        const positions = [];
+        const thick = layer.bottom_cm - layer.top_cm, depth = layerDepth(thick);
+        const put = (strand, [d, lat]) => positions.push(strand.base[0] + strand.t[0] * lat, -(d - layer.top_cm) / thick * depth,
+          strand.base[1] + strand.t[1] * lat);
+        for (const strand of strands) {
+          for (let j = 1; j < strand.points.length; j++) {
+            let [a, b] = [strand.points[j - 1], strand.points[j]];
+            if (b[0] <= layer.top_cm || a[0] >= layer.bottom_cm) continue;
+            const clip = (p, q, d) => [d, p[1] + (q[1] - p[1]) * (d - p[0]) / (q[0] - p[0] || 1)];
+            if (a[0] < layer.top_cm) a = clip(a, b, layer.top_cm);
+            if (b[0] > layer.bottom_cm) b = clip(a, b, layer.bottom_cm);
+            put(strand, a);
+            put(strand, b);
+          }
+        }
+        if (!positions.length) return;
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: '#e2d2ad', transparent: true, opacity: .7 }));
+        lines.raycast = () => {};   // korzenie nie przechwytują najechania (dymek dotyczy warstwy)
+        meshes[i].add(lines);
+      });
+    }
 
     // miękki cień pod modelem, żeby stał na tle strony
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: .14 }));
@@ -463,7 +522,8 @@ function CropTip({ report, rootCm }) {
     <dl>
       {today && crop.in_season !== false && <><dt>Zużycie wody dziś</dt><dd>{number(today.etc_mm, 1)} mm</dd></>}
       {crop.kc != null && <><dt>Współczynnik Kc</dt><dd>{number(crop.kc, 2)}</dd></>}
-      <dt>Korzenie</dt><dd>do {number(rootCm)} cm</dd>
+      <dt>Korzenie teraz</dt><dd>{crop.root_depth_now_m != null ? `ok. ${number(crop.root_depth_now_m * 100)} cm` : 'brak'}</dd>
+      <dt>Strefa w bilansie</dt><dd>do {number(rootCm)} cm</dd>
       {crop.critical_from && <><dt>Okres krytyczny</dt><dd>{short(crop.critical_from)}–{short(crop.critical_to)}</dd></>}
     </dl>
     {need?.status === 'ok' && <>
