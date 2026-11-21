@@ -99,6 +99,7 @@ class ParcelSearchResponse(BaseModel):
     reason: str | None = None
     candidates: list[ParcelCandidate] = []
     truncated: bool = False
+    parcel: ParcelInfo | None = Field(default=None, description="pełne dane działki z geometrią (by-point, by-id)")
 
 
 # ---------- uprawa ----------

@@ -1,16 +1,23 @@
 """Serwer aplikacji: API raportu i statyczny frontend. Uruchomienie: `uvicorn app.main:app`."""
 from __future__ import annotations
 
-from pathlib import Path
-
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 
-from app.report import build_report
-from app.schemas import CropKey, CropOption, ReportRequest, ReportResponse
-
-ROOT = Path(__file__).resolve().parent.parent
-STATIC_DIR = ROOT / "static"
+from app.config import STATIC_DIR, USER_AGENT
+from app.core.crops import CROPS
+from app.report import _parcel_info, build_report
+from app.schemas import (
+    CropKey,
+    CropOption,
+    ParcelCandidate,
+    ParcelSearchResponse,
+    ReportRequest,
+    ReportResponse,
+    Status,
+)
+from app.sources import NoData, SourceError, uldk
 
 app = FastAPI(
     title="KOWR – Zatrzymaj wodę, chroń plony",
@@ -18,21 +25,59 @@ app = FastAPI(
     version="0.1.0",
 )
 
-CROP_NAMES: dict[CropKey, str] = {
-    CropKey.winter_wheat: "Pszenica ozima",
-    CropKey.spring_barley: "Jęczmień jary",
-    CropKey.winter_rapeseed: "Rzepak ozimy",
-    CropKey.maize: "Kukurydza",
-    CropKey.potato: "Ziemniak",
-    CropKey.sugar_beet: "Burak cukrowy",
-    CropKey.grassland: "Użytki zielone",
-}
-
 
 @app.get("/api/crops", response_model=list[CropOption])
 async def crops() -> list[CropOption]:
     """Lista upraw do wyboru w formularzu."""
-    return [CropOption(key=key, name=name) for key, name in CROP_NAMES.items()]
+    return [CropOption(key=CropKey(key), name=crop.name) for key, crop in CROPS.items()]
+
+
+@app.get("/api/parcels/search", response_model=ParcelSearchResponse)
+async def parcels_search(q: str = Query(min_length=2, max_length=80)) -> ParcelSearchResponse:
+    """Szukanie działki po „nazwa obrębu numer” albo po identyfikatorze. Może zwrócić wiele trafień."""
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
+        try:
+            candidates, truncated = await uldk.search_parcels(client, q)
+        except NoData as exc:
+            return ParcelSearchResponse(status=Status.no_data, reason=str(exc))
+        except SourceError as exc:
+            return ParcelSearchResponse(status=Status.error, reason=str(exc))
+    if not candidates:
+        return ParcelSearchResponse(status=Status.no_data, reason="ULDK nie znalazło działki o takim opisie.")
+    return ParcelSearchResponse(status=Status.ok, truncated=truncated,
+                                candidates=[ParcelCandidate(**c) for c in candidates])
+
+
+def _parcel_response(parcel: uldk.Parcel) -> ParcelSearchResponse:
+    return ParcelSearchResponse(status=Status.ok, parcel=_parcel_info(parcel), candidates=[ParcelCandidate(
+        id=parcel.id, number=parcel.number, region=parcel.region, commune=parcel.commune,
+        county=parcel.county, voivodeship=parcel.voivodeship)])
+
+
+@app.get("/api/parcels/by-point", response_model=ParcelSearchResponse)
+async def parcels_by_point(lon: float = Query(ge=14.0, le=24.3), lat: float = Query(ge=48.9, le=55.0)) -> ParcelSearchResponse:
+    """Działka zawierająca punkt wskazany na mapie (EPSG:4326), z geometrią."""
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
+        try:
+            parcel, _ = await uldk.get_parcel_by_point(client, lon, lat)
+        except NoData as exc:
+            return ParcelSearchResponse(status=Status.no_data, reason=str(exc))
+        except SourceError as exc:
+            return ParcelSearchResponse(status=Status.error, reason=str(exc))
+    return _parcel_response(parcel)
+
+
+@app.get("/api/parcels/by-id", response_model=ParcelSearchResponse)
+async def parcels_by_id(id: str = Query(min_length=5, max_length=80)) -> ParcelSearchResponse:
+    """Działka po pełnym identyfikatorze, z geometrią."""
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
+        try:
+            parcel, _ = await uldk.get_parcel_by_id(client, id)
+        except NoData as exc:
+            return ParcelSearchResponse(status=Status.no_data, reason=str(exc))
+        except SourceError as exc:
+            return ParcelSearchResponse(status=Status.error, reason=str(exc))
+    return _parcel_response(parcel)
 
 
 @app.post("/api/report", response_model=ReportResponse)
