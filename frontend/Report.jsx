@@ -11,7 +11,7 @@ import { Field3D } from './Field3D.jsx';
 import { ParcelMap } from './ParcelMap.jsx';
 import { WaterChart } from './WaterChart.jsx';
 import { api, Note, Paragraphs, Sparkline, statusColor } from './ui.jsx';
-import { dateText, number, satelliteMeasurements, seasonMonths } from './model.js';
+import { dateText, mergeSoilLayers, number, satelliteMeasurements, seasonMonths } from './model.js';
 
 function useDeferred(endpoint) {
   const [result, setResult] = useState(null);
@@ -182,12 +182,13 @@ function causeIcon(key) {
 function SoilMoisture({ soil, moisture, water, crop }) {
   const rootCm = (soil.root_depth_m ?? crop.root_depth_m ?? 0) * 100;
   const regional = moisture?.status === 'ok' ? moisture.layers : [];
+  const layers = mergeSoilLayers(soil.layers);   // te same klasy gleby obok siebie jako jedna warstwa, jak w modelu 3D
   return <Stack gap="md">
     <Note section={soil}/>
     <Paragraphs lines={soil.text} size="sm"/>
-    {soil.layers?.length > 0 && <Table striped>
+    {layers.length > 0 && <Table striped>
       <Table.Thead><Table.Tr><Table.Th>Warstwa</Table.Th><Table.Th>Gleba</Table.Th><Table.Th>Woda dostępna</Table.Th><Table.Th>Pojemność polowa</Table.Th></Table.Tr></Table.Thead>
-      <Table.Tbody>{soil.layers.map((l) => <Table.Tr key={l.top_cm} c={l.top_cm < rootCm ? undefined : 'dimmed'}>
+      <Table.Tbody>{layers.map((l) => <Table.Tr key={l.top_cm} c={l.top_cm < rootCm ? undefined : 'dimmed'}>
         <Table.Td>{l.top_cm}–{l.bottom_cm} cm</Table.Td><Table.Td>{l.texture_label}</Table.Td>
         <Table.Td>{number(l.available_water_mm)} mm</Table.Td><Table.Td>{number(l.field_capacity_vol_pct)}%</Table.Td></Table.Tr>)}</Table.Tbody>
     </Table>}
