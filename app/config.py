@@ -30,7 +30,7 @@ HISTORY_YEARS = 10
 WARMUP_DAYS = 400
 
 # Wymuszanie awarii źródeł do testów odporności, np. KOWR_FAIL=weather_archive,soil
-# Dozwolone: uldk, weather_archive, weather_power, weather_recent, soil_wcs, soil_rest, soil_vrt,
+# Dozwolone: uldk, egib_wfs, weather_archive, weather_power, weather_recent, soil_wcs, soil_rest, soil_vrt,
 #            satellite, hydrology, terrain, soil_moisture
 FORCED_FAILURES = {s.strip() for s in os.environ.get("KOWR_FAIL", "").split(",") if s.strip()}
 

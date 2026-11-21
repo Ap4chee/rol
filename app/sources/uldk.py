@@ -19,7 +19,7 @@ from shapely.geometry.base import BaseGeometry
 
 from app import cache
 from app.config import TIMEOUT_ULDK_S, check_forced_failure
-from app.sources import NoData, SourceError
+from app.sources import NoData, SourceError, egib_wfs
 
 ULDK_URL = "https://uldk.gugik.gov.pl/"
 RESULT_FIELDS = "teryt,voivodeship,county,commune,region,parcel"
@@ -47,6 +47,7 @@ class Parcel:
     voivodeship: str | None
     geometry: BaseGeometry  # EPSG:4326, kolejność lon, lat
     area_ha: float
+    source: str = "uldk"  # "uldk" albo "egib_wfs" (zapasowa usługa WFS, gdy ULDK nie odpowiada)
 
     @property
     def centroid_lonlat(self) -> tuple[float, float]:
@@ -122,12 +123,26 @@ def _parse_parcel(line: str) -> Parcel:
 
 def _parcel_to_cache(p: Parcel) -> dict:
     return {"id": p.id, "number": p.number, "region": p.region, "commune": p.commune, "county": p.county,
-            "voivodeship": p.voivodeship, "wkt": p.geometry.wkt, "area_ha": p.area_ha}
+            "voivodeship": p.voivodeship, "wkt": p.geometry.wkt, "area_ha": p.area_ha, "source": p.source}
 
 
 def _parcel_from_cache(d: dict) -> Parcel:
     return Parcel(id=d["id"], number=d["number"], region=d["region"], commune=d["commune"], county=d["county"],
-                  voivodeship=d["voivodeship"], geometry=wkt.loads(d["wkt"]), area_ha=d["area_ha"])
+                  voivodeship=d["voivodeship"], geometry=wkt.loads(d["wkt"]), area_ha=d["area_ha"],
+                  source=d.get("source", "uldk"))
+
+
+async def _from_egib_wfs(uldk_error: Exception, fetch) -> Parcel:
+    """Granica z zapasowej usługi WFS EGiB, gdy ULDK zawiodło. `fetch` to oczekiwane wywołanie egib_wfs."""
+    try:
+        record = await fetch
+    except NoData:
+        raise
+    except (SourceError, RuntimeError) as exc:
+        raise SourceError(f"{uldk_error}; zapasowa usługa WFS ewidencji też nie dała działki ({exc})") from exc
+    return Parcel(id=record["id"], number=record["number"], region=record["region"], commune=record["commune"],
+                  county=record["county"], voivodeship=record["voivodeship"], geometry=record["geometry"],
+                  area_ha=geodesic_area_ha(record["geometry"]), source="egib_wfs")
 
 
 async def get_parcel_by_id(client: httpx.AsyncClient, parcel_id: str) -> tuple[Parcel, bool]:
@@ -138,10 +153,15 @@ async def get_parcel_by_id(client: httpx.AsyncClient, parcel_id: str) -> tuple[P
     cached = cache.get("uldk", f"id:{parcel_id}")
     if cached:
         return _parcel_from_cache(cached), True
-    lines = await _request(client, {
-        "request": "GetParcelById", "id": parcel_id,
-        "result": RESULT_FIELDS + ",geom_wkt", "srid": "4326",
-    })
+    try:
+        lines = await _request(client, {
+            "request": "GetParcelById", "id": parcel_id,
+            "result": RESULT_FIELDS + ",geom_wkt", "srid": "4326",
+        })
+    except (SourceError, RuntimeError) as exc:
+        parcel = await _from_egib_wfs(exc, egib_wfs.fetch_parcel_by_id(client, parcel_id))
+        cache.put("uldk", f"id:{parcel.id}", _parcel_to_cache(parcel))
+        return parcel, False
     if lines[0].startswith("-1") or len(lines) < 2:
         raise NoData(f"ULDK nie zna działki o identyfikatorze {parcel_id}.")
     parcel = _parse_parcel(lines[1])
@@ -155,10 +175,16 @@ async def get_parcel_by_point(client: httpx.AsyncClient, lon: float, lat: float)
     cached = cache.get("uldk", key)
     if cached:
         return _parcel_from_cache(cached), True
-    lines = await _request(client, {
-        "request": "GetParcelByXY", "xy": f"{lon:.7f},{lat:.7f},4326",
-        "result": RESULT_FIELDS + ",geom_wkt", "srid": "4326",
-    })
+    try:
+        lines = await _request(client, {
+            "request": "GetParcelByXY", "xy": f"{lon:.7f},{lat:.7f},4326",
+            "result": RESULT_FIELDS + ",geom_wkt", "srid": "4326",
+        })
+    except (SourceError, RuntimeError) as exc:
+        parcel = await _from_egib_wfs(exc, egib_wfs.fetch_parcel_by_point(client, lon, lat))
+        cache.put("uldk", key, _parcel_to_cache(parcel))
+        cache.put("uldk", f"id:{parcel.id}", _parcel_to_cache(parcel))
+        return parcel, False
     if lines[0].startswith("-1") or len(lines) < 2:
         raise NoData("W tym punkcie ULDK nie zwraca działki ewidencyjnej (punkt poza Polską albo poza ewidencją).")
     parcel = _parse_parcel(lines[1])

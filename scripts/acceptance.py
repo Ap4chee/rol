@@ -24,7 +24,10 @@ CASES = [
     ("awaria satelity", ["--parcel", "060910_2.0011.580/2", "--crop", "maize", "--date", "2025-07-20"], "satellite"),
     ("awaria obu archiwów pogody", ["--parcel", "060910_2.0011.580/2", "--crop", "winter_wheat"],
      "weather_archive,weather_power"),
-    ("awaria ULDK przy wskazaniu punktu", ["--point", "22.3559,51.0933", "--crop", "potato", "--date", "2024-08-01"], "uldk"),
+    ("awaria ULDK przy wskazaniu punktu: granica z zapasowego WFS EGiB",
+     ["--point", "22.3559,51.0933", "--crop", "potato", "--date", "2024-08-01"], "uldk"),
+    ("awaria ULDK i zapasowego WFS przy wskazaniu punktu: raport dla punktu",
+     ["--point", "22.3559,51.0933", "--crop", "potato", "--date", "2024-08-01"], "uldk,egib_wfs"),
 ]
 
 

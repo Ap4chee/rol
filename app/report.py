@@ -84,7 +84,7 @@ from app.schemas import (
     WeatherWindow,
 )
 from app import terrain_service
-from app.sources import NoData, SourceError, imgw_hydro, sentinel, soilgrids, uldk, weather
+from app.sources import NoData, SourceError, egib_wfs, imgw_hydro, sentinel, soilgrids, uldk, weather
 from app.sources import soil_moisture as moisture_source
 from app.textfmt import fmt, fmt_date, plural_days
 
@@ -160,6 +160,11 @@ async def resolve_parcel(client: httpx.AsyncClient, request: ReportRequest) -> t
                        "wskaźników satelitarnych dla pola ani analizy spływu.")
         info.elapsed_s = round(time.perf_counter() - t0, 2)
         return None, info
+    if parcel.source == "egib_wfs":
+        info.name = egib_wfs.SOURCE_NAME
+        info.url = egib_wfs.WFS_URL
+        info.reason = ("ULDK nie odpowiadało, więc granicę działki pobrano z zapasowej usługi GUGiK "
+                       "(zbiorczy WFS ewidencji gruntów i budynków). Ta usługa nie podaje nazwy powiatu.")
     info.from_cache = from_cache
     info.elapsed_s = round(time.perf_counter() - t0, 2)
     return parcel, info

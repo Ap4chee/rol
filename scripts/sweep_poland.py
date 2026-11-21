@@ -50,7 +50,7 @@ CASES: list[tuple[str, str, str, str]] = [
     ("Granica 10 lat wstecz", "17.60,52.40", "winter_wheat", (TODAY - timedelta(days=3650)).isoformat()),
     ("Początek zasięgu Sentinel-2, sierpień 2017", "21.50,52.00", "maize", "2017-08-01"),
     ("Krańce wschodnie (strefa 34N/35N)", "23.60,52.70", "grassland", "2024-06-01"),
-    ("Krańce zachodnie", "14.60,52.60", "winter_wheat", "2025-06-20"),
+    ("Krańce zachodnie", "14.90,52.60", "winter_wheat", "2025-06-20"),
     ("Wybrzeże", "17.30,54.70", "potato", "2023-08-25"),
     ("Punkt w mieście (nie pole)", "21.0118,52.2298", "winter_wheat", "2024-07-01"),
     ("Punkt w lesie", "23.85,52.75", "grassland", "2022-07-01"),
