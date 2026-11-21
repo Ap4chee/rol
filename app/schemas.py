@@ -271,6 +271,24 @@ class SatelliteObservation(BaseModel):
     ndmi: float | None = None
 
 
+class NdmiForecast(BaseModel):
+    """Prognoza zmiany NDMI na 7–14 dni z modelu ML (kowr_ml). Dodatek do bilansu, nie jego zamiennik."""
+    available: bool
+    reason: str | None = Field(default=None, description="dlaczego prognozy nie ma")
+    status: str | None = Field(default=None, description="status modelu z karty, np. „eksperymentalny”")
+    model_run: str | None = None
+    window_from: Date | None = None
+    window_to: Date | None = None
+    ndmi_last: float | None = None
+    last_scene_date: Date | None = None
+    last_scene_age_days: int | None = None
+    delta_p50: float | None = Field(default=None, description="prognozowana zmiana NDMI (mediana)")
+    delta_p10: float | None = Field(default=None, description="dolna granica przedziału 80%")
+    delta_p90: float | None = Field(default=None, description="górna granica przedziału 80%")
+    inputs: dict[str, float | None] = Field(default_factory=dict, description="cechy wejściowe modelu")
+    text: list[str] = []
+
+
 class SatelliteSection(BaseModel):
     status: Status
     reason: str | None = None
@@ -286,6 +304,7 @@ class SatelliteSection(BaseModel):
         default=None, description="czy najnowsze czyste zdjęcie pokazuje zieloną okrywę (False = odkryta gleba)")
     endpoint: str | None = Field(
         default=None, description="przy statusie pending: adres GET, pod którym frontend dociąga komplet zdjęć")
+    ndmi_forecast: NdmiForecast | None = None
     text: list[str] = []
 
 

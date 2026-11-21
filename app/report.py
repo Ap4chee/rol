@@ -64,6 +64,7 @@ from app.schemas import (
     Recommendations,
     ReportRequest,
     ReportResponse,
+    NdmiForecast,
     SatelliteObservation,
     SatelliteSection,
     SeasonStress,
@@ -657,6 +658,40 @@ async def finish_satellite(task: asyncio.Task | None, started_at: float) -> tupl
     return result, info
 
 
+def signed(value: float) -> str:
+    """Liczba ze znakiem i polskim przecinkiem, 2 miejsca (dokładność NDMI)."""
+    text = fmt(value, 2)
+    return text if text.startswith("-") or text == "0,00" else "+" + text
+
+
+def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: date) -> NdmiForecast:
+    """Prognoza zmiany NDMI na 7–14 dni (kowr_ml). Model jest dodatkiem: błąd albo brak modelu nie psuje raportu."""
+    try:
+        from kowr_ml import predict as ml_predict
+        out = ml_predict.predict(result.observations, c.series, analysis_date)
+    except Exception as exc:  # brak scikit-learn, uszkodzony plik modelu itp.
+        return NdmiForecast(available=False, reason=f"moduł prognozy niedostępny ({type(exc).__name__})")
+    fc = NdmiForecast(**out)
+    if not fc.available:
+        return fc
+    lo, mid, hi = fc.delta_p10, fc.delta_p50, fc.delta_p90
+    if mid <= -satellite_logic.NDMI_DROP:
+        trend = "prawdopodobnie spadnie"
+    elif mid >= satellite_logic.NDMI_DROP:
+        trend = "prawdopodobnie wzrośnie"
+    else:
+        trend = "prawdopodobnie nie zmieni się wyraźnie"
+    fc.text.append(
+        f"Prognoza modelu ({fc.status}): w dniach {fmt_date(fc.window_from)}–{fmt_date(fc.window_to)} uwilgotnienie roślin "
+        f"(NDMI) {trend} względem zdjęcia z {fmt_date(fc.last_scene_date)}: zmiana {signed(mid)}, "
+        f"przedział 80% od {signed(lo)} do {signed(hi)}.")
+    if lo < 0 < hi and (hi - lo) > 2 * satellite_logic.NDMI_DROP:
+        fc.text.append("Przedział obejmuje zarówno spadek, jak i wzrost, więc kierunek zmiany jest niepewny.")
+    fc.text.append("To prognoza wskaźnika satelitarnego, nie wilgotności gleby. Nie wylicza się z niej dawki nawodnienia; "
+                   "może wskazać, kiedy warto obejrzeć pole.")
+    return fc
+
+
 def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo, c: Computed, class_key: str,
                       request: ReportRequest, parcel_id: str | None) -> tuple[SatelliteSection, bool]:
     """Sekcja satelitarna i informacja, czy rozbieżność z bilansem uzasadnia oględziny pola."""
@@ -721,6 +756,7 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
         section.endpoint = satellite_endpoint(request, parcel_id)
         section.reason = (f"Część zdjęć jeszcze się wczytuje ({result.unfinished} scen; łącze do archiwum zdjęć jest wolne). "
                           "Wynik uzupełni się sam, zwykle w ciągu minuty.")
+    section.ndmi_forecast = ndmi_forecast(result, c, request.date)
     if not c.in_season and section.green_cover is True and c.crop_daily.stage[-1] == "off_season":
         section.text.append("Na polu widać zieloną okrywę, choć według kalendarza wybranej uprawy pole powinno być puste. "
                             "To może być międzyplon, samosiewy albo inna uprawa niż wybrana.")
