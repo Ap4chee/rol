@@ -1,0 +1,41 @@
+loam
+
+Use case: product-mockup
+Asset type: reusable modular soil-layer cutout for a Polish farm water-retention application.
+Single isolated freestanding thin rectangular slab of soil in a polished realistic 3D studio illustration, visually consistent with a scientific cutaway. Orthographic view, no perspective distortion. Show the horizontal top, a broad front long face, and a narrow right short face. Camera at 25 degrees elevation, only 20 degrees turned from the long face. World dimensions width : depth : vertical thickness = 5 : 2.5 : 0.65. Flat top with very subtle grain relief, straight clean edges, square corners, constant thickness, flat bottom. Rotate so the front long horizontal edge slopes slightly downward toward the right and the short right edge slopes upward toward the right. Center the single slab in a landscape frame and keep 10% clean transparent air around every edge. Diffuse warm-neutral overhead left light, muted natural colors and tactile fine detail. Absolutely no outside cast shadow or ground plane. True alpha background, unbroken empty space all around. No text, numbers, grass, plants, roots, rocks larger than small grains, water, raindrops, artificial layer stripes, props, frame or border.
+Material: balanced loam, medium muted warm brown. Fine irregular crumb structure, occasional small tan grains in a continuous dark sandy-silty matrix, a finely aggregated brown earthen cut face with soft fine detail. One homogeneous material over top and both faces.
+
+sand
+
+Use case: precise-object-edit
+Asset type: matching modular soil-layer illustration for the same agricultural app as the provided image.
+Input image: edit target. Change ONLY the geological material of the slab as described below. Retain the original image dimensions, identical object location, silhouette, occupied bounding box, proportions, edge lines, orthographic camera, visible faces and diffuse overhead-left lighting. Keep its entire true-alpha transparent surround, including every corner. Perfect registration with the input slab is the most important requirement: use the same projected shape and pixel positions so that different textures can stack in one app component. Show one homogeneous material across all three visible faces. No added shadow beyond the object, text, decorations, ground, border, water, rocks or plants.
+Replacement material: Sand. A visibly granular, loose-looking collection of individually discernible very fine golden beige and quartz tan sand grains, distinctly lighter than the input. Fine grain only, granular all through the faces, subtly rough. Avoid pebbles and pure yellow.
+
+sandy-loam
+
+Use case: precise-object-edit
+Asset type: matching modular soil-layer illustration for the same agricultural app as the provided image.
+Input image: edit target. Change ONLY the geological material of the slab as described below. Retain the original image dimensions, identical object location, silhouette, occupied bounding box, proportions, edge lines, orthographic camera, visible faces and diffuse overhead-left lighting. Keep its entire true-alpha transparent surround, including every corner. Perfect registration with the input slab is the most important requirement: use the same projected shape and pixel positions so that different textures can stack in one app component. Show one homogeneous material across all three visible faces. No added shadow beyond the object, text, decorations, ground, border, water, rocks or plants.
+Replacement material: Sandy loam. Ochre brown to warm buff earth, an even mix of visible tiny tawny grains embedded in a fine light brown soil matrix. Finer and darker than pale sand but clearly lighter and grainier than the brown reference loam.
+
+silt-loam
+
+Use case: precise-object-edit
+Asset type: matching modular soil-layer illustration for the same agricultural app as the provided image.
+Input image: edit target. Change ONLY the geological material of the slab as described below. Retain the original image dimensions, identical object location, silhouette, occupied bounding box, proportions, edge lines, orthographic camera, visible faces and diffuse overhead-left lighting. Keep its entire true-alpha transparent surround, including every corner. Perfect registration with the input slab is the most important requirement: use the same projected shape and pixel positions so that different textures can stack in one app component. Show one homogeneous material across all three visible faces. No added shadow beyond the object, text, decorations, ground, border, water, rocks or plants.
+Replacement material: Silt loam. Muted greyish taupe earth, olive-grey undertone. A fine velvety silty cut face of dusty small aggregates, with very few visible grains. Fine powdery mineral detail, softly crumbled, not glossy or polished. Cooler and noticeably less orange than the source loam.
+
+clay
+
+Use case: precise-object-edit
+Asset type: matching modular soil-layer illustration for the same agricultural app as the provided image.
+Input image: edit target. Change ONLY the geological material of the slab as described below. Retain the original image dimensions, identical object location, silhouette, occupied bounding box, proportions, edge lines, orthographic camera, visible faces and diffuse overhead-left lighting. Keep its entire true-alpha transparent surround, including every corner. Perfect registration with the input slab is the most important requirement: use the same projected shape and pixel positions so that different textures can stack in one app component. Show one homogeneous material across all three visible faces. No added shadow beyond the object, text, decorations, ground, border, water, rocks or plants.
+Replacement material: Clay. Muted terracotta and iron brown, fine compact cohesive matrix, nearly no visible sand grains, smooth subtle shear faces and a few tiny hairline fissures in the material itself. Neither shiny nor wet, no major cracks. Natural clay earth, not baked brick.
+
+peat
+
+Use case: precise-object-edit
+Asset type: matching modular soil-layer illustration for the same agricultural app as the provided image.
+Input image: edit target. Change ONLY the geological material of the slab as described below. Retain the original image dimensions, identical object location, silhouette, occupied bounding box, proportions, edge lines, orthographic camera, visible faces and diffuse overhead-left lighting. Keep its entire true-alpha transparent surround, including every corner. Perfect registration with the input slab is the most important requirement: use the same projected shape and pixel positions so that different textures can stack in one app component. Show one homogeneous material across all three visible faces. No added shadow beyond the object, text, decorations, ground, border, water, rocks or plants.
+Replacement material: Peat soil. Deep chocolate brown, nearly black lowlights, matte dry crumb texture interrupted by delicate strands of decomposed organic fibers contained inside the slab. Very fine fibers inset into the material, no protrusions, living roots, moss or leaves. A rich dark organic texture, not glossy or muddy.
