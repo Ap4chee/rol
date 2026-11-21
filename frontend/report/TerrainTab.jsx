@@ -48,8 +48,9 @@ export function TerrainTab({ report, terrain, failed, retry }) {
               </AccordionItem>
             </Accordion>}
           </div>}
-          {failed ? <Button className="no-print self-start" variant="secondary" size="sm" icon={<RefreshCw/>} onClick={retry}>
-            Ponów pobieranie terenu</Button> : null}
+          {/* ponów także, gdy serwer odpowiedział błędem źródła (np. WCS GUGiK nie odpowiedział): błędy nie trafiają do pamięci podręcznej */}
+          {(failed || terrain?.status === 'error') && report.terrain?.endpoint ? <Button className="no-print self-start" variant="secondary" size="sm"
+            icon={<RefreshCw/>} onClick={retry}>Ponów pobieranie terenu</Button> : null}
         </div>
       </Section>
     </div>

@@ -252,7 +252,7 @@ function Trend({ measurements, current, onChange }) {
   </div>;
 }
 
-function Greenness({ satellite, failed, retry, printing }) {
+function Greenness({ satellite, failed, retry, canRetry, printing }) {
   const measurements = satelliteMeasurements(satellite);
   const [index, setIndex] = useState(null);
   const pending = satellite.status === 'pending';
@@ -266,7 +266,9 @@ function Greenness({ satellite, failed, retry, printing }) {
       <Spinner className="size-3.5"/>Wczytuję zdjęcia Sentinel-2…</p>}
     {!pending && satellite.status !== 'ok' && <div role={satellite.status === 'error' ? 'alert' : undefined} className="mb-3">
       <Note section={satellite} fallback="Brak obserwacji." className="my-0"/>
-      {failed && <Button variant="secondary" size="sm" icon={<RefreshCw/>} onClick={retry} className="no-print mt-3">Ponów</Button>}
+      {/* ponów także po błędzie zgłoszonym przez serwer (np. STAC nie odpowiedział), nie tylko po zerwanym połączeniu */}
+      {(failed || satellite.status === 'error') && canRetry
+        && <Button variant="secondary" size="sm" icon={<RefreshCw/>} onClick={retry} className="no-print mt-3">Ponów</Button>}
     </div>}
     {(loading || measurements.length > 0) && <Card className="p-5">
       <SkeletonReveal loading={loading} pulseCount="infinite" skeleton={<GreennessSkeleton/>}
@@ -299,7 +301,8 @@ export function Summary({ report, terrain, satellite, sat, limited, onTab, print
     <WaterReserve report={report} intro={intro}/>
     <div className="grid gap-14 md:grid-cols-12 md:gap-12">
       <div className="min-w-0 md:col-span-7"><Causes report={report} terrain={terrain} onTab={onTab}/></div>
-      <div className="min-w-0 md:col-span-5"><Greenness satellite={satellite} failed={sat.failure} retry={sat.retry} printing={printing}/></div>
+      <div className="min-w-0 md:col-span-5"><Greenness satellite={satellite} failed={sat.failure} retry={sat.retry}
+        canRetry={Boolean(report.satellite?.endpoint)} printing={printing}/></div>
     </div>
   </div>;
 }
