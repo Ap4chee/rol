@@ -5,3 +5,5 @@ __pycache__/
 # pamięć podręczna odpowiedzi zewnętrznych usług (tworzona przy pierwszym uruchomieniu)
 cache/
 .env
+# lokalne katalogi robocze narzędzi AI
+.claude/

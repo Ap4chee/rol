@@ -5,7 +5,7 @@ import httpx
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 
-from app.config import STATIC_DIR, USER_AGENT
+from app.config import SOIL_ASSETS_DIR, STATIC_DIR, USER_AGENT
 from app.core.crops import CROPS
 from app.report import _parcel_info, build_report
 from app.schemas import (
@@ -85,6 +85,10 @@ async def report(request: ReportRequest) -> ReportResponse:
     """Raport dla działki (identyfikator albo punkt), uprawy i daty. Liczony na żywo."""
     return await build_report(request)
 
+
+# Ilustracje warstw gleby (umowne, dobierane po klasie uziarnienia; opis w outputs/assety_gleby/README.md).
+if SOIL_ASSETS_DIR.is_dir():
+    app.mount("/soil-assets", StaticFiles(directory=SOIL_ASSETS_DIR), name="soil-assets")
 
 if STATIC_DIR.is_dir():
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

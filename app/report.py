@@ -15,8 +15,9 @@ from zoneinfo import ZoneInfo
 import httpx
 import numpy as np
 from fastapi import HTTPException
+from shapely.geometry import Point as ShapelyPoint
 
-from app.config import HISTORY_YEARS, USER_AGENT, WARMUP_DAYS
+from app.config import HISTORY_YEARS, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
 from app.core import analysis
 from app.core.crops import (
     CROPS,
@@ -29,7 +30,8 @@ from app.core.crops import (
     season_containing,
     season_for_harvest_year,
 )
-from app.core.soil import SoilVariant, assumed_variant
+from app.core.ptf import USDA_LABELS_PL, usda_texture_class
+from app.core.soil import SoilVariant, assumed_variant, build_variants, layer_water
 from app.core.water_balance import (
     CLASS_KEYS,
     CLASS_LABELS_IN_SEASON,
@@ -59,6 +61,7 @@ from app.schemas import (
     SatelliteSection,
     SeasonStress,
     SeasonSummary,
+    SoilLayer,
     SoilSection,
     SourceInfo,
     Status,
@@ -66,7 +69,7 @@ from app.schemas import (
     WaterStatus,
     WeatherWindow,
 )
-from app.sources import NoData, SourceError, uldk, weather
+from app.sources import NoData, SourceError, soilgrids, uldk, weather
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -166,6 +169,79 @@ def weather_sources(result: weather.WeatherResult) -> list[SourceInfo]:
                     f"opad przyjęto jako 0 mm w {plural_days(result.missing_rain_days)}.")
         out.append(info)
     return out
+
+
+# ---------- gleba ----------
+
+SOIL_SOURCE_NAME = "ISRIC SoilGrids 250 m v2.0"
+SOIL_ASSUMED_IMPACT = ("Bilans policzono dla gleby umownej (glina: 40% piasku, 20% iłu). Wynik jest orientacyjny, "
+                       "a wpływu gleby na niedobór nie da się ocenić.")
+HIGH_SOC_G_KG = 120.0  # powyżej tej zawartości węgla gleba może być organiczna (torfowa, murszowa)
+
+
+async def fetch_soil_safe(client: httpx.AsyncClient, geometry) -> tuple[soilgrids.SoilData | None, SourceInfo]:
+    """Gleba z SoilGrids z limitem czasu. Błąd nie przerywa raportu: wraca None i opis braku."""
+    t0 = time.perf_counter()
+    info = SourceInfo(
+        key="soil", name=SOIL_SOURCE_NAME, status=Status.ok, resolution="siatka 250 m, sześć warstw do 200 cm",
+        license="CC BY 4.0", url="https://www.isric.org/explore/soilgrids",
+        data_date="mapa globalna z modelu (wersja 2.0, 2020), nie pomiar na polu")
+    data: soilgrids.SoilData | None = None
+    try:
+        data = await asyncio.wait_for(soilgrids.fetch_soil(client, geometry), TIMEOUT_SOIL_TOTAL_S)
+        info.from_cache = data.from_cache
+        info.notes = [f"Sposób pobrania: {data.method_label}.", *data.notes,
+                      *[f"Nieudana próba – {a}" for a in data.attempts]]
+    except NoData as exc:
+        info.status, info.reason, info.impact = Status.no_data, str(exc), SOIL_ASSUMED_IMPACT
+    except asyncio.TimeoutError:
+        info.status, info.impact = Status.error, SOIL_ASSUMED_IMPACT
+        info.reason = f"SoilGrids nie odpowiedział w {TIMEOUT_SOIL_TOTAL_S:.0f} s."
+    except (SourceError, RuntimeError) as exc:
+        info.status, info.reason, info.impact = Status.error, str(exc), SOIL_ASSUMED_IMPACT
+    info.elapsed_s = round(time.perf_counter() - t0, 2)
+    return data, info
+
+
+def soil_section(data: soilgrids.SoilData | None, info: SourceInfo, crop: Crop) -> SoilSection:
+    if data is None:
+        return SoilSection(status=info.status, reason=info.reason, assumed=True, root_depth_m=crop.root_depth_m,
+                           text=[SOIL_ASSUMED_IMPACT])
+    layers: list[SoilLayer] = []
+    for layer in data.layers:
+        usda = usda_texture_class(layer.sand_pct, layer.silt_pct, layer.clay_pct)
+        label, image_key = USDA_LABELS_PL[usda]
+        water = layer_water(layer.sand_pct, layer.clay_pct, layer.soc_g_kg)
+        has_range = layer.sand_q05_pct is not None and layer.clay_q05_pct is not None
+        layers.append(SoilLayer(
+            top_cm=layer.top_cm, bottom_cm=layer.bottom_cm, sand_pct=round(layer.sand_pct, 1),
+            silt_pct=round(layer.silt_pct, 1), clay_pct=round(layer.clay_pct, 1),
+            soc_g_kg=round(layer.soc_g_kg, 1) if layer.soc_g_kg is not None else None,
+            bulk_density_g_cm3=round(layer.bulk_density_g_cm3, 2) if layer.bulk_density_g_cm3 is not None else None,
+            sand_pct_range=[round(layer.sand_q05_pct), round(layer.sand_q95_pct)] if has_range else None,
+            clay_pct_range=[round(layer.clay_q05_pct), round(layer.clay_q95_pct)] if has_range else None,
+            texture_key=image_key, texture_usda=usda, texture_label=label, image=f"/soil-assets/{image_key}.webp",
+            field_capacity_vol_pct=round(water.field_capacity * 100, 1),
+            wilting_point_vol_pct=round(water.wilting_point * 100, 1),
+            available_water_mm=round(water.available * layer.thickness_cm * 10.0)))
+    top = layers[0]
+    root_cm = crop.root_depth_m * 100
+    root_water = sum(
+        layer.available_water_mm * (min(layer.bottom_cm, root_cm) - layer.top_cm) / (layer.bottom_cm - layer.top_cm)
+        for layer in layers if layer.top_cm < root_cm)
+    text = [
+        f"Wierzchnia warstwa to {top.texture_label} (piasek {fmt(top.sand_pct)}%, pył {fmt(top.silt_pct)}%, "
+        f"ił {fmt(top.clay_pct)}%). W strefie korzeni do {fmt(crop.root_depth_m, 1)} m taka gleba może utrzymać "
+        f"ok. {fmt(root_water)} mm wody dostępnej dla roślin.",
+        f"Wartości pochodzą z mapy SoilGrids w siatce 250 m (liczba komórek pod działką: {data.cells}, średnia ważona "
+        "powierzchnią). To szacunek z modelu globalnego: na pojedynczym polu gleba może być wyraźnie lżejsza albo "
+        "cięższa, co pokazuje przedział 5–95%.",
+    ]
+    if any(layer.soc_g_kg is not None and layer.soc_g_kg > HIGH_SOC_G_KG for layer in layers[:3]):
+        text.append("Mapa pokazuje bardzo dużo węgla organicznego: to może być gleba organiczna (torfowa lub murszowa). "
+                    "Użyta funkcja przeliczeniowa dotyczy gleb mineralnych, więc pojemność wodna jest tu niepewna.")
+    return SoilSection(status=Status.ok, assumed=False, cells=data.cells, method=data.method_label,
+                       root_depth_m=crop.root_depth_m, layers=layers, text=text)
 
 
 # ---------- bilans ----------
@@ -521,7 +597,7 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
 # ---------- raport ----------
 
 def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sources: list[SourceInfo],
-                       started: float, timings: dict[str, float]) -> ReportResponse:
+                       started: float, timings: dict[str, float], soil: SoilSection) -> ReportResponse:
     reason = ("Żaden dostawca pogody nie odpowiedział. Bez opadu i ewapotranspiracji nie da się policzyć "
               "bilansu wodnego, więc oceny niedoboru wody nie ma. Spróbuj ponownie za kilka minut.")
     dependent = "Wymaga bilansu wodnego, a ten nie powstał z powodu braku pogody."
@@ -535,7 +611,7 @@ def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sourc
         satellite=SatelliteSection(status=Status.no_data, reason=NOT_CONNECTED),
         history=HistorySection(status=Status.no_data, reason=dependent),
         causes=CausesSection(status=Status.no_data, reason=dependent),
-        soil=SoilSection(status=Status.no_data, reason=NOT_CONNECTED),
+        soil=soil,
         terrain=TerrainRef(status=Status.no_data, reason=NOT_CONNECTED),
         hydrology=HydrologySection(status=Status.no_data, reason=NOT_CONNECTED),
         recommendations=Recommendations(
@@ -565,20 +641,28 @@ async def build_report(request: ReportRequest, today: date | None = None) -> Rep
         timings["uldk"] = round(time.perf_counter() - t0, 2)
         lon, lat = parcel.centroid_lonlat if parcel else (request.point.lon, request.point.lat)
 
-        t0 = time.perf_counter()
-        (weather_result,) = await asyncio.gather(weather.fetch_weather(client, lat, lon, start, end, today))
-        timings["weather"] = round(time.perf_counter() - t0, 2)
+        geometry = parcel.geometry if parcel else ShapelyPoint(lon, lat)
 
-    sources = [uldk_info, *weather_sources(weather_result)]
+        async def timed(name: str, coro):
+            started_at = time.perf_counter()
+            result = await coro
+            timings[name] = round(time.perf_counter() - started_at, 2)
+            return result
+
+        t0 = time.perf_counter()
+        weather_result, (soil_data, soil_info) = await asyncio.gather(
+            timed("weather", weather.fetch_weather(client, lat, lon, start, end, today)),
+            timed("soil", fetch_soil_safe(client, geometry)))
+        timings["sources_parallel"] = round(time.perf_counter() - t0, 2)
+
+    sources = [uldk_info, *weather_sources(weather_result), soil_info]
+    soil = soil_section(soil_data, soil_info, crop)
     if weather_result.series is None or len(weather_result.series.dates) < 400:
-        return _no_weather_report(request, parcel, sources, started, timings)
+        return _no_weather_report(request, parcel, sources, started, timings, soil)
 
     t0 = time.perf_counter()
-    soil_assumed = True
-    variants = [assumed_variant()]
-    sources.append(SourceInfo(
-        key="soil", name="ISRIC SoilGrids 250 m", status=Status.no_data, reason=NOT_CONNECTED,
-        impact="Bilans policzono dla gleby umownej (glina: 40% piasku, 20% iłu). Wynik jest orientacyjny."))
+    soil_assumed = soil_data is None
+    variants = [assumed_variant()] if soil_assumed else build_variants(soil_data.layers, crop.root_depth_m)
 
     computed = compute(weather_result.series, crop, variants)
     status = water_status(computed, soil_assumed)
@@ -609,7 +693,7 @@ async def build_report(request: ReportRequest, today: date | None = None) -> Rep
         water_status=status,
         satellite=SatelliteSection(status=Status.no_data, reason=NOT_CONNECTED),
         history=history, causes=causes,
-        soil=SoilSection(status=Status.no_data, reason=NOT_CONNECTED, assumed=True),
+        soil=soil,
         terrain=TerrainRef(status=Status.no_data, reason=NOT_CONNECTED),
         hydrology=HydrologySection(status=Status.no_data, reason=NOT_CONNECTED),
         recommendations=Recommendations(status=Status.no_data, reason=NOT_CONNECTED),

@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
+SOIL_ASSETS_DIR = ROOT / "outputs" / "assety_gleby" / "webp"
 CACHE_DIR = Path(os.environ.get("KOWR_CACHE_DIR", ROOT / "cache"))
 
 # Nagłówek identyfikujący aplikację wobec zewnętrznych usług (bez danych osobowych).
@@ -16,7 +17,7 @@ TIMEOUT_ULDK_S = 6.0
 TIMEOUT_WEATHER_ARCHIVE_S = 12.0
 TIMEOUT_WEATHER_POWER_S = 20.0
 TIMEOUT_WEATHER_RECENT_S = 8.0
-TIMEOUT_SOIL_REST_S = 8.0
+TIMEOUT_SOIL_REST_S = 14.0  # pełne zapytanie REST trwało 11,8 s (pomiar 21.11.2026)
 TIMEOUT_SOIL_TOTAL_S = 22.0
 TIMEOUT_SATELLITE_S = 24.0
 TIMEOUT_HYDRO_S = 8.0
@@ -27,7 +28,8 @@ HISTORY_YEARS = 10
 WARMUP_DAYS = 400
 
 # Wymuszanie awarii źródeł do testów odporności, np. KOWR_FAIL=weather_archive,soil
-# Dozwolone: uldk, weather_archive, weather_power, weather_recent, soil_rest, soil_vrt, satellite, hydrology, terrain
+# Dozwolone: uldk, weather_archive, weather_power, weather_recent, soil_wcs, soil_rest, soil_vrt,
+#            satellite, hydrology, terrain
 FORCED_FAILURES = {s.strip() for s in os.environ.get("KOWR_FAIL", "").split(",") if s.strip()}
 
 
