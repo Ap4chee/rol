@@ -39,6 +39,15 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def revalidate_frontend(request, call_next):
+    """Przeglądarka ma zawsze sprawdzić, czy frontend się zmienił (ETag → 304), zamiast trzymać stary ui.js."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
 @app.get("/api/crops", response_model=list[CropOption])
 async def crops() -> list[CropOption]:
     """Lista upraw do wyboru w formularzu."""
