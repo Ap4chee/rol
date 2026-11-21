@@ -100,7 +100,7 @@ Nad repo pracuje kilka osób jednocześnie, każda ze swoim agentem AI. Kod zmie
 4. **Małe, skupione commity.** Jeden commit = jedna rzecz. Opis commita mówi, co się zmieniło.
 5. **Nie ruszaj bez potrzeby plików, nad którymi pracuje ktoś inny.** Jeśli musisz, zrób to małym commitem i wypchnij od razu, żeby zminimalizować konflikty.
 6. **Dodawaj pliki po nazwie**, nie przez `git add .` ani `git add -A`.
-7. **Nie commituj sekretów** (`.env`, klucze API, tokeny) ani dużych plików danych (rastry, zbiory treningowe, wagi modeli). Używaj `.env.example` i `.gitignore`.
+7. **Nie commituj sekretów** (`.env`, klucze API, tokeny) ani dużych plików danych (rastry, zbiory treningowe, wagi modeli). Używaj `.env.example` i `.gitignore`. Wyjątek: jeden mały model prognozy NDMI w `kowr_ml/model/<run>/` (kilka MB), bo bez niego jury nie zobaczy prognozy. Nie usuwaj go i nie dodawaj kolejnych wersji bez potrzeby (każda zostaje w historii gita).
 8. **Repozytorium ma pozostać prywatne** do czasu przekazania kodu organizatorowi.
 
 ## Gałąź

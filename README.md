@@ -127,6 +127,7 @@ Wszystkie dane są bezpłatne. Żadne źródło nie wymaga klucza ani konta. War
 | Pogoda (ostatnie dni i prognoza) | Open-Meteo Forecast: uzupełnianie ostatnich dni bilansu oraz 7-dniowa prognoza dla wybranego pola | na żywo. Prognoza ma pamięć podręczną na godzinę | jak Open-Meteo wyżej |
 | Gleba | ISRIC SoilGrids 250 m v2.0: piasek, pył, ił, węgiel organiczny, gęstość w 6 warstwach do 200 cm, średnia i kwantyle 5% i 95% | na żywo przez WCS `maps.isric.org`; zapas: REST, potem kafle GeoTIFF | CC BY 4.0. REST: limit 5 zapytań/min, usługa oznaczona przez ISRIC jako wstrzymana (21.11.2026 odpowiadała) |
 | Satelita | Sentinel-2 L2A z Earth Search STAC (Element 84), kolekcje `sentinel-2-c1-l2a` i `sentinel-2-l2a`: pasma B04, B8A, B11 i maska SCL, okno 45 dni przed datą, archiwum od 2017 r. | na żywo; czytane są tylko bloki rastra pod działką | Dane Copernicus Sentinel: dostęp bezpłatny, pełny i otwarty. Raport zawiera zmodyfikowane dane Copernicus Sentinel. Earth Search: bezpłatny katalog bez opublikowanych limitów |
+| Grunty orne (tylko trening modelu ML) | ESA WorldCover 10 m 2021 v200, klasa 40 (grunty orne): wybór 2531 pól pilotażowych 80 × 80 m w 20 skupiskach | jednorazowo przy budowie zbioru treningowego (21.11.2026), aplikacja z tego nie korzysta | CC BY 4.0; atrybucja: „© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium” (esa-worldcover.org, sprawdzone 21.11.2026) |
 | Teren | NMT GUGiK 1 m przez WCS (`DTM_PL-KRON86-NH_TIFF`), wycinek z buforem 200 m wokół działki | na żywo, osobny endpoint | Brak opłat, dowolne wykorzystanie |
 | Hydrologia (rzeki) | IMGW-PIB, API danych publicznych (`api/data/hydro/`, zapas `hydro2/`): czynne wodowskazy ze współrzędnymi, ostatni stan wody [cm] i przepływ [m³/s]. Archiwum danych dobowych (`dane_hydrologiczne/dobowe/`): stan i przepływ z każdego dnia, lata hydrologiczne do 2025 (do 31.10.2025) | na żywo: lista wodowskazów (pamięć podręczna 3 h) i pliki archiwum tylko dla 7 dni wokół daty analizy w każdym z 11 lat (pliki niezmienne, raz pobrane zostają na dysku) | Bezpłatne; regulamin IMGW-PIB wymaga podania źródła („Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy”) i informacji o przetworzeniu danych, oba zdania są w raporcie. Według regulaminu nieodpłatne użycie obejmuje cele prywatne, a w każdym celu dane o wysokiej wartości (rozporządzenie wykonawcze KE 2023/138); użycie w działalności gospodarczej poza tym wymaga umowy z IMGW-PIB. Przed wdrożeniem przez KOWR trzeba to potwierdzić z IMGW-PIB (regulamin sprawdzony 21.11.2026 na danepubliczne.imgw.pl/regulations) |
 | Hydrologia (cieki przy działce) | MPHP10k (Wody Polskie, ISOK) | **nieużywane** | WFS z danymi wektorowymi wymaga logowania; publiczny WMS daje tylko obraz. Raport podaje, że odległości od cieku nie policzono |
@@ -146,6 +147,7 @@ Przygotowane wcześniej i zapisane w repozytorium:
 | `app/data/soilgrids_tiles_pl.json` | położenie 63 kafli SoilGrids nad Polską, wyciągnięte z pliku VRT ISRIC; używane tylko w trybie awaryjnym. Nie zawiera wartości gleby | 21.11.2026 |
 | `outputs/assety_gleby/webp/` | umowne ilustracje warstw gleby (wygenerowane narzędziem AI, patrz niżej) | 21.11.2026 |
 | `static/vendor/` | OpenLayers 10.11.0 i czcionki | 21.11.2026 |
+| `kowr_ml/model/20261121_2014_0502bf/` | wytrenowany model prognozy zmiany NDMI (`model.joblib`, 6,6 MB), karta modelu, metryki, porównanie z GRU. Dane treningowe: Sentinel-2 i Open-Meteo z lat 2019–2025 (bez 2022), pobrane 21.11.2026 | 21.11.2026 |
 
 Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest częścią repozytorium.
 
@@ -164,6 +166,11 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 | NumPy 2.5.5 | obliczenia | BSD-3-Clause (z częściami 0BSD, MIT, Zlib, CC0-1.0) |
 | tzdata 2026.6 | strefa czasowa na Windows | Apache-2.0 |
 | pytest 9.2.0 | testy | MIT |
+| scikit-learn 1.9.1 | model prognozy zmiany NDMI (HistGradientBoosting) w aplikacji i treningu | BSD-3-Clause |
+| joblib 1.6.0, threadpoolctl 3.8.0 (zależności scikit-learn) | zapis modelu, wątki | BSD-3-Clause |
+| SciPy 1.18.1 (zależność scikit-learn) | obliczenia | licencja BSD (tekst w metadanych pakietu) |
+| pandas 3.1.1, pyarrow 26.0.1 | tylko trening ML: tabele i pliki Parquet | BSD-3-Clause, Apache-2.0 |
+| PyTorch 2.8.0 | tylko trening: porównawcza sieć GRU na GPU, nie trafia do aplikacji | BSD-3-Clause |
 | certifi (zależność httpx) | certyfikaty | MPL-2.0 |
 | OpenLayers 10.11.0 | mapa w przeglądarce | BSD-2-Clause (`static/vendor/OL_LICENSE.md`) |
 | React i React DOM 19.3.1 | komponenty i renderowanie UI | MIT ([React](https://github.com/react/react/blob/main/LICENSE), `static/vendor/REACT_LICENSE.txt`) |
@@ -177,7 +184,7 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 
 **Usługi płatne.** Aplikacja nie korzysta z żadnej płatnej usługi. Jedyne ograniczenie to Open-Meteo: darmowe API jest tylko do użytku niekomercyjnego. Przy wdrożeniu komercyjnym trzeba albo wykupić plan (archiwum pogody wymaga planu „API Professional”, 99 EUR miesięcznie; „API Standard” za 29 EUR go nie obejmuje), albo zostać przy NASA POWER, które jest bezpłatne bez ograniczeń i już działa jako drugi dostawca.
 
-**AI.** W działającej aplikacji nie ma modelu AI ani uczenia maszynowego: liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). Model prognozy NDMI opisany w `outputs/specyfikacja_treningu_ml_kowr.md` nie jest częścią tego prototypu. AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `outputs/assety_gleby/` wygenerowało narzędzie ImageGen (opis w `outputs/assety_gleby/README.md`). Ilustracje są umowne i tak są podpisane w raporcie. Zasoby z projektu Penpot w `static/design/` również powstały przy użyciu ImageGen. Pełnią funkcję ilustracyjną.
+**AI.** W aplikacji działa jeden model uczenia maszynowego: prognoza zmiany NDMI pola na 7–14 dni (gradient boosting, scikit-learn), opisana w sekcji „Model ML” niżej. Jest dodatkiem do bilansu wodnego: ocena niedoboru, przyczyny i rekomendacje nie zależą od niego, a raport powstaje także bez niego. Pozostałe liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `outputs/assety_gleby/` wygenerowało narzędzie ImageGen (opis w `outputs/assety_gleby/README.md`). Ilustracje są umowne i tak są podpisane w raporcie. Zasoby z projektu Penpot w `static/design/` również powstały przy użyciu ImageGen. Pełnią funkcję ilustracyjną.
 
 ## Jak liczony jest wynik
 
@@ -189,6 +196,25 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 6. **Satelita**: mediana NDVI i NDMI po pikselach z roślinnością (SCL 4, środki pikseli w działce, co najmniej 6 pikseli i 65% pokrycia). Wskaźniki służą tylko do sprawdzenia bilansu: raport mówi, czy go potwierdzają, czy się z nim rozchodzą.
 7. **Teren**: wypełnienie zagłębień Priority-Flood, kierunki D8, powierzchnia zasilająca; na mapie drogi spływu powyżej 0,05 ha i punkty, w których przecinają granicę działki.
 8. **Rekomendacje**: reguły z jawnymi progami. Każda podaje, co zrobić, gdzie, dlaczego (z wartościami tej działki) i jak pewny jest wniosek.
+
+## Model ML: prognoza zmiany NDMI na 7–14 dni
+
+Model odpowiada na pytanie „czy w ciągu 1–2 tygodni rośliny na polu zaczną tracić wodę”. Zgodnie ze [specyfikacją](specyfikacja_treningu_ml_kowr.md) prognozuje zmianę wskaźnika NDMI (Sentinel-2, B8A i B11) między ostatnim czystym zdjęciem z 14 dni przed datą analizy a pierwszym czystym zdjęciem z dni +7…+14. Nie prognozuje wilgotności gleby ani dawki nawodnienia.
+
+- **Gdzie w raporcie:** sekcja satelitarna, pole `satellite.ndmi_forecast` (opis w [docs/kontrakt_api.md](docs/kontrakt_api.md)): zmiana z przedziałem 80%, okno prognozy, zdjęcie bazowe, cechy wejściowe. Bez danych (poza okresem 01.04–15.10, brak czystego zdjęcia z 14 dni) raport podaje powód.
+- **Cechy** (wszystkie sprzed daty analizy): ostatnie NDMI, jego wiek i pokrycie pola, trend NDMI z poprzedniego zdjęcia, dzień roku, opad i ET0 z 7, 14 i 30 dni, klimatyczny bilans wodny z 30 dni, średnia Tmax z 7 dni, dni od opadu ≥ 5 mm oraz wyczerpanie referencyjnego bilansu FAO-56 (TAW 100 mm, Kc = 1). Model nie zna gleby ani uprawy, bo w danych treningowych ich nie ma.
+- **Dane treningowe:** 2531 pól 80 × 80 m na gruntach ornych (ESA WorldCover 2021) w 20 skupiskach po 6 × 6 km w całej Polsce, sezony 2019–2021 i 2023–2025, dni prognozy co tydzień od kwietnia do połowy października: 120 152 wiersze. Rok 2022 pominięto, bo kolekcja `sentinel-2-c1-l2a` ma dla niego tylko 1–4 sceny na obszar. Działka 580/2 jest poza zbiorem.
+- **Odtworzenie:** moduły `kowr_ml.fields`, `kowr_ml.weather`, `kowr_ml.s2`, `kowr_ml.dataset`, `kowr_ml.train` (opis w `kowr_ml/__init__.py`). Pobranie danych trwało ok. 50 minut na serwerze z 31 rdzeniami, trening kilkanaście minut na CPU.
+
+Walidacja na rekordach, których model nie widział (MAE zmiany NDMI, mniej = lepiej):
+
+| Test | Wiersze | Prognoza „bez zmiany” | Model sezonowy (dzień roku + ostatnie NDMI) | **Model (HGB)** | Sieć GRU (porównanie) | Pokrycie przedziału 80% |
+|---|---:|---:|---:|---:|---:|---:|
+| 4 odłożone skupiska, 2019–2024 | 19 341 | 0,090 | 0,069 | **0,061** | 0,062 | 79% |
+| 16 skupisk treningowych, sezon 2025 | 18 437 | 0,092 | 0,067 | **0,063** | 0,061 | 78% |
+| odłożone skupiska, sezon 2025 | 4 870 | 0,089 | 0,070 | **0,064** | 0,063 | 77% |
+
+Model jest ok. 30% lepszy od prognozy „bez zmiany” we wszystkich testach, także przy dużych spadkach NDMI (≤ −0,05: 0,084 wobec 0,130 na odłożonych skupiskach). Sieć GRU (PyTorch, uczona na GPU na przebiegu pogody z 60 dni) wypadła tak samo, więc do aplikacji trafił model drzewiasty, który nie wymaga PyTorcha. Przedział 80% skalibrowano metodą conformalized quantile regression na prognozach spoza foldu. Pełne metryki (według miesiąca, po polach) są w `kowr_ml/model/20261121_2014_0502bf/metrics.json`, a karta modelu w `model_card.json`. Model ma status „eksperymentalny”: sprawdzono go na odłożonych obszarach i późniejszym sezonie, ale pola treningowe to fragmenty gruntów ornych, a nie granice deklarowanych upraw.
 
 ## Weryfikacja wyników
 
@@ -231,6 +257,7 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 - **FAO-56**: tabele pochodzą z wydania z 1998 r. dostępnego na fao.org. Materiał KOWR cytuje wydanie poprawione z 2025 r.; nie porównaliśmy tabel między wydaniami.
 - **Progi reguł** rekomendacji i zgodności satelity z bilansem są założeniami roboczymi zapisanymi jako stałe w kodzie, nie wartościami z publikacji.
 - **Granice działek: ULDK, a przy jego awarii zbiorczy WFS ewidencji GUGiK.** 21.11.2026 wieczorem ULDK i KIEG przekierowywały każde zapytanie, z różnych adresów IP, na stronę zastępczą `integracja01.gugik.gov.pl/resp/`. Zbiorczy WFS stoi na innym serwerze i wtedy działał: na 5 działkach pobranych wcześniej z ULDK dał tę samą granicę (powierzchnia zgodna do 0,0001 ha). Raport podaje w tabeli źródeł, z której usługi pochodzi granica. WFS nie zastępuje wyszukiwania po nazwie obrębu i numerze (filtr po dwóch polach zwraca HTTP 500), więc przy awarii ULDK działa pełny identyfikator i kliknięcie na mapie. Gdy zawiodą obie usługi, działki zapisane wcześniej w pamięci podręcznej działają, a dla nowych raport powstaje dla wskazanego punktu: bez powierzchni, zdjęć satelitarnych pola i spływu.
+- **Model ML** prognozuje wskaźnik satelitarny, nie wilgotność gleby. Nie zna gleby ani uprawy działki, uczono go na pogodzie z Open-Meteo (przy NASA POWER raport ostrzega o mniejszej pewności) i działa tylko od 1 kwietnia do 15 października, gdy jest czyste zdjęcie z 14 dni przed datą. Zbiór treningowy nadreprezentuje okresy z dobrą widocznością pola.
 - Prototyp dla jednego użytkownika na komputerze lokalnym: bez kont, bazy danych i danych osobowych.
 
 ## Skala, limity i koszty
