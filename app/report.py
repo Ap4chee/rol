@@ -55,6 +55,7 @@ from app.schemas import (
     CropInfo,
     CropParameter,
     DailyPoint,
+    ForecastPoint,
     HistorySection,
     HydrologySection,
     HydroYear,
@@ -462,11 +463,19 @@ def water_status(c: Computed, soil_assumed: bool) -> WaterStatus:
                   f"Największe wyczerpanie zapasu: {fmt(summary['max_depletion_pct_taw'])}%."))
 
     n = min(SERIES_DAYS_FOR_CHART, len(c.dates))
+    start = len(c.dates) - n
+    available_pct = 100.0 * (1.0 - balance.depletion_mm / balance.taw_mm)
+    band = analysis.typical_band(c.dates, available_pct, start, HISTORY_YEARS)
     series = [
         DailyPoint(date=c.dates[i], rain_mm=round(float(c.series.rain_mm[i]), 1), et0_mm=round(float(c.series.et0_mm[i]), 2),
                    etc_mm=round(float(balance.eta_mm[i]), 2), depletion_mm=round(float(balance.depletion_mm[i]), 1),
-                   raw_mm=round(float(balance.raw_mm[i]), 1), taw_mm=round(float(balance.taw_mm), 1))
-        for i in range(len(c.dates) - n, len(c.dates))]
+                   raw_mm=round(float(balance.raw_mm[i]), 1), taw_mm=round(float(balance.taw_mm), 1),
+                   available_pct=round(float(available_pct[i]), 1),
+                   stress_threshold_pct=round(100.0 * (1.0 - float(balance.raw_mm[i]) / balance.taw_mm), 1),
+                   typical_p10_pct=round(band[i - start][0], 1) if band[i - start] else None,
+                   typical_median_pct=round(band[i - start][1], 1) if band[i - start] else None,
+                   typical_p90_pct=round(band[i - start][2], 1) if band[i - start] else None)
+        for i in range(start, len(c.dates))]
 
     return WaterStatus(
         status=Status.ok, headline=headline, class_key=main.class_key, class_label=main.class_label,
@@ -763,6 +772,43 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
     return section, field_check
 
 
+# ---------- prognoza zapasu wody ----------
+
+async def fetch_forecast_safe(client: httpx.AsyncClient, lat: float, lon: float, today: date):
+    """Prognoza Open-Meteo na 7 dni; błąd zwraca powód zamiast przerywać raport."""
+    try:
+        return await weather.fetch_dashboard_forecast(client, lat, lon, today), None
+    except (NoData, SourceError) as exc:
+        return None, f"Brak prognozy pogody: {exc}"
+
+
+def project_forecast(status: WaterStatus, c: Computed, forecast) -> None:
+    """Bilans puszczony dalej po prognozie: ten sam model i parametry co dla minionych dni."""
+    if forecast is None:
+        return
+    last = c.dates[-1]
+    days = [d for d in forecast.days if d.date > last and d.precipitation_mm is not None and d.et0_mm is not None]
+    if not days or days[0].date != last + timedelta(days=1):
+        status.forecast_reason = (f"Prognoza zaczyna się później niż ostatni dzień bilansu ({fmt_date(last)}), "
+                                  "więc nie da się jej dołączyć bez luki.")
+        return
+    days = [d for i, d in enumerate(days) if d.date == days[0].date + timedelta(days=i)]
+    variant = c.variants[0]
+    crop_daily = daily_crop_arrays(c.crop, [d.date for d in days])
+    taw = c.main.taw_mm
+    result = run_water_balance(
+        np.array([d.precipitation_mm for d in days]), np.array([d.et0_mm for d in days]), crop_daily.kc, crop_daily.in_field,
+        taw_mm=taw, p_table=c.crop.p, tew_mm=total_evaporable_water_mm(variant.fc_top, variant.wp_top),
+        rew_mm=variant.rew_mm, initial_depletion_mm=float(c.main.depletion_mm[-1]))
+    for i, d in enumerate(days):
+        available = 100.0 * (1.0 - result.depletion_mm[i] / taw)
+        threshold = 100.0 * (1.0 - result.raw_mm[i] / taw)
+        status.forecast.append(ForecastPoint(date=d.date, rain_mm=round(d.precipitation_mm, 1), et0_mm=round(d.et0_mm, 2),
+                                             available_pct=round(available, 1), stress_threshold_pct=round(threshold, 1)))
+        if status.forecast_stress_day is None and crop_daily.in_field[i] and available < threshold:
+            status.forecast_stress_day = d.date
+
+
 # ---------- wilgotność gleby w warstwach (okolica) ----------
 
 MOISTURE_NO_IMPACT = ("Bilans wodny działki nie zależy od tych danych: brakuje tylko niezależnego porównania wilgotności "
@@ -1047,11 +1093,16 @@ async def build_report(request: ReportRequest, today: date | None = None,
             return result
 
         t0 = time.perf_counter()
-        weather_result, (soil_data, soil_info), (hydro_result, hydro_info), (moisture, moisture_info) = await asyncio.gather(
-            timed("weather", weather.fetch_weather(client, lat, lon, start, end, today)),
-            timed("soil", fetch_soil_safe(client, geometry)),
-            timed("hydrology", fetch_hydrology_safe(client, lon, lat, request.date, today)),
-            timed("soil_moisture", fetch_moisture_safe(client, lat, lon, start, end)))
+        async def no_forecast():
+            return None, "Prognoza zapasu jest liczona tylko dla analizy na dziś."
+
+        weather_result, (soil_data, soil_info), (hydro_result, hydro_info), (moisture, moisture_info), \
+            (forecast, forecast_reason) = await asyncio.gather(
+                timed("weather", weather.fetch_weather(client, lat, lon, start, end, today)),
+                timed("soil", fetch_soil_safe(client, geometry)),
+                timed("hydrology", fetch_hydrology_safe(client, lon, lat, request.date, today)),
+                timed("soil_moisture", fetch_moisture_safe(client, lat, lon, start, end)),
+                timed("forecast", fetch_forecast_safe(client, lat, lon, today) if request.date >= today else no_forecast()))
         timings["sources_parallel"] = round(time.perf_counter() - t0, 2)
 
     sources = [uldk_info, *weather_sources(weather_result), soil_info]
@@ -1069,6 +1120,8 @@ async def build_report(request: ReportRequest, today: date | None = None,
     variants = [assumed_variant()] if soil_assumed else build_variants(soil_data.layers, crop.root_depth_m)
     computed = compute(weather_result.series, crop, variants)
     status = water_status(computed, soil_assumed)
+    status.forecast_reason = forecast_reason
+    project_forecast(status, computed, forecast)
     history = history_section(computed)
     causes = causes_section(computed, status, soil_assumed)
     timings["compute"] = round(time.perf_counter() - t0, 3)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries as mergeRaw } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { Badge, Button, Group, Stack, Text } from '@mantine/core';
+import { Button, Stack, Text } from '@mantine/core';
 import { IconArrowsMaximize, IconArrowsMinimize } from '@tabler/icons-react';
 import { number } from './model.js';
 
@@ -185,6 +185,8 @@ export function Field3D({ report, height = 420 }) {
   const label = cropModel(crop.key, crop.stage_key, month).label;
   const assumed = !report.parcel?.geometry;
   const rootCm = rootDepthCm(report);
+  const result = report.water_status?.result;
+  const fill = result && result.taw_mm > 0 ? Math.min(1, Math.max(0, result.available_mm / result.taw_mm)) : null;
 
   useEffect(() => {
     const el = mount.current;
@@ -221,6 +223,8 @@ export function Field3D({ report, height = 420 }) {
       const depth = layerDepth(layer.bottom_cm - layer.top_cm);
       const [color, grain] = SOIL[layer.texture_key] ?? ['#806048', 1];
       const tint = new THREE.Color(color).multiplyScalar(layer.top_cm < 30 ? .78 : 1);   // próchnica przyciemnia wierzch
+      // warstwy w zasięgu korzeni zabarwione według zapasu z bilansu (jedna wartość dla całej strefy, jak w FAO-56)
+      if (fill != null && layer.top_cm < rootCm) tint.lerp(new THREE.Color('#2a6fb0'), .42 * fill);
       const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: .015, bevelSize: .015, bevelSegments: 1 })
         .rotateX(Math.PI / 2);
       const mesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ map: soilTexture(`#${tint.getHexString()}`, grain, i === 0 && model.bare) }));
@@ -385,10 +389,6 @@ export function Field3D({ report, height = 420 }) {
   return <div className="field3d">
     <div ref={mount} className="field3d-canvas" style={{ height }} role="img"
       aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} warstw gleby`}/>
-    <Group className="field3d-top" gap={6}>
-      <Badge variant="default" size="lg">{crop.name} · {label ?? crop.stage_name ?? 'faza nieznana'}</Badge>
-      {assumed && <Badge variant="default" color="gray">kształt umowny (raport dla punktu)</Badge>}
-    </Group>
     <Button className="field3d-actions no-print" size="compact-sm" variant="default"
       leftSection={exploded ? <IconArrowsMinimize size={14}/> : <IconArrowsMaximize size={14}/>} onClick={toggle}>
       {exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
@@ -397,8 +397,13 @@ export function Field3D({ report, height = 420 }) {
         <Text fw={700} size="sm">{active.top_cm}–{active.bottom_cm} cm · {active.texture_label}</Text>
         <Text size="xs" c="dimmed">{number(active.available_water_mm)} mm wody dostępnej · pojemność polowa {number(active.field_capacity_vol_pct)}%
           {' '}· piasek {number(active.sand_pct)}%, pył {number(active.silt_pct)}%, ił {number(active.clay_pct)}%</Text>
-      </> : <Text size="xs" c="dimmed">{layers.length ? `${layers.length} warstw gleby z SoilGrids: najedź na warstwę, żeby zobaczyć skład.` : 'Brak profilu gleby: warstwa umowna.'}
-        {rootCm > 0 && ` Zielona przerywana linia: korzenie do ${number(rootCm)} cm.`}</Text>}
+      </> : <>
+        <Text size="sm" fw={600}>{crop.name} · {label ?? crop.stage_name?.split(' (')[0] ?? 'faza nieznana'}
+          {assumed ? ' · kształt umowny (raport dla punktu)' : ''}</Text>
+        <Text size="xs" c="dimmed">{layers.length ? `${layers.length} warstw gleby z SoilGrids. ` : 'Brak profilu gleby: warstwa umowna. '}
+          {fill != null && rootCm > 0 ? `Niebieski odcień do ${number(rootCm)} cm: zapas wody w strefie korzeni (${number(fill * 100)}%). ` : ''}
+          Najedź na warstwę, żeby zobaczyć skład.</Text>
+      </>}
     </Stack>
   </div>;
 }

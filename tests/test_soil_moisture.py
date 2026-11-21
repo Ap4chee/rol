@@ -43,3 +43,16 @@ def test_parse_drops_fill_values():
     payload = {"header": {"fill_value": -999.0},
                "properties": {"parameter": {"GWETROOT": {"20250701": 0.39, "20250702": -999.0}}}}
     assert parse(payload) == {"GWETROOT": {date(2025, 7, 1): 0.39}}
+
+
+def test_typical_band_uses_only_previous_years_and_skips_warmup():
+    import numpy as np
+    from app.core.analysis import typical_band
+    start_day = date(2014, 1, 1)
+    dates = [start_day + timedelta(days=i) for i in range((date(2025, 7, 15) - start_day).days + 1)]
+    values = np.array([float(d.year) for d in dates])        # zapas = rok, łatwo sprawdzić, które lata weszły
+    band = typical_band(dates, values, len(dates) - 1, years=10)
+    p10, p50, p90 = band[0]
+    assert p90 < 2025                                          # bieżący rok nie wchodzi
+    assert round(p50, 1) == 2019.5                             # lata 2015–2024
+    assert typical_band(dates[:400], values[:400], 399, years=10) == [None]   # za mało lat

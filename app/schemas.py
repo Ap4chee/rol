@@ -166,6 +166,19 @@ class DailyPoint(BaseModel):
     depletion_mm: float
     raw_mm: float
     taw_mm: float
+    available_pct: float = Field(description="zapas wody dostępnej w strefie korzeni, % TAW")
+    stress_threshold_pct: float = Field(description="poniżej tego zapasu [% TAW] uprawa jest w stresie (1 − p)")
+    typical_p10_pct: float | None = Field(default=None, description="ten sam dzień w 10 poprzednich latach: 10. percentyl")
+    typical_median_pct: float | None = None
+    typical_p90_pct: float | None = None
+
+
+class ForecastPoint(BaseModel):
+    date: Date
+    rain_mm: float
+    et0_mm: float
+    available_pct: float
+    stress_threshold_pct: float
 
 
 class SeasonSummary(BaseModel):
@@ -197,6 +210,9 @@ class WaterStatus(BaseModel):
     climatic_water_balance: ClimaticWaterBalance | None = None
     last_season: SeasonSummary | None = None
     series: list[DailyPoint] = []
+    forecast: list[ForecastPoint] = Field(default=[], description="bilans puszczony dalej po prognozie pogody (tylko analiza na dziś)")
+    forecast_reason: str | None = Field(default=None, description="dlaczego nie ma prognozy zapasu")
+    forecast_stress_day: Date | None = Field(default=None, description="pierwszy dzień prognozy z zapasem poniżej progu stresu")
     text: list[str] = []
 
 

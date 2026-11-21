@@ -31,7 +31,7 @@ Wyjście (`ReportResponse`), pola najwyższego poziomu:
 | `parcel` | identyfikator, położenie administracyjne, powierzchnia, geometria GeoJSON |
 | `crop` | uprawa, faza w dniu analizy, Kc, głębokość korzeni, założenia |
 | `summary` | najważniejsze wnioski, 2–4 zdania |
-| `water_status` | bilans wodny FAO-56: klasa niedoboru, wyczerpanie względem RAW i TAW, przedział niepewności, klimatyczny bilans wodny 60 dni, przebieg dzienny |
+| `water_status` | bilans wodny FAO-56: klasa niedoboru, wyczerpanie względem RAW i TAW, przedział niepewności, klimatyczny bilans wodny 60 dni, przebieg dzienny (zapas w % z pasmem 10/50/90 percentyla tych samych dni w 10 latach), dla analizy na dziś prognoza zapasu na 7 dni (`forecast`, `forecast_stress_day`) |
 | `satellite` | obserwacje NDVI i NDMI z Sentinel-2 i to, czy potwierdzają bilans |
 | `history` | ten sam bilans dla 10 poprzednich sezonów |
 | `causes` | przyczyny wynikające z danych: opad i ET0 względem mediany 10 lat, gleba, faza uprawy |

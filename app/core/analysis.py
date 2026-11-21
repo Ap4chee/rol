@@ -140,6 +140,25 @@ def seasons_history(dates: list[date], crop: Crop, crop_daily: CropDaily, balanc
     return out
 
 
+def typical_band(dates: list[date], available_pct: np.ndarray, start: int, years: int = 10,
+                 min_years: int = 5) -> list[tuple[float, float, float] | None]:
+    """Dla dni od `start` do końca serii: percentyle 10, 50 i 90 zapasu wody [%] w tym samym dniu roku
+    w `years` poprzednich latach. Pierwszy rok serii (rozbieg bilansu) nie wchodzi. None przy mniej niż `min_years` latach."""
+    out: list[tuple[float, float, float] | None] = []
+    for i in range(start, len(dates)):
+        hist = []
+        for k in range(1, years + 1):
+            j = index_of(dates, same_day_years_back(dates[i], k))
+            if j is not None and j >= 365:
+                hist.append(float(available_pct[j]))
+        if len(hist) < min_years:
+            out.append(None)
+        else:
+            p10, p50, p90 = np.percentile(hist, [10, 50, 90])
+            out.append((float(p10), float(p50), float(p90)))
+    return out
+
+
 def same_day_comparison(dates: list[date], depletion_pct: np.ndarray, years: int = 10) -> dict | None:
     """Wyczerpanie w dniu analizy na tle tego samego dnia roku w poprzednich latach."""
     current = float(depletion_pct[-1])
