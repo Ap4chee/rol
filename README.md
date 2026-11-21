@@ -250,6 +250,7 @@ Testy bez sieci (`.venv\Scripts\python.exe -m pytest -q`):
 - SoilGrids: wagi komórek i wartości dla działki 580/2 zgodne z `outputs/soilgrids_niedrzwica_koscielna_580_2.json` (0–5 cm: piasek 33,7%, pył 48,2%, ił 18,1%).
 - Spływ: sztuczne powierzchnie (płaszczyzna, dolina, zagłębienie), reguły rekomendacji, zgodność satelity z bilansem.
 - Prognoza: siedem dni od daty w Polsce, zachowanie braków danych i rzeczywistego opadu 0 mm.
+- Satelita: przesunięcie reflektancji z metadanych sceny. Gdy scena ma je już odjęte w pikselach, nie odejmujemy go drugi raz (wartości z tej samej sceny w obu kolekcjach).
 - Pulpit (`npm test`): zapis pól, obsługa dat, zapas wody, obserwacje satelitarne i kolejność działań.
 - Hydrologia: miesiące roku hydrologicznego zgodne z nazwami plików IMGW, porównanie tylko z latami przed datą analizy, odczyt wierszy archiwum we wszystkich trzech formatach używanych przez IMGW (do 2022, 2023, od 2024).
 
@@ -258,6 +259,7 @@ Sprawdzenia na prawdziwych danych (wymagają sieci):
 | Skrypt | Co sprawdza | Wynik 21.11.2026 |
 |---|---|---|
 | `scripts/check_sentinel.py` | wzorzec dla 580/2 | 04.06.2025: 11/11 pikseli, NDMI 0,59225; 19.06.2025 odrzucona; 21.06.2025: 0,54090. Zgodne |
+| `scripts/check_sentinel_offset.py` | ta sama scena w kolekcjach `sentinel-2-c1-l2a` i `sentinel-2-l2a`: czy przesunięcie reflektancji stosujemy raz | 22.11.2026, sceny z 3 i 5.06.2023 koło Niedrzwicy: B8A 5108 i 4108 DN, reflektancja 0,4109 i 0,4108 (różnica 0,0000). Przed poprawką starsza kolekcja dawała reflektancję o 0,1 za niską: dla 580/2 z 10.07.2022 NDMI 0,88, 0,86 i 0,67 bez NDVI, po poprawce 0,63, 0,58 i 0,49 z NDVI 0,85, 0,79 i 0,71. Dotyczyło scen z bazą przetwarzania od 04.00, których nie ma w nowszej kolekcji, czyli głównie sezonu 2022 |
 | `scripts/check_weather_providers.py` | ET0 liczone z NASA POWER wobec ET0 z Open-Meteo na wspólnych dniach | 66 dni, dwa punkty: stosunek sum ET0 1,07 i 0,97; opadu 0,78 i 1,19 |
 | `scripts/check_terrain.py` | spływ dla 580/2 | największy odpływ 1,60 ha przy południowo-wschodniej granicy (wzorzec 1,63 ha); liczba punktów 5 + 2 wobec 4 + 4 we wzorcu |
 | `scripts/acceptance.py` | pusty cache i wymuszone awarie źródeł (`KOWR_FAIL`) | raport powstaje, brak jest nazwany |

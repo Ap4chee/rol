@@ -5,6 +5,11 @@ Zasady jak w specyfikacji modelu ML (outputs/specyfikacja_treningu_ml_kowr.md, r
 - progi: co najmniej 6 pikseli i 65% pokrycia działki,
 - reflektancja = DN · scale + offset, a skala i offset pochodzą z `raster:bands` sceny
   (sprawdzone 21.11.2026: kolekcja `sentinel-2-c1-l2a` ma offset −0,1; starsze sceny w `sentinel-2-l2a` offset 0),
+- wyjątek: w `sentinel-2-l2a` sceny z bazą przetwarzania od 04.00 (2022 i ponownie przetworzone starsze) mają
+  przesunięcie 1000 DN już odjęte w pikselach (`earthsearch:boa_offset_applied = true`), choć `raster:bands`
+  nadal podaje offset −0,1. Wtedy offset = 0. Sprawdzone 22.11.2026 na tej samej scenie w obu kolekcjach
+  (`scripts/check_sentinel_offset.py`, 3.06.2023, kafel 34UEB: B8A 5108 DN w c1 i 4108 DN w l2a);
+  bez tego NDMI wychodzi zawyżone o ok. 0,2, a NDVI zwykle nie powstaje (czerwień ujemna),
 - NDMI = (B8A − B11) / (B8A + B11), NDVI = (B8A − B04) / (B8A + B04); B04 uśredniane z 10 m do siatki 20 m.
 
 Kolekcja `sentinel-2-c1-l2a` nie ma wszystkich starszych scen (czerwiec–lipiec 2018 nad Lubelszczyzną:
@@ -47,6 +52,9 @@ from app.sources import SourceError
 STAC_URL = "https://earth-search.aws.element84.com/v1"
 COLLECTIONS = ("sentinel-2-c1-l2a", "sentinel-2-l2a")  # pierwsza ma pierwszeństwo przy tej samej scenie
 ASSETS = ("nir08", "swir16", "red", "scl")
+# Wersja wpisów w pamięci podręcznej (lista scen i obserwacje). Zmiana sposobu liczenia reflektancji = nowa wersja,
+# żeby stare wpisy z błędnym offsetem nie wróciły do raportu.
+CACHE_VERSION = "v2"
 WINDOW_DAYS = 45
 MIN_PIXELS = 6
 MIN_COVERAGE = 0.65
@@ -161,6 +169,8 @@ def _stac_client():
 
 def _scene_from_item(item, collection: str) -> Scene | None:
     hrefs, scale, offset, nodata = {}, {}, {}, {}
+    # Przesunięcie reflektancji już odjęte w pikselach (patrz opis modułu): nie odejmujemy go drugi raz.
+    offset_applied = bool(item.properties.get("earthsearch:boa_offset_applied"))
     for key in ASSETS:
         asset = item.assets.get(key)
         if asset is None:
@@ -172,7 +182,7 @@ def _scene_from_item(item, collection: str) -> Scene | None:
             if "scale" not in bands[0]:
                 return None  # bez skali z metadanych nie zgadujemy reflektancji
             scale[key] = float(bands[0]["scale"])
-            offset[key] = float(bands[0].get("offset", 0.0) or 0.0)
+            offset[key] = 0.0 if offset_applied else float(bands[0].get("offset", 0.0) or 0.0)
     acquired = item.properties.get("datetime")
     if not acquired:
         return None
@@ -182,7 +192,7 @@ def _scene_from_item(item, collection: str) -> Scene | None:
 def search_scenes(geometry: BaseGeometry, start: date, end: date, today: date | None = None) -> list[Scene]:
     """Sceny Sentinel-2 L2A przecinające geometrię (EPSG:4326) z dni [start, end], bez powtórzeń między kolekcjami."""
     digest = hashlib.sha1(geometry.wkt.encode()).hexdigest()[:16]
-    key = f"search:{digest}:{start}:{end}"
+    key = f"search:{CACHE_VERSION}:{digest}:{start}:{end}"
     settled = today is not None and (today - end).days > 10  # po kilku dniach lista scen dla okna już się nie zmienia
     cached = cache.get("sentinel", key, max_age_s=None if settled else 3600.0)
     if cached is not None:
@@ -376,7 +386,7 @@ def read_indices(scene: Scene, obs: Observation, context: dict) -> Observation:
 # ---------- zadania w tle i pamięć podręczna po działce i scenie ----------
 
 def _obs_key(parcel_key: str, scene_id: str) -> str:
-    return f"obs:{parcel_key}:{scene_id}"
+    return f"obs:{CACHE_VERSION}:{parcel_key}:{scene_id}"
 
 
 def _submit(key: str, fn, *args) -> Future:
