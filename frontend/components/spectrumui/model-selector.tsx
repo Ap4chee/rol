@@ -2,7 +2,7 @@
 // Licencja Apache-2.0 (plik LICENSE w tym katalogu). Zmodyfikowano na potrzeby Asystenta wody.
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { ModelOption } from './types';
 
@@ -27,6 +27,7 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const [valueState, setValueState] = useState(models.find((m) => !m.disabled)?.id);
   const value = valueProp !== undefined ? valueProp : valueState;
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
   function select(id: string) {
     setValueState(id);
@@ -36,6 +37,16 @@ export function ModelSelector({
   if (variant === 'Segmented') {
     const enabled = models.filter((model) => !model.disabled);
     const activeIndex = Math.max(0, enabled.findIndex((model) => model.id === value));
+    // strzałki / Home / End przełączają i przenoszą fokus (wzorzec radiogroup); Tab wchodzi tylko na wybraną opcję
+    function onKey(event: React.KeyboardEvent, i: number) {
+      const n = enabled.length;
+      const next = { ArrowRight: (i + 1) % n, ArrowDown: (i + 1) % n, ArrowLeft: (i - 1 + n) % n, ArrowUp: (i - 1 + n) % n,
+        Home: 0, End: n - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      select(enabled[next].id);
+      refs.current[next]?.focus();
+    }
     return (
       <div
         role="radiogroup"
@@ -53,17 +64,20 @@ export function ModelSelector({
             transform: `translateX(${activeIndex * 100}%)`,
           }}
         />
-        {enabled.map((model) => {
+        {enabled.map((model, i) => {
           const active = model.id === value;
           return (
             <button
               key={model.id}
+              ref={(node) => { refs.current[i] = node; }}
               type="button"
               role="radio"
               aria-checked={active}
+              tabIndex={i === activeIndex ? 0 : -1}
+              onKeyDown={(event) => onKey(event, i)}
               onClick={() => select(model.id)}
               className={cn(
-                'whitespace-nowrap rounded-[7px] px-3 py-1.5 text-[12.5px] transition-[color,transform] duration-150 active:scale-[0.96]',
+                'whitespace-nowrap rounded-[7px] px-3 py-1.5 text-[12.5px] pointer-coarse:min-h-10 transition-[color,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96]',
                 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neutral-400',
                 active
                   ? 'font-medium text-neutral-900 dark:text-neutral-50'
@@ -92,7 +106,7 @@ export function ModelSelector({
             onClick={() => select(model.id)}
             className={cn(
               'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left',
-              'transition-[border-color,background-color,transform] duration-150',
+              'transition-[border-color,background-color,scale] duration-150',
               'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neutral-400',
               model.disabled
                 ? 'cursor-not-allowed border-black/[0.05] opacity-45 dark:border-white/[0.06]'

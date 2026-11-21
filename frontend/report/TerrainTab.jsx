@@ -109,7 +109,7 @@ function HydrologyTable({ hydro }) {
     <TBody>
       {hydro.years.map(({ year, value }) => <TR key={year}>
         <TD>{year} · średnia z 7 dni</TD>
-        <TD className="whitespace-nowrap text-right">{number(value, digits)} {hydro.unit}</TD>
+        <TD className="num whitespace-nowrap text-right">{number(value, digits)} {hydro.unit}</TD>
       </TR>)}
       <TR className="font-semibold text-neutral-900">
         <TD>{hydro.origin === 'live' ? 'Pomiar' : '7 dni do'} {dateText(hydro.current_to)}</TD>

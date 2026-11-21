@@ -106,7 +106,7 @@
 
   --animate-accordion-down: accordion-down 220ms var(--ease-out);
   --animate-accordion-up: accordion-up 160ms var(--ease-out);
-  --animate-rise: rise 420ms var(--ease-out) both;
+  --animate-rise: rise 280ms var(--ease-out) both;
 
   @keyframes accordion-down {
     from { height: 0; }
@@ -142,6 +142,11 @@
   button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary { cursor: pointer; }
   ::selection { background: var(--color-brand-100); color: var(--color-brand-950); }
   :focus-visible { outline: 2px solid var(--color-brand-600); outline-offset: 2px; }
+  /* element z fokusem nie chowa się pod przyklejonym nagłówkiem (telefon: pasek 56 px + zakładki 44 px; komputer: zakładki) */
+  :where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])) { scroll-margin-top: 6.5rem; }
+  @media (width >= 48rem) {
+    :where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])) { scroll-margin-top: 3.5rem; }
+  }
 }
 
 /* ---------- narzędzia ---------- */
@@ -189,13 +194,17 @@
 .water-chart .median { fill: none; stroke: var(--color-neutral-400); stroke-width: 1.5; stroke-dasharray: 4 4; }
 .water-chart .threshold { fill: none; stroke: var(--color-severe); stroke-width: 1.5; stroke-dasharray: 2 3; opacity: 0.8; }
 .water-chart .actual { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
-.water-chart .actual.past { stroke-dasharray: 1; stroke-dashoffset: 1; animation: chart-draw 1.1s var(--ease-out) 0.15s forwards; }
-.water-chart .actual.forecast { stroke-dasharray: 5 5; animation: chart-fade 0.4s var(--ease-out) 1.1s both; opacity: 0.85; }
+/* rysowanie linii tylko przy pierwszym pokazaniu raportu (.intro), nie przy każdym powrocie na zakładkę */
+.water-chart .actual.past { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.water-chart.intro .actual.past { stroke-dashoffset: 1; animation: chart-draw 1.1s var(--ease-out) 0.15s forwards; }
+.water-chart .actual.forecast { stroke-dasharray: 5 5; opacity: 0.85; }
+.water-chart.intro .actual.forecast { animation: chart-fade 0.4s var(--ease-out) 1.1s both; }
 .water-chart .forecast-zone { fill: var(--color-water-50); opacity: 0.8; }
 .water-chart .rain { fill: var(--color-water-400); opacity: 0.65; }
 .water-chart .rain.forecast { opacity: 0.3; }
 .water-chart .today { stroke: var(--color-neutral-400); stroke-width: 1; }
-.water-chart .today-dot { stroke: white; stroke-width: 3; animation: chart-fade 0.3s var(--ease-out) 1.1s both; }
+.water-chart .today-dot { stroke: white; stroke-width: 3; }
+.water-chart.intro .today-dot { animation: chart-fade 0.3s var(--ease-out) 1.1s both; }
 .water-chart .cursor { stroke: var(--color-neutral-300); }
 @keyframes chart-draw { to { stroke-dashoffset: 0; } }
 @keyframes chart-fade { from { opacity: 0; } }
@@ -211,15 +220,22 @@
 .map-canvas .ol-control { background: transparent; }
 .map-canvas .ol-control button { min-width: 32px; min-height: 32px; margin: 2px; border-radius: 8px; background: rgb(255 255 255 / 0.94);
   color: var(--color-neutral-800); font: 500 18px/1 var(--font-sans); box-shadow: var(--shadow-raised); }
-.map-canvas .ol-control button:hover, .map-canvas .ol-control button:focus { background: white; color: var(--color-neutral-950); outline: none; }
+.map-canvas .ol-control button { transition: transform 150ms var(--ease-out), background-color 150ms var(--ease-out); }
+.map-canvas .ol-control button:hover { background: white; color: var(--color-neutral-950); }
+.map-canvas .ol-control button:active { transform: scale(0.94); }
+.map-canvas .ol-control button:focus { outline: none; }
+.map-canvas .ol-control button:focus-visible { background: white; color: var(--color-neutral-950); outline: 2px solid var(--color-brand-600); outline-offset: 2px; }
 .map-canvas .ol-zoom { top: 10px; left: 10px; }
+/* „północ w górę” pod przyciskami powiększenia: prawy górny róg zajmuje pasek podkładu mapy */
+.map-canvas .ol-rotate { top: 92px; left: 10px; right: auto; }
 .map-canvas .ol-attribution { max-width: 82%; font: 10.5px/1.4 var(--font-sans); }
 .map-canvas .ol-attribution ul { color: var(--color-neutral-700); text-shadow: none; }
 .map-canvas .ol-attribution.ol-uncollapsible { background: rgb(255 255 255 / 0.82); border-radius: 8px 0 0 0; }
 
 /* ---------- model 3D pola (Field3D.jsx): przezroczyste tło, stoi na tle strony ---------- */
 .field3d { position: relative; }
-.field3d-canvas { width: 100%; touch-action: pan-y; animation: rise 0.6s var(--ease-out) both; }
+.field3d-canvas { width: 100%; touch-action: pan-y; }
+.field3d-canvas.intro { animation: rise 0.3s var(--ease-out) both; }
 .field3d-canvas canvas { display: block; cursor: grab; }
 .field3d-canvas canvas:active { cursor: grabbing; }
 /* dymek warstwy: wysuwa się z miejsca pod kursorem */
@@ -241,8 +257,15 @@
 @keyframes tip-out-left { from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translate(calc(-100% - 8px), -50%); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .field3d-canvas, .water-chart .actual, .water-chart .today-dot, .bar-grow, .layer-tip { animation: none !important; stroke-dashoffset: 0; }
+  .field3d-canvas, .water-chart .actual, .water-chart .today-dot, .bar-grow, .layer-tip { animation: none !important; }
+  .water-chart .actual.past { stroke-dashoffset: 0 !important; }
   .press:active { transform: none; }
+  /* okno, arkusz, szuflada i dymki: samo przenikanie zamiast przesuwania i skalowania */
+  *, ::before, ::after {
+    --tw-enter-translate-x: 0 !important; --tw-enter-translate-y: 0 !important; --tw-enter-scale: 1 !important;
+    --tw-exit-translate-x: 0 !important; --tw-exit-translate-y: 0 !important; --tw-exit-scale: 1 !important;
+  }
+  [role="dialog"][data-state] { --tw-enter-opacity: 0; --tw-exit-opacity: 0; }
 }
 
 /* ---------- wydruk / PDF ---------- */
@@ -262,6 +285,10 @@
   .avoid-break, .water-chart, .surface { break-inside: avoid; }
   h2, h3 { break-after: avoid; }
   .water-chart .actual { animation: none !important; stroke-dashoffset: 0 !important; }
+  /* wykres i model 3D skalują się do szerokości strony A4 zamiast obcinać prawą część */
+  .water-chart svg { max-width: 100% !important; height: auto !important; }
+  .field3d-canvas { height: auto !important; }
+  .field3d-canvas canvas { width: 100% !important; height: auto !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   *, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition: none !important; }
 }

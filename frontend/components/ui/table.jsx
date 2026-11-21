@@ -1,8 +1,8 @@
 import { cn } from '@/lib/utils';
 
-/** Tabela danych: nagłówki jak mikro-etykiety, liczby wyrównane cyframi o równej szerokości. `scroll`: przewijanie w poziomie. */
+/** Tabela danych: nagłówki jak mikro-etykiety. Cyfry równej szerokości (`num`) tylko w komórkach liczbowych. `scroll`: przewijanie w poziomie. */
 export function Table({ className, scroll, minWidth, children, ...props }) {
-  const table = <table className={cn('num w-full border-collapse text-left text-[13.5px] text-neutral-700', className)}
+  const table = <table className={cn('w-full border-collapse text-left text-[13.5px] text-neutral-700', className)}
     style={minWidth ? { minWidth } : undefined} {...props}>{children}</table>;
   return scroll ? <div className="-mx-1 overflow-x-auto px-1">{table}</div> : table;
 }

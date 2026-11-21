@@ -42,16 +42,28 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     const parcelSource = new ol.source.Vector();
     const terrainSource = new ol.source.Vector();
     const maskSource = new ol.source.Vector();
-    const orto = new ol.layer.Tile({ minZoom: 9, source: new ol.source.TileWMS({
-      url: 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution',
-      params: { LAYERS: 'Raster', FORMAT: 'image/jpeg', VERSION: '1.3.0' },
+    // Ortofotomapa z WMTS (gotowe kafle, ok. 0,1 s na kafel) zamiast WMS (każdy kafel renderowany na żądanie, ok. 1,5 s).
+    // Siatka EPSG:3857 z GetCapabilities GUGiK: poziomy 0–19, identyfikatory „EPSG:3857:z”, róg siatki jak w Google/OSM.
+    const extent3857 = ol.proj.get('EPSG:3857').getExtent();
+    const zooms = Array.from({ length: 20 }, (_, z) => z);
+    const orto = new ol.layer.Tile({ minZoom: 9, source: new ol.source.WMTS({
+      url: 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution',
+      layer: 'ORTOFOTOMAPA', matrixSet: 'EPSG:3857', format: 'image/jpeg', style: 'default', requestEncoding: 'KVP',
+      tileGrid: new ol.tilegrid.WMTS({
+        origin: ol.extent.getTopLeft(extent3857),
+        resolutions: zooms.map((z) => ol.extent.getWidth(extent3857) / 256 / 2 ** z),
+        matrixIds: zooms.map((z) => `EPSG:3857:${z}`),
+      }),
       attributions: 'Ortofotomapa: © GUGiK (Geoportal)',
     }) });
     const osm = new ol.layer.Tile({ source: new ol.source.OSM(), maxZoom: 9 });
-    const borders = new ol.layer.Image({ minZoom: 14.5, source: new ol.source.ImageWMS({
-      url: 'https://integracja.gugik.gov.pl/cgi-bin/KrajowaIntegracjaEwidencjiGruntow',
+    // Granice działek z KIEG jako kafle: doczytują się kawałkami przy przybliżaniu i przesuwaniu, zamiast jednego dużego obrazu
+    // po każdym ruchu. Węzeł integracja01 wprost: główny adres integracja.gugik.gov.pl przekierowuje (21.11.2026) na
+    // img.php bez parametrów i zwraca nie-obraz, który zasłaniał ortofotomapę na biało.
+    const borders = new ol.layer.Tile({ minZoom: 14, source: new ol.source.TileWMS({
+      url: 'https://integracja01.gugik.gov.pl/cgi-bin/KrajowaIntegracjaEwidencjiGruntow',
       params: { LAYERS: 'dzialki,numery_dzialek', FORMAT: 'image/png', TRANSPARENT: 'TRUE', VERSION: '1.3.0' },
-      ratio: 1.2, attributions: 'Granice działek: © GUGiK (KIEG)',
+      hidpi: false, transition: 0, attributions: 'Granice działek: © GUGiK (KIEG)',
     }) });
     const defaults = ol.control.defaults.defaults ?? ol.control.defaults;
     const map = new ol.Map({
@@ -109,9 +121,10 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     const outer = [[world[0], world[1]], [world[2], world[1]], [world[2], world[3]], [world[0], world[3]], [world[0], world[1]]];
     data.maskSource.addFeature(new ol.Feature(new ol.geom.Polygon([outer, ...polygons.map((poly) => poly.getLinearRing(0).getCoordinates())])));
     const extent = feature.getGeometry().getExtent();
-    view.setCenter(ol.extent.getCenter(extent));
-    view.setZoom(12);
-    view.fit(extent, { padding: [28, 28, 28, 28], duration: 1400, easing: ol.easing.easeOut });
+    // krótki dolot (400 ms zamiast 1,4 s: każdy pośredni poziom to nowe kafle do pobrania); bez ruchu przy ograniczonym ruchu
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduced) { view.setCenter(ol.extent.getCenter(extent)); view.setZoom(Math.max(12, view.getZoomForResolution(view.getResolutionForExtent(extent)) - 2)); }
+    view.fit(extent, { padding: [28, 28, 28, 28], duration: reduced ? 0 : 400, easing: ol.easing.easeOut });
   }, [parcel, point, ol, focus]);
 
   useEffect(() => {

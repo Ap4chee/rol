@@ -15,7 +15,7 @@ function measure(value, unit) {
 const wrapping = (text) => <span className="whitespace-normal">{text}</span>;
 
 /** Zakładka „Historia”: dni niedoboru w kolejnych sezonach, okres krytyczny i miniony sezon. */
-export function HistoryTab({ report }) {
+export function HistoryTab({ report, intro = false }) {
   const history = report.history;
   const last = report.water_status.last_season;
   const critical = seasonMonths(report.crop);
@@ -24,7 +24,7 @@ export function HistoryTab({ report }) {
     <Section title="Czy niedobór się powtarza?" lead="Dni niedoboru w okresie krytycznym uprawy, sezon po sezonie.">
       <Note section={history}/>
       {(seasons.length > 0 || critical.length > 0) && <Card className="p-5 md:p-6">
-        {seasons.length > 0 && <SeasonChart history={history} seasons={seasons}/>}
+        {seasons.length > 0 && <SeasonChart history={history} seasons={seasons} intro={intro}/>}
         {critical.length > 0 && <CriticalPeriod months={critical} crop={report.crop} className={seasons.length > 0 ? 'mt-8' : undefined}/>}
       </Card>}
     </Section>
@@ -41,7 +41,7 @@ export function HistoryTab({ report }) {
 }
 
 /** Słupki dni niedoboru w okresie krytycznym, sezon po sezonie (wysokość względem największej wartości). */
-function SeasonChart({ history, seasons }) {
+function SeasonChart({ history, seasons, intro }) {
   const max = Math.max(1, ...seasons.map((season) => season.stress_days_critical));
   const summary = 'Dni niedoboru w okresie krytycznym, sezon po sezonie: '
     + seasons.map((season) => `${season.season}${season.complete ? '' : ' (sezon w trakcie)'}: ${season.stress_days_critical}`).join(', ') + '.';
@@ -53,7 +53,7 @@ function SeasonChart({ history, seasons }) {
     </div>
     <div role="img" aria-label={summary} className="mt-7">
       <div className="grid h-44 auto-cols-fr grid-flow-col gap-1 sm:gap-2">
-        {seasons.map((season, i) => <SeasonBar key={season.season} season={season} max={max} delay={Math.round(30 * i ** 0.9)}/>)}
+        {seasons.map((season, i) => <SeasonBar key={season.season} season={season} max={max} intro={intro} delay={Math.round(30 * i ** 0.9)}/>)}
       </div>
       <div className="h-px bg-neutral-300"/>
       <div className="mt-2 grid auto-cols-fr grid-flow-col gap-1 sm:gap-2">
@@ -65,7 +65,7 @@ function SeasonChart({ history, seasons }) {
 }
 
 /** Kolumna sezonu: cały pas kolumny reaguje na kursor i pokazuje dokładną wartość w dymku. */
-function SeasonBar({ season, max, delay }) {
+function SeasonBar({ season, max, delay, intro }) {
   const days = season.stress_days_critical;
   const height = `max(${days > 0 ? 3 : 2}px, ${100 * days / max}%)`;
   const fill = season.stressed ? 'bg-moderate' : days > 0 ? 'bg-neutral-300' : 'bg-neutral-200';
@@ -76,9 +76,11 @@ function SeasonBar({ season, max, delay }) {
   return <Tooltip label={tip}>
     <div className="relative h-full rounded-md transition-[background-color] duration-150 ease-out hover:bg-black/[0.035]">
       <div className="absolute inset-x-0 bottom-0 top-6 mx-auto max-w-6">
-        <span className={cn('bar-grow absolute inset-x-0 bottom-0 rounded-t-[4px]', fill)} style={{ height, animationDelay: `${delay}ms` }}/>
-        <span className={cn('num absolute -inset-x-2 text-center text-[11px] leading-none motion-safe:animate-[chart-fade_360ms_var(--ease-out)_both]',
-          season.stressed ? 'font-medium text-neutral-800' : 'text-neutral-400')}
+        {/* słupki rosną tylko przy pierwszym pokazaniu raportu, nie przy każdym powrocie na zakładkę */}
+        <span className={cn('absolute inset-x-0 bottom-0 rounded-t-[4px]', intro && 'bar-grow', fill)} style={{ height, animationDelay: `${delay}ms` }}/>
+        <span className={cn('num absolute -inset-x-2 text-center text-[11px] leading-none',
+          intro && 'motion-safe:animate-[chart-fade_360ms_var(--ease-out)_both]',
+          season.stressed ? 'font-medium text-neutral-800' : 'text-neutral-500')}
           style={{ bottom: `calc(${height} + 6px)`, animationDelay: `${delay + 200}ms` }}>{days}</span>
       </div>
     </div>

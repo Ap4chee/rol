@@ -13,14 +13,14 @@ const FRACTIONS = [['sand_pct', 'piasek', 'bg-sand'], ['silt_pct', 'pył', 'bg-s
 const DRY = new Set(['low', 'very_low']);
 
 /** Zakładka „Gleba”: model 3D pola, profil gleby i wilgotność warstw w okolicy. */
-export function SoilTab({ report, printing }) {
+export function SoilTab({ report, printing, intro = false }) {
   const { soil, soil_moisture: moisture, crop } = report;
   const rootCm = (soil.root_depth_m ?? crop.root_depth_m ?? 0) * 100;
   const regional = moisture?.status === 'ok' ? moisture.layers ?? [] : [];
   const layers = mergeSoilLayers(soil.layers);   // te same klasy gleby obok siebie jako jedna warstwa, jak w modelu 3D
   const narrow = useMediaQuery(NARROW);   // na telefonie niższa scena (model jest wąski)
   return <div className="flex flex-col gap-14">
-    {!printing && <Field3D report={report} cropArea={report.test_crop_area} height={narrow ? 320 : 480}/>}
+    {!printing && <Field3D report={report} cropArea={report.test_crop_area} height={narrow ? 320 : 480} intro={intro}/>}
     <div className="grid gap-12 lg:grid-cols-12">
       <Section title="Profil gleby" className="lg:col-span-7">
         <Note section={soil}/>

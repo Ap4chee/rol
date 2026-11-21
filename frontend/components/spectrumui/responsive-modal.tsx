@@ -71,7 +71,6 @@ const ResponsiveModalContent = React.forwardRef<
       {...props}
     >
       {children}
-      <span aria-hidden className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-neutral-300 lg:hidden" />
       <ResponsiveModalClose className="press absolute right-3 top-3 grid size-9 place-items-center rounded-lg text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-brand-600 disabled:pointer-events-none">
         <X className="size-[18px]" />
         <span className="sr-only">Zamknij</span>

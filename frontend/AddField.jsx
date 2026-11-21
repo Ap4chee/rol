@@ -218,12 +218,12 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
   const submitError = finderError ? '' : error;
 
   const finder = <>
-    <Field label="Numer działki lub obręb">{(id) =>
+    <Field label="Numer działki lub obręb" hint="Np. Niedrzwica Kościelna 580/2">{(id, describedBy) =>
       <div className="flex gap-2">
         <div className="min-w-0 flex-1">
           {/* lupa zamienia się w spinner na czas sprawdzania działki (także po kliknięciu mapy) */}
           <Input ref={finderInput} id={id} icon={searching ? <Spinner className="text-brand-600"/> : <Search/>}
-            placeholder="np. Niedrzwica Kościelna 580/2" value={query} maxLength={80} autoComplete="off" spellCheck={false}
+            placeholder="Obręb i nr działki" aria-describedby={describedBy} value={query} maxLength={80} autoComplete="off" spellCheck={false}
             enterKeyHint="search" disabled={disabled} data-autofocus
             onChange={(event) => { active.current?.abort(); setQuery(event.target.value); setParcel(null); setPoint(null); setCandidates([]); setError(''); setMessage(''); }}
             onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); search(); } }}/>

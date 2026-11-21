@@ -99,10 +99,10 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
       onTab={openTab} printing={printing} intro={intro('podsumowanie')}/>,
     rekomendacje: () => <Recommendations report={report} terrainActions={terrainActions}
       satelliteChecks={sat.result?.field_checks ?? []} intro={intro('rekomendacje')}/>,
-    gleba: () => <SoilTab report={report} printing={printing}/>,
+    gleba: () => <SoilTab report={report} printing={printing} intro={intro('gleba')}/>,
     pogoda: () => <WeatherTab report={report}/>,
     teren: () => <TerrainTab report={report} terrain={terrain} failed={topo.failure} retry={topo.retry}/>,
-    historia: () => <HistoryTab report={report}/>,
+    historia: () => <HistoryTab report={report} intro={intro('historia')}/>,
     zrodla: () => <SourcesTab report={report} satelliteSource={sat.result?.source} terrain={terrain}/>,
   };
   const facts = [
@@ -153,8 +153,9 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
         {panels[key]()}
       </section>)}</div>
       : <Tabs ref={tabs} value={tab} onValueChange={openTab} className="scroll-mt-[var(--app-header,0px)]">
-        <div className="no-print sticky top-[var(--app-header,0px)] z-20 border-b border-black/[0.07] bg-white">
-          <TabsList value={tab} aria-label="Części raportu" className="-mb-px">
+        {/* na telefonie pasek do krawędzi ekranu: zakładki nie urywają się 16 px przed krawędzią */}
+        <div className="no-print sticky top-[var(--app-header,0px)] z-20 border-b border-black/[0.07] bg-white max-md:-mx-4">
+          <TabsList value={tab} aria-label="Części raportu" className="-mb-px max-md:scroll-px-4 max-md:px-4">
             {TABS.map((key) => <TabsTrigger key={key} value={key} count={key === 'rekomendacje' ? recCount : undefined}>
               {TAB_LABELS[key]}</TabsTrigger>)}
           </TabsList>

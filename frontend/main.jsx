@@ -178,7 +178,7 @@ function App() {
   // górny pasek (stała wysokość, udostępniona jako --app-header dla przyklejanych pasków niżej) i treść na całą szerokość.
   // Szerokość menu zmienia się tylko po kliknięciu (rzadko), więc krótkie przejście kolumny siatki jest w porządku.
   return <div style={{ '--sidebar': compact ? '68px' : '248px' }}
-    className="min-h-svh [--app-header:3.5rem] md:grid md:grid-cols-[var(--sidebar)_minmax(0,1fr)] md:[--app-header:0px] md:transition-[grid-template-columns] md:duration-200 md:ease-out motion-reduce:transition-none print:block!">
+    className="min-h-svh [--app-header:3.5rem] md:grid md:grid-cols-[var(--sidebar)_minmax(0,1fr)] md:[--app-header:0px] print:block!">
     {/* bez zmiany adresu: hash służy do przełączania widoków */}
     <a href="#main-content" onClick={(event) => {
       event.preventDefault();

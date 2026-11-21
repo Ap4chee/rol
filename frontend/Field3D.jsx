@@ -181,7 +181,8 @@ const GAP = .3;                                // odstęp między rozłożonymi 
 const rootDepthCm = (report) => (report.soil?.root_depth_m ?? report.crop.root_depth_m ?? 0) * 100;
 
 /** `cropArea`: opcjonalna geometria GeoJSON (EPSG:4326) części działki z uprawą; bez niej rośliny rosną na całej działce. */
-export function Field3D({ report, height = 420, cropArea = null }) {
+/** `toolbar`: element po lewej w pasku nad modelem (np. przełącznik widoku); `intro`: wejście tylko przy pierwszym pokazaniu. */
+export function Field3D({ report, height = 420, cropArea = null, toolbar = null, intro = false }) {
   const mount = useRef(null);
   const state = useRef({ exploded: true });
   const [exploded, setExploded] = useState(true);
@@ -423,6 +424,7 @@ export function Field3D({ report, height = 420, cropArea = null }) {
       renderer.setSize(el.clientWidth, height);
       fit();
       controls.update();
+      renderer.render(scene, camera);   // od razu: setSize czyści bufor i bez tego model mignąłby pustą klatką
     });
     resize.observe(el);
 
@@ -478,14 +480,16 @@ export function Field3D({ report, height = 420, cropArea = null }) {
   const active = typeof hovered === 'number' ? layers[hovered] : null;
   return <div className="field3d" ref={box}>
     {/* na komputerze w prawym górnym rogu nad modelem, na telefonie nad nim (nie zasłania sceny) */}
-    <div className="no-print mb-2 flex justify-end md:absolute md:right-0 md:top-0 md:z-[2] md:mb-0">
+    <div className={cn('no-print mb-2 flex flex-wrap items-center gap-3',
+      toolbar ? 'justify-between' : 'justify-end md:absolute md:right-0 md:top-0 md:z-[2] md:mb-0')}>
+      {toolbar}
       {/* stała szerokość: przy zmianie napisu ramka przycisku nie skacze */}
       <Button variant="secondary" size="xs" className="min-w-32" icon={exploded ? <Minimize2/> : <Maximize2/>} onClick={toggle}>
         {exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
     </div>
     {/* dymki stoją w punkcie --tip-x/--tip-y liczonym od rogu płótna, więc leżą w jednym pudełku z płótnem */}
     <div className="relative">
-      <div ref={mount} className="field3d-canvas" style={{ height }} role="img"
+      <div ref={mount} className={cn('field3d-canvas', intro && 'intro')} style={{ height }} role="img"
         aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} ${layersWord(layers.length)} gleby`}/>
       {hovered === 'crop' && <CropTip report={report} rootCm={rootCm}/>}
       {active && <LayerTip layer={active} rootCm={rootCm}/>}

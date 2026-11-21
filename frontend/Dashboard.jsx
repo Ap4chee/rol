@@ -23,6 +23,7 @@ const RISE = 'animate-rise motion-reduce:animate-in motion-reduce:fade-in motion
 // Kaskada kart przy wejściu na pulpit: nierówne odstępy (ms); od siódmej karty bez dalszej zwłoki.
 const STAGGER = [0, 50, 90, 120, 145, 165];
 const riseDelay = (ms) => ({ animationDelay: `${ms}ms` });
+let introPlayed = false;   // wejście pulpitu tylko raz na sesję, nie przy powrocie z raportu
 
 // ---------- pusty pulpit ----------
 
@@ -83,7 +84,7 @@ function leadSentence(total, urgent, unknown) {
 }
 
 /** Stan wszystkich pól: zdanie, pasek udziałów i liczba pól w każdym stanie (pola bez oceny osobno, tylko gdy są). */
-function Overview({ fields }) {
+function Overview({ fields, intro }) {
   const titleId = useId();
   const count = (key) => fields.filter(({ report: { water_status: water } }) => water.status === 'ok' && water.class_key === key).length;
   const buckets = BUCKETS.map(([key, tone, label]) => ({ key, tone, label, count: count(key) }));
@@ -102,11 +103,11 @@ function Overview({ fields }) {
     </div>
     <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 @xl/dash:grid-flow-col @xl/dash:grid-cols-none @xl/dash:auto-cols-fr">
       {buckets.map((bucket) => <div key={bucket.key} className="flex min-w-0 flex-col-reverse justify-end gap-2">
-        <dt className={cn('flex items-center gap-1.5 text-[13px] leading-snug', bucket.count ? 'text-neutral-600' : 'text-neutral-400')}>
+        <dt className={cn('flex items-center gap-1.5 text-[13px] leading-snug', bucket.count ? 'text-neutral-600' : 'text-neutral-500')}>
           <StatusDot tone={bucket.tone} className={bucket.count ? undefined : 'opacity-40'}/>{bucket.label}</dt>
         <dd className="num text-[36px] font-medium leading-none tracking-tight"
-          style={{ color: bucket.count ? TONE[bucket.tone].ink : 'var(--color-neutral-300)' }}>
-          <NumberTicker value={bucket.count} duration={0.8}/></dd>
+          style={{ color: bucket.count ? TONE[bucket.tone].ink : 'var(--color-neutral-500)' }}>
+          {intro ? <NumberTicker value={bucket.count} duration={0.8}/> : bucket.count}</dd>
       </div>)}
     </dl>
   </section>;
@@ -167,8 +168,6 @@ function FieldCard({ field, action, style }) {
 // ---------- najbliższe działania ----------
 
 const ACTION_ICONS = { retention: Droplets, agrotechnical: Tractor, irrigation: ShowerHead, field_check: ClipboardCheck };
-// Wiersz lekko odjeżdża w prawo przy najechaniu (wzór: Nav List Card ze Spectrum UI), sprężyna z małym odbiciem.
-const NUDGE = { type: 'spring', bounce: 0.25, duration: 0.3 };
 
 /** Pierwsze działanie dla każdego pola, od najpilniejszego; link prowadzi do zakładki rekomendacji. */
 function NextActions({ items, style }) {
@@ -181,8 +180,8 @@ function NextActions({ items, style }) {
     {items.length ? <ul className="-mx-2 mt-3 flex flex-col gap-0.5">{items.map(({ field, action }) => {
       const Icon = ACTION_ICONS[action.category] ?? ArrowRight;
       return <li key={field.id}>
-        <motion.a href={fieldTabHref(field.id, 'rekomendacje')} whileHover={{ x: 2 }} whileTap={{ scale: 0.98 }} transition={NUDGE}
-          className="group flex items-start gap-3 rounded-xl p-2 transition-[background-color] duration-150 hover:bg-neutral-100">
+        <a href={fieldTabHref(field.id, 'rekomendacje')}
+          className="group flex items-start gap-3 rounded-xl p-2 transition-[background-color,scale] duration-150 ease-out hover:bg-neutral-100 active:scale-[0.98]">
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-neutral-100 text-neutral-600 ring-1 ring-inset ring-black/[0.03] transition-[background-color] duration-150 group-hover:bg-white">
             <Icon aria-hidden className="size-4" strokeWidth={1.75}/></span>
           <span className="min-w-0 flex-1 py-px">
@@ -190,7 +189,7 @@ function NextActions({ items, style }) {
               <StatusDot tone={statusTone(field.report.water_status)}/><span className="truncate">{field.name}</span></span>
             <span className="mt-1 block text-[13.5px] font-medium leading-snug text-neutral-900">{action.title}</span>
           </span>
-        </motion.a>
+        </a>
       </li>;
     })}</ul> : <p className="mt-2 text-[13px] text-neutral-500">Zapisane raporty nie zawierają propozycji działań.</p>}
   </section>;
@@ -318,7 +317,7 @@ function Weather({ fields, style }) {
     </div>
     {fields.length > 1 && (segmented
       // na ekranach dotykowych segmenty mają co najmniej 40 px wysokości
-      ? <Segmented className="mt-3 w-full pointer-coarse:[&>button]:min-h-10" label="Pole, dla którego pokazać prognozę" value={field.id} onChange={setSelected}
+      ? <Segmented className="mt-3 w-full" label="Pole, dla którego pokazać prognozę" value={field.id} onChange={setSelected}
         options={fields.map(({ id, name }) => ({ value: id, label: name }))}/>
       : <div className="mt-3 flex items-center gap-3">
         <Label htmlFor={selectId} className="mb-0 shrink-0 text-neutral-500">Dla pola</Label>
@@ -336,12 +335,15 @@ function Weather({ fields, style }) {
 
 export function Dashboard({ fields, onAdd }) {
   const fieldsTitleId = useId();
+  const [intro] = useState(() => !introPlayed);
+  useEffect(() => { if (fields.length) introPlayed = true; }, [fields.length]);
   if (!fields.length) return <EmptyState onAdd={onAdd}/>;
   const sorted = byUrgency(fields);
   const actions = actionItems(fields);
   const firstAction = new Map(actions.map(({ field, action }) => [field.id, action]));
   const date = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'full', timeZone: 'Europe/Warsaw' }).format(new Date());
-  return <div className="@container/dash flex flex-col gap-10">
+  // wejście (kaskada kart, pasek, liczniki) raz na sesję; po powrocie z raportu pulpit jest od razu na miejscu
+  return <div className={cn('@container/dash flex flex-col gap-10', !intro && '[&_.animate-in]:!animate-none [&_.animate-rise]:!animate-none')}>
     <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
       <div className="min-w-0">
         <Eyebrow>{date}</Eyebrow>
@@ -349,7 +351,7 @@ export function Dashboard({ fields, onAdd }) {
       </div>
       <Button icon={<Plus/>} onClick={onAdd}>Dodaj pole</Button>
     </header>
-    <Overview fields={fields}/>
+    <Overview fields={fields} intro={intro}/>
     {/* kolumna boczna dopiero od 64rem szerokości pulpitu (prognoza potrzebuje ok. 290 px); węziej karty, a pod nimi panele */}
     <div className="grid gap-x-8 gap-y-10 @5xl/dash:grid-cols-12">
       <section aria-labelledby={fieldsTitleId} className="min-w-0 @5xl/dash:col-span-8">

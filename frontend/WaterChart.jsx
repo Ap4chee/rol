@@ -13,7 +13,7 @@ const percent = (value) => (Number.isFinite(value) ? `${number(value)}%` : '—'
 const mm = (value) => (Number.isFinite(value) ? `${number(value, 1)} mm` : '—');
 
 /** Zapas wody w strefie korzeni (% TAW) w ostatnich miesiącach na tle tych samych dni w 10 latach, z prognozą. */
-export function WaterChart({ series, forecast = [], color, height = 300 }) {
+export function WaterChart({ series, forecast = [], color, height = 300, intro = false }) {
   const box = useRef(null);
   const hintId = useId();
   const [width, setWidth] = useState(800);
@@ -76,10 +76,11 @@ export function WaterChart({ series, forecast = [], color, height = 300 }) {
     setHover((current) => current ?? today);
   }
 
-  return <div ref={box} className="water-chart">
+  return <div ref={box} className={intro ? 'water-chart intro' : 'water-chart'}>
     <div className="relative select-none rounded-lg focus-visible:outline-offset-4" tabIndex={0} role="group" aria-label="Wykres zapasu wody"
       aria-describedby={hintId} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={() => setHover(null)}>
-      <svg width={width} height={height} onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)} role="img"
+      {/* viewBox: przy wydruku wykres skaluje się do szerokości strony zamiast obcinać prawą część */}
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)} role="img"
         aria-label="Zapas wody w strefie korzeni w ostatnich miesiącach na tle 10 lat">
         {[0, 25, 50, 75, 100].map((v) => <g key={v}>
           {/* włosowe linie siatki, ostre na każdym ekranie; linia 0% o ton mocniejsza: na niej stoją słupki opadu */}

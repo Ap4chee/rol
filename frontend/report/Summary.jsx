@@ -103,14 +103,17 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
 }
 
 /** Model 3D pola z glebą albo zdjęcie lotnicze z drogami spływu. Do wydruku zawsze model 3D. */
-function FieldView({ report, terrain, printing }) {
+function FieldView({ report, terrain, printing, intro }) {
   const [view, setView] = useState('3d');
   const narrow = useMediaQuery(NARROW);   // na telefonie niższa scena: model jest wąski, pełne 420 px to pusta przestrzeń
+  const viewSwitch = <Segmented className="no-print" label="Widok działki" value={view} onChange={setView}
+    options={[{ value: '3d', label: 'Pole i gleba' }, { value: 'map', label: 'Zdjęcie lotnicze' }]}/>;
+  // przełącznik widoku i „Złóż warstwy” w jednym pasku nad modelem
   return <div className="min-w-0">
-    <Segmented className="no-print mb-3" label="Widok działki" value={view} onChange={setView}
-      options={[{ value: '3d', label: 'Pole i gleba' }, { value: 'map', label: 'Zdjęcie lotnicze' }]}/>
-    {view === '3d' || printing ? <Field3D report={report} cropArea={report.test_crop_area} height={narrow ? 300 : 420}/>
-      : <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>}
+    {view === '3d' || printing
+      ? <Field3D report={report} cropArea={report.test_crop_area} height={narrow ? 300 : 420} toolbar={viewSwitch} intro={intro}/>
+      : <><div className="mb-2">{viewSwitch}</div>
+        <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/></>}
   </div>;
 }
 
@@ -179,7 +182,7 @@ function WaterReserve({ report, intro }) {
   return <Section title="Zapas wody w glebie" lead="Woda dostępna dla roślin w strefie korzeni, dzień po dniu, na tle tych samych dni z 10 lat.">
     {series.length > 1
       ? <Card className="px-0 py-4 sm:p-5">
-        <WaterChart series={series} forecast={water.forecast ?? []} color={statusFill(water)}/>
+        <WaterChart series={series} forecast={water.forecast ?? []} color={statusFill(water)} intro={intro}/>
         {forecastNote && <div className="px-4 sm:px-0">{forecastNote}</div>}
       </Card>
       : <>
@@ -221,7 +224,7 @@ function GreennessSkeleton() {
 }
 
 function Readout({ observation }) {
-  return <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+  return <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
     <div>
       <p className="text-[12.5px] text-neutral-500">Zieloność (NDVI)</p>
       <p className="num mt-1.5 text-[28px] font-medium leading-none tracking-tight text-neutral-950">{index2(observation.ndvi)}</p>
@@ -248,7 +251,8 @@ function Trend({ measurements, current, onChange }) {
     </div>
     {/* cieńszy tor niż domyślny: suwak tylko przewija zdjęcia, nie powinien przykrywać wykresu */}
     <Slider className="no-print mt-2 [&>span:first-child]:h-1 [&>span:first-child>span]:bg-brand-600" min={0} max={n - 1} step={1}
-      value={current} onChange={onChange} label="Wybierz zdjęcie satelitarne"/>
+      value={current} onChange={onChange} label="Wybierz zdjęcie satelitarne"
+      valueText={(i) => `zdjęcie ${i + 1} z ${n}, ${dateText(measurements[i].date)}`}/>
   </div>;
 }
 
@@ -256,7 +260,8 @@ function Greenness({ satellite, failed, retry, canRetry, printing }) {
   const measurements = satelliteMeasurements(satellite);
   const [index, setIndex] = useState(null);
   const pending = satellite.status === 'pending';
-  const loading = pending && !printing;
+  // szkielet tylko, gdy nic jeszcze nie przyszło; wczytane już zdjęcia widać od razu (serwer może odpowiadać „pending”)
+  const loading = pending && !printing && measurements.length === 0;
   const last = measurements.length - 1;
   const current = index != null && index <= last ? index : last;
   const observation = measurements[current];
@@ -296,7 +301,7 @@ export function Summary({ report, terrain, satellite, sat, limited, onTab, print
   return <div className="flex flex-col gap-14">
     <div className="grid gap-10 md:grid-cols-12 md:items-center md:gap-12">
       <div className="md:col-span-5"><Verdict report={report} terrain={terrain} limited={limited} onTab={onTab} intro={intro}/></div>
-      <div className="min-w-0 md:col-span-7"><FieldView report={report} terrain={terrain} printing={printing}/></div>
+      <div className="min-w-0 md:col-span-7"><FieldView report={report} terrain={terrain} printing={printing} intro={intro}/></div>
     </div>
     <WaterReserve report={report} intro={intro}/>
     <div className="grid gap-14 md:grid-cols-12 md:gap-12">

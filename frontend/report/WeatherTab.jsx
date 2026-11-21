@@ -40,7 +40,7 @@ export function WeatherTab({ report }) {
           hint={balance.median_10y_mm != null ? `zwykle ${minus(number(balance.median_10y_mm))} mm` : null}/>
       </Card>}
       {causes.length ? <CauseList causes={causes}/>
-        : <p className="text-[14px] text-neutral-500">Pogoda nie jest główną przyczyną.</p>}
+        : report.causes.status === 'ok' && <p className="text-[14px] text-neutral-500">Pogoda nie jest główną przyczyną.</p>}
     </Section>
   </div>;
   // analiza na dziś: najpierw to, co nadchodzi; analiza historyczna: najpierw pogoda przed datą raportu
@@ -57,9 +57,9 @@ function ForecastTable({ days }) {
     <TBody>{days.map((day) => {
       const stress = day.available_pct < day.stress_threshold_pct;
       return <TR key={day.date} className={stress ? 'text-severe-ink' : undefined}>
-        <TD className="whitespace-nowrap">{dateText(day.date)}</TD>
-        <TD className="whitespace-nowrap text-right">{number(day.rain_mm, 1)} mm</TD>
-        <TD className="whitespace-nowrap text-right">{number(day.et0_mm, 1)} mm</TD>
+        <TD className="num whitespace-nowrap">{dateText(day.date)}</TD>
+        <TD className="num whitespace-nowrap text-right">{number(day.rain_mm, 1)} mm</TD>
+        <TD className="num whitespace-nowrap text-right">{number(day.et0_mm, 1)} mm</TD>
         <TD className="pl-4 sm:pl-6">
           <div className="flex items-center gap-3">
             <span className={stress ? 'w-10 font-semibold' : 'w-10 font-semibold text-neutral-900'}>{number(day.available_pct)}%</span>
