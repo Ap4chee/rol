@@ -57,15 +57,33 @@ export function fieldHref(id) {
   return '#pole/' + encodeURIComponent(id);
 }
 
+export const TABS = ['podsumowanie', 'rekomendacje', 'gleba', 'pogoda', 'teren', 'historia', 'zrodla'];
+
+/** Pole z adresu: `#pole/<id>` albo `#pole/<id>/<zakładka>` (id zakodowane, więc bez „/”), `#podglad[/zakładka]`. */
 export function route(hash) {
-  if (!hash.startsWith('#pole/')) return hash === '#podglad' ? 'preview' : null;
-  try { return decodeURIComponent(hash.slice(6)); } catch { return null; }
+  return routeTab(hash).id;
+}
+
+export function routeTab(hash) {
+  const [head, encoded, tab] = hash.replace(/^#/, '').split('/');
+  const known = TABS.includes(tab) ? tab : TABS[0];
+  if (head === 'podglad') return { id: 'preview', tab: TABS.includes(encoded) ? encoded : TABS[0] };
+  if (head !== 'pole' || !encoded) return { id: null, tab: known };
+  try { return { id: decodeURIComponent(encoded), tab: known }; } catch { return { id: null, tab: known }; }
+}
+
+export function fieldTabHref(id, tab) {
+  return id === 'preview' ? `#podglad/${tab}` : `${fieldHref(id)}/${tab}`;
+}
+
+const URGENCY = { severe: 0, moderate: 1, watch: 2, none: 3 };
+/** Pola od najpilniejszego (silny niedobór na górze); pola bez oceny na końcu. */
+export function byUrgency(fields) {
+  return [...fields].sort((a, b) => (URGENCY[a.report.water_status.class_key] ?? 4) - (URGENCY[b.report.water_status.class_key] ?? 4));
 }
 
 export function actionItems(fields) {
-  const urgency = { severe: 0, moderate: 1, watch: 2, none: 3 };
-  return [...fields]
-    .sort((a, b) => (urgency[a.report.water_status.class_key] ?? 4) - (urgency[b.report.water_status.class_key] ?? 4))
+  return byUrgency(fields)
     .flatMap((field) => {
       const { retention = [], agrotechnical = [], irrigation = [], field_checks = [] } = field.report.recommendations ?? {};
       const first = (field.report.water_status.class_key === 'severe' ? irrigation[0] : null)

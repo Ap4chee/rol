@@ -2,12 +2,16 @@ import '@mantine/core/styles.css';
 import './style.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Alert, Box, Button, Container, createTheme, Group, Loader, MantineProvider, Modal, Text } from '@mantine/core';
+import { Alert, AppShell, Burger, Button, Container, createTheme, Group, Loader, MantineProvider, Modal, Text } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconDroplet } from '@tabler/icons-react';
 import { AddFieldForm } from './AddField.jsx';
-import { Dashboard } from './Dashboard.jsx';
+import { AddPage, Dashboard } from './Dashboard.jsx';
 import { Report } from './Report.jsx';
-import { fieldFromReport, fieldHref, readFields, route, STORAGE_KEY, upsertField } from './model.js';
+import { Sidebar } from './Sidebar.jsx';
+import { fieldFromReport, fieldHref, fieldTabHref, readFields, routeTab, STORAGE_KEY, upsertField } from './model.js';
+
+const COMPACT_KEY = 'kowr.sidebar-compact';
 import { generateReport } from './ui.jsx';
 
 const theme = createTheme({
@@ -46,9 +50,19 @@ function App() {
   const [message, setMessage] = useState('');
   const [shared, setShared] = useState(() => new URLSearchParams(window.location.search).has('parcel') ? 'loading' : '');
   const hash = useHash();
-  const [path, anchor] = hash.slice(1).split('#');
-  const current = route('#' + path);
+  const { id: current, tab } = routeTab(hash);
   const field = current === 'preview' ? preview : fields.find((entry) => entry.id === current);
+  const page = field ? 'field' : hash === '#dodaj' ? 'add' : 'dashboard';
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [compactPref, setCompact] = useState(() => { try { return localStorage.getItem(COMPACT_KEY) === '1'; } catch { return false; } });
+  const mobile = useMediaQuery('(max-width: 48em)');
+  const compact = compactPref && !mobile;   // na telefonie menu jest szufladą, zawsze pełną
+  function toggleCompact() {
+    setCompact((value) => {
+      try { localStorage.setItem(COMPACT_KEY, value ? '0' : '1'); } catch { /* tylko wygoda, bez zapisu też działa */ }
+      return !value;
+    });
+  }
 
   const persist = useCallback((next) => {
     currentFields.current = next;
@@ -94,10 +108,7 @@ function App() {
     return () => controller.abort();
   }, []);
 
-  useEffect(() => {
-    if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: 'start' });
-    else window.scrollTo(0, 0);
-  }, [current, anchor, field?.id]);
+  useEffect(() => { window.scrollTo(0, 0); }, [page, field?.id]);
 
   function add(field) {
     const saved = persist(upsertField(currentFields.current, field));
@@ -106,41 +117,51 @@ function App() {
     return saved;
   }
 
-  return <>
+  return <AppShell header={{ height: 56 }} padding={0}
+    navbar={{ width: compact ? 76 : 272, breakpoint: 'sm', collapsed: { mobile: !mobileOpen } }}>
     <a className="skip-link" href="#main-content" onClick={(event) => {
       event.preventDefault();
       document.getElementById('main-content').focus();
     }}>Przejdź do treści</a>
-    <Box component="header" className="app-header no-print">
-      <Container size="xl" h={60}>
-        <Group h="100%" justify="space-between">
-          <a className="brand" href="/"><IconDroplet size={24} stroke={1.8}/> Asystent wody</a>
-          <Text size="sm" c="dimmed" visibleFrom="sm">Bilans wody na działce · dane otwarte</Text>
+    <AppShell.Header className="app-header no-print">
+      <Group h="100%" px="md" justify="space-between">
+        <Group gap="sm">
+          <Burger opened={mobileOpen} onClick={() => setMobileOpen((o) => !o)} hiddenFrom="sm" size="sm" aria-label="Menu"/>
+          <a className="brand" href="#"><IconDroplet size={24} stroke={1.8}/> Asystent wody</a>
         </Group>
+        <Text size="sm" c="dimmed" visibleFrom="sm">Bilans wody na działce · dane otwarte</Text>
+      </Group>
+    </AppShell.Header>
+    <AppShell.Navbar p="sm" className="app-navbar no-print">
+      <Sidebar fields={fields} currentId={current} page={page} compact={compact} onToggle={toggleCompact}
+        onNavigate={() => setMobileOpen(false)} preview={preview && !fields.some((entry) => entry.id === preview.id) ? preview : null}/>
+    </AppShell.Navbar>
+    <AppShell.Main>
+      <Container size="xl" px={{ base: 'md', md: 'xl' }} py="xl" id="main-content" tabIndex={-1} className="main">
+        {message && <Alert color="red" mb="md" className="no-print">{message}</Alert>}
+        {shared === 'loading' ? <Group gap="sm"><Loader size="sm"/><Text>Pobieram dane i liczę raport dla wskazanej działki…</Text></Group> : <>
+          {shared && <Alert color="red" mb="md">{shared}</Alert>}
+          {page === 'field' ? <Report key={field.id + field.report.generated_at} field={field} tab={tab}
+            onTab={(next) => { window.location.hash = fieldTabHref(current, next); }} onEdit={() => setModal({ field })}
+            onSave={add} onSatellite={onSatellite} saved={fields.some((entry) => entry.id === field.id)}/>
+            : page === 'add' ? <AddPage onReport={add}/>
+              : <>
+                {current && <Alert color="gray" mb="md">Nie znaleziono raportu w tej przeglądarce.
+                  <Button ml="sm" size="xs" variant="default" component="a" href="#dodaj">Dodaj pole</Button></Alert>}
+                <Dashboard fields={fields} onReport={add}/>
+              </>}
+        </>}
+        <footer className="footer no-print">
+          <Text size="sm" fw={600}>Asystent wody</Text>
+          <Text size="sm" c="dimmed">Wynik jest szacunkiem z modeli i otwartych danych.</Text>
+        </footer>
       </Container>
-    </Box>
-    <Container size="xl" component="main" id="main-content" tabIndex={-1} py="xl" className="main">
-      {message && <Alert color="red" mb="md" className="no-print">{message}</Alert>}
-      {shared === 'loading' ? <Group gap="sm"><Loader size="sm"/><Text>Pobieram dane i liczę raport dla wskazanej działki…</Text></Group> : <>
-        {shared && <Alert color="red" mb="md">{shared}</Alert>}
-        {field ? <Report key={field.id + field.report.generated_at} field={field} onEdit={() => setModal({ field })}
-          onSave={add} onSatellite={onSatellite} saved={fields.some((entry) => entry.id === field.id)}/>
-          : <>
-            {current && <Alert color="gray" mb="md">Nie znaleziono raportu w tej przeglądarce.
-              <Button ml="sm" size="xs" variant="default" onClick={() => setModal({})}>Dodaj pole</Button></Alert>}
-            <Dashboard fields={fields} onAdd={() => setModal({})} onReport={add}/>
-          </>}
-      </>}
-    </Container>
-    <Container size="xl" component="footer" className="footer no-print">
-      <Text size="sm" fw={600}>Asystent wody</Text>
-      <Text size="sm" c="dimmed">Wynik jest szacunkiem z modeli i otwartych danych.</Text>
-    </Container>
+    </AppShell.Main>
     <Modal opened={Boolean(modal)} onClose={() => setModal(null)} size="xl" radius="lg"
       title={<Text fw={700} size="xl" ff="heading">{modal?.field ? 'Przelicz raport' : 'Dodaj pole'}</Text>}>
       {modal && <AddFieldForm initial={modal.field} onCancel={() => setModal(null)} onReport={add}/>}
     </Modal>
-  </>;
+  </AppShell>;
 }
 
 createRoot(document.getElementById('root')).render(<MantineProvider theme={theme}><App/></MantineProvider>);

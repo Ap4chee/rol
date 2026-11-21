@@ -15,7 +15,7 @@ body { background: var(--mantine-color-white); }
 .report-section { scroll-margin-top: 16px; padding-top: 40px; border-top: 1px solid var(--mantine-color-gray-2); }
 .report-section h2 { font-size: clamp(1.5rem, 2.2vw, 2rem); letter-spacing: -.01em; }
 .field-name { font-size: clamp(1.4rem, 2vw, 1.75rem); }
-.verdict { font: 700 clamp(2rem, 3.6vw, 3.1rem)/1.05 var(--mantine-font-family-headings); letter-spacing: -.02em; }
+.verdict { font: 700 clamp(1.8rem, 2.8vw, 2.6rem)/1.08 var(--mantine-font-family-headings); letter-spacing: -.02em; }
 .next-step { display: block; padding: 14px 0; border-top: 1px solid var(--mantine-color-gray-2);
   border-bottom: 1px solid var(--mantine-color-gray-2); color: var(--mantine-color-forest-9); }
 .next-step:hover { color: var(--mantine-color-forest-7); }
@@ -151,4 +151,44 @@ body { background: var(--mantine-color-white); }
   .water-chart .actual { animation: none; stroke-dashoffset: 0; }
   .mantine-Badge-root, .month, .moisture-bar, .season-bars, .water-chart { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .report { gap: 24px !important; }
+}
+
+/* ---------- układ aplikacji: sidebar ---------- */
+.app-navbar { transition: width .2s ease; }
+.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.field-avatar { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border-radius: 50%; border: 2px solid; font-weight: 700; font-size: 13px; color: var(--mantine-color-gray-8); }
+.field-avatar i { position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; }
+.nav-compact { justify-content: center; }
+.nav-compact .mantine-NavLink-section { margin: 0; }
+.sidebar-foot { border-top: 1px solid var(--mantine-color-gray-2); }
+.app-navbar .mantine-NavLink-root { border-radius: var(--mantine-radius-md); }
+.app-navbar .mantine-NavLink-label { font-weight: 600; }
+
+/* ---------- pulpit ---------- */
+.overview-lead { font: 700 clamp(1.4rem, 2.4vw, 2rem)/1.15 var(--mantine-font-family-headings); letter-spacing: -.01em; }
+.overview-count { min-width: 110px; }
+.card-action { color: var(--mantine-color-forest-9); }
+
+/* ---------- widok pola ---------- */
+.status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; font-size: 13px;
+  font-weight: 700; color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); }
+.status-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.field-tabs-list { position: sticky; top: 56px; z-index: 20; background: var(--mantine-color-white); }
+.field-tabs .mantine-Tabs-tab { font-weight: 600; padding-inline: 14px; }
+.next-step-card { border-left: 4px solid var(--mantine-color-forest-7); }
+.report-section { padding-top: 0; border-top: 0; }
+.compare-bar { position: relative; height: 10px; border-radius: 5px; background: var(--mantine-color-gray-1); }
+.compare-bar i { display: block; height: 100%; border-radius: 5px; }
+.compare-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--mantine-color-dark-6); }
+.print-heading { display: none; }
+@media (max-width: 48em) {
+  .field-tabs-list { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .field-tabs .mantine-Tabs-tab { flex-shrink: 0; }
+}
+@media print {
+  .mantine-AppShell-main { padding: 0 !important; }
+  .print-heading { display: block; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 2px solid var(--mantine-color-gray-3); }
+  .print-part { break-before: page; }
+  .print-part:first-child { break-before: auto; }
 }

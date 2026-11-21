@@ -51,3 +51,13 @@ test('sąsiednie warstwy tej samej gleby łączą się w jedną', async () => {
   assert.equal(merged[0].soc_g_kg, null);        // brak danych zostaje brakiem
   assert.deepEqual([1, 3, 5, 12, 22].map(layersWord), ['warstwa', 'warstwy', 'warstw', 'warstw', 'warstwy']);
 });
+
+test('adres pola niesie zakładkę, a identyfikator z ukośnikiem przechodzi bez zmian', async () => {
+  const { fieldTabHref, routeTab } = await import('./model.js');
+  const id = '060910_2.0011.580/2';
+  assert.deepEqual(routeTab(fieldHref(id)), { id, tab: 'podsumowanie' });
+  assert.deepEqual(routeTab(fieldTabHref(id, 'gleba')), { id, tab: 'gleba' });
+  assert.deepEqual(routeTab(fieldTabHref(id, 'nieznana')), { id, tab: 'podsumowanie' });
+  assert.deepEqual(routeTab('#podglad/pogoda'), { id: 'preview', tab: 'pogoda' });
+  assert.equal(route('#dodaj'), null);
+});

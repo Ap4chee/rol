@@ -7,6 +7,15 @@ const states = {
 };
 const offSeason = { none: 'Wysoki zapas', watch: 'Niższy zapas', moderate: 'Niski zapas', severe: 'Bardzo niski zapas' };
 
+const SHORT = { severe: 'silny niedobór', moderate: 'umiarkowany niedobór', watch: 'do obserwacji', none: 'bez niedoboru' };
+const SHORT_OFF = { severe: 'zapas bardzo niski', moderate: 'zapas niski', watch: 'zapas niższy', none: 'zapas wysoki' };
+
+/** Krótki opis stanu do list i plakietek (pełny opis jest w `headline`). */
+export function statusShort(water) {
+  if (water?.status !== 'ok' || !water.class_key) return 'brak oceny';
+  return (water.in_season === false ? SHORT_OFF : SHORT)[water.class_key];
+}
+
 export function statusColor(water) {
   return water?.status === 'ok' ? states[water.class_key]?.[1] ?? 'gray' : 'gray';
 }
