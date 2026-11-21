@@ -1,6 +1,6 @@
 """Sentinel-2 L2A przez Earth Search STAC: mediana NDVI i NDMI po pikselach z roślinnością na działce.
 
-Zasady jak w specyfikacji modelu ML (specyfikacja_treningu_ml_kowr.md, rozdz. 3):
+Zasady jak w specyfikacji modelu ML (outputs/specyfikacja_treningu_ml_kowr.md, rozdz. 3):
 - piksele liczone po środkach (`all_touched=False`), ważne tylko te z klasą SCL 4 (roślinność),
 - progi: co najmniej 6 pikseli i 65% pokrycia działki,
 - reflektancja = DN · scale + offset, a skala i offset pochodzą z `raster:bands` sceny

@@ -1,6 +1,7 @@
 """Serwer aplikacji: API raportu i statyczny frontend. Uruchomienie: `uvicorn app.main:app`."""
 from __future__ import annotations
 
+import mimetypes
 from datetime import date as Date
 
 import httpx
@@ -23,6 +24,10 @@ from app.schemas import (
     TerrainResponse,
 )
 from app.sources import NoData, SourceError, uldk
+
+# Windows bierze typy plików z rejestru i często nie zna tych rozszerzeń.
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("font/woff2", ".woff2")
 
 app = FastAPI(
     title="KOWR – Zatrzymaj wodę, chroń plony",

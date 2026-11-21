@@ -146,7 +146,7 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 
 **Usługi płatne.** Aplikacja nie korzysta z żadnej płatnej usługi. Jedyne ograniczenie to Open-Meteo: darmowe API jest tylko do użytku niekomercyjnego. Przy wdrożeniu komercyjnym trzeba albo wykupić plan (archiwum pogody wymaga planu „API Professional”, 99 EUR miesięcznie; „API Standard” za 29 EUR go nie obejmuje), albo zostać przy NASA POWER, które jest bezpłatne bez ograniczeń i już działa jako drugi dostawca.
 
-**AI.** W działającej aplikacji nie ma modelu AI ani uczenia maszynowego: liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). Model prognozy NDMI opisany w `specyfikacja_treningu_ml_kowr.md` nie jest częścią tego prototypu. AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `outputs/assety_gleby/` wygenerowało narzędzie ImageGen (opis w `outputs/assety_gleby/README.md`). Ilustracje są umowne i tak są podpisane w raporcie.
+**AI.** W działającej aplikacji nie ma modelu AI ani uczenia maszynowego: liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). Model prognozy NDMI opisany w `outputs/specyfikacja_treningu_ml_kowr.md` nie jest częścią tego prototypu. AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `outputs/assety_gleby/` wygenerowało narzędzie ImageGen (opis w `outputs/assety_gleby/README.md`). Ilustracje są umowne i tak są podpisane w raporcie.
 
 ## Jak liczony jest wynik
 

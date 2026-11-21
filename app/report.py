@@ -80,7 +80,7 @@ from app.textfmt import fmt, fmt_date, plural_days
 WARSAW = ZoneInfo("Europe/Warsaw")
 MIN_ANALYSIS_DATE = date(2005, 1, 1)
 SERIES_DAYS_FOR_CHART = 180
-NOT_CONNECTED = "Ta część analizy wymaga bilansu wodnego, a ten nie powstał."
+NOT_CONNECTED = "Tej części nie policzono, bo raport zatrzymał się na braku pogody."
 HYDROLOGY_NO_DATA = ("Brak danych hydrologicznych. Mapa cieków MPHP10k (Wody Polskie) udostępnia dane wektorowe przez WFS "
                      "tylko po zalogowaniu, a publiczna usługa WMS daje sam obraz, więc odległości do najbliższego cieku "
                      "nie policzono.")
@@ -482,8 +482,8 @@ def history_section(c: Computed) -> HistorySection:
         seasons.append(SeasonStress(**{**current, "max_depletion_pct_taw": round(current["max_depletion_pct_taw"], 0)}))
     with_stress = [r for r in past if r["stressed"]]
     text = [
-        f"Ten sam bilans policzono dla {len(past)} sezonów przed datą analizy, tak jakby co roku rosła tu "
-        f"{c.crop.name.lower()}. W okresie krytycznym dla plonu stres wodny wystąpił w {len(with_stress)} z {len(past)} sezonów."
+        f"Ten sam bilans policzono dla {len(past)} sezonów do daty analizy, tak jakby co roku uprawiano tu to samo "
+        f"({c.crop.name.lower()}). W okresie krytycznym dla plonu stres wodny wystąpił w {len(with_stress)} z {len(past)} sezonów."
     ]
     if with_stress:
         days = sorted(r["stress_days_critical"] for r in with_stress)
