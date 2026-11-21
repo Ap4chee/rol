@@ -45,6 +45,10 @@ body { background: var(--mantine-color-gray-0); }
 .moisture-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--mantine-color-dark-6); }
 
 @media (max-width: 48em) {
+  .field3d { display: flex; flex-direction: column; gap: 6px; }
+  .field3d-top, .field3d-actions, .field3d-info { position: static; }
+  .field3d-canvas { order: 2; }
+  .field3d-info { order: 3; }
   .profile-column { height: 400px; }
   .profile-column .layer-detail { display: none; }
 }
@@ -66,16 +70,14 @@ body { background: var(--mantine-color-gray-0); }
 .mantine-Accordion-root[data-variant="separated"] .mantine-Accordion-item { background: var(--mantine-color-white);
   border: 1px solid var(--mantine-color-gray-3); }
 
-/* model 3D pola */
-.field3d { position: relative; border-radius: var(--mantine-radius-lg); overflow: hidden;
-  background: radial-gradient(120% 90% at 50% 15%, #2f4a3a 0%, #17261e 60%, #0f1a14 100%); }
-.field3d-canvas { width: 100%; touch-action: none; animation: field-in .9s ease-out both; }
+/* model 3D pola: przezroczyste tło, stoi na tle strony */
+.field3d { position: relative; }
+.field3d-canvas { width: 100%; touch-action: pan-y; animation: field-in .8s ease-out both; }
 .field3d-canvas canvas { display: block; cursor: grab; }
 .field3d-canvas canvas:active { cursor: grabbing; }
-.field3d-top { position: absolute; top: 12px; left: 12px; }
-.field3d-actions { position: absolute; top: 12px; right: 12px; }
-.field3d-info { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 12px; border-radius: var(--mantine-radius-md);
-  color: #eef5ef; background: rgba(10, 20, 15, .62); backdrop-filter: blur(6px); max-width: 420px; }
+.field3d-top { position: absolute; top: 4px; left: 0; }
+.field3d-actions { position: absolute; top: 4px; right: 0; }
+.field3d-info { position: absolute; left: 0; right: 0; bottom: 0; max-width: 520px; }
 .report-map .map-canvas { height: 420px; }
 @keyframes field-in { from { opacity: 0; transform: scale(.94) translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .field3d-canvas { animation: none; } }

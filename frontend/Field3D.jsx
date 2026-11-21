@@ -1,28 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { mergeGeometries as mergeRaw } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Badge, Button, Group, Stack, Text } from '@mantine/core';
-import { IconArrowsMaximize, IconArrowsMinimize, IconRotate360 } from '@tabler/icons-react';
+import { IconArrowsMaximize, IconArrowsMinimize } from '@tabler/icons-react';
 import { number } from './model.js';
 
-const FIELD_SIZE = 10;            // najdłuższy bok działki w jednostkach sceny
-const MAX_PLANTS = 1400;
-const SOIL_COLORS = { sand: '#d2ad73', sandy_loam: '#b48552', loam: '#8f6640', silt_loam: '#7d6646', clay: '#6d4230' };
+const FIELD_SIZE = 10;     // dłuższy bok działki w jednostkach sceny
+const SOIL = {             // kolor bazowy i ziarno faktury dla klas uziarnienia
+  sand: ['#c9a774', 1.6], sandy_loam: ['#a88458', 1.2], loam: ['#7e5d3f', .9], silt_loam: ['#8b7457', .8], clay: ['#70483a', .6],
+};
 
-/** Kształt działki w metrach wokół środka (EPSG:4326 → lokalny układ równoodległościowy), przeskalowany do FIELD_SIZE. */
+// ---------- kształt działki ----------
+
+/** Obrys działki w metrach (EPSG:4326 → lokalny układ równoodległościowy), obrócony dłuższą osią wzdłuż X i przeskalowany. */
 function parcelShape(geometry) {
   const polygons = geometry?.type === 'Polygon' ? [geometry.coordinates] : geometry?.type === 'MultiPolygon' ? geometry.coordinates : [];
   const area = (ring) => Math.abs(ring.reduce((s, [x1, y1], i) => { const [x2, y2] = ring[(i + 1) % ring.length]; return s + x1 * y2 - x2 * y1; }, 0) / 2);
-  const polygon = polygons.sort((a, b) => area(b[0]) - area(a[0]))[0];
-  if (!polygon) {
-    const square = [[-5, -5], [5, -5], [5, 5], [-5, 5]];
-    return { outer: square, holes: [], assumed: true };
-  }
+  const polygon = [...polygons].sort((a, b) => area(b[0]) - area(a[0]))[0];
+  if (!polygon) return { outer: [[-5, -3.5], [5, -3.5], [5, 3.5], [-5, 3.5]], holes: [], assumed: true };
   const ring = polygon[0];
   const lon0 = ring.reduce((s, p) => s + p[0], 0) / ring.length, lat0 = ring.reduce((s, p) => s + p[1], 0) / ring.length;
   const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
-  const project = (r) => r.map(([lon, lat]) => [(lon - lon0) * kx, (lat - lat0) * ky]);
-  const rings = polygon.map(project);
+  let rings = polygon.map((r) => r.map(([lon, lat]) => [(lon - lon0) * kx, (lat - lat0) * ky]));
+  // główna oś (PCA) → obrót tak, żeby działka leżała poziomo na ekranie
+  const pts = rings[0];
+  const mx = pts.reduce((s, p) => s + p[0], 0) / pts.length, my = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  let cxx = 0, cyy = 0, cxy = 0;
+  pts.forEach(([x, y]) => { cxx += (x - mx) ** 2; cyy += (y - my) ** 2; cxy += (x - mx) * (y - my); });
+  const angle = .5 * Math.atan2(2 * cxy, cxx - cyy), c = Math.cos(-angle), s = Math.sin(-angle);
+  rings = rings.map((r) => r.map(([x, y]) => [(x - mx) * c - (y - my) * s, (x - mx) * s + (y - my) * c]));
   const xs = rings[0].map((p) => p[0]), ys = rings[0].map((p) => p[1]);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
   const scale = FIELD_SIZE / Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
@@ -39,75 +46,133 @@ function inside([x, y], ring) {
   return hit;
 }
 
-/** Wygląd uprawy w danej fazie: wysokość [jednostki sceny], kolory, kształt. Stylizacja, nie pomiar. */
-function cropLook(key, stage, month) {
+// ---------- faktury gleby (generowane w przeglądarce, bez plików) ----------
+
+function soilTexture(hex, grain, plowed = false) {
+  const size = 256, canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const base = new THREE.Color(hex);
+  ctx.fillStyle = `#${base.getHexString()}`;
+  ctx.fillRect(0, 0, size, size);
+  const shade = (k) => { const c = base.clone().multiplyScalar(k); return `rgb(${c.r * 255 | 0},${c.g * 255 | 0},${c.b * 255 | 0})`; };
+  for (let i = 0; i < 1400; i++) {           // plamy wilgoci i próchnicy
+    ctx.globalAlpha = .08;
+    ctx.fillStyle = shade(.6 + Math.random() * .7);
+    ctx.beginPath();
+    ctx.arc(Math.random() * size, Math.random() * size, 2 + Math.random() * 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i = 0; i < 5000 * grain; i++) {   // ziarna
+    ctx.globalAlpha = .5;
+    ctx.fillStyle = shade(.55 + Math.random() * .9);
+    const r = Math.random() * grain * 1.3;
+    ctx.fillRect(Math.random() * size, Math.random() * size, r, r);
+  }
+  if (plowed) {                               // bruzdy na powierzchni pola bez uprawy
+    ctx.globalAlpha = .18;
+    for (let y = 0; y < size; y += 16) { ctx.fillStyle = shade(.55); ctx.fillRect(0, y, size, 5); }
+  }
+  ctx.globalAlpha = 1;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(.35, .35);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+// ---------- rośliny ----------
+
+function paint(g, base, tip) {
+  const p = g.attributes.position, colors = [];
+  g.computeBoundingBox();
+  const { min, max } = g.boundingBox;
+  const a = new THREE.Color(base), b = new THREE.Color(tip), c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    c.copy(a).lerp(b, Math.min(1, Math.max(0, (p.getY(i) - min.y) / (max.y - min.y || 1))));
+    colors.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.deleteAttribute('uv');
+  return g;
+}
+
+/** Liść: zwężający się, wygięty pasek o wysokości 1, z kolorem od nasady do czubka. */
+function leaf(width, bend, base, tip, segments = 5) {
+  const g = new THREE.PlaneGeometry(width, 1, 1, segments).translate(0, .5, 0);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    p.setX(i, p.getX(i) * (1 - y * .8));
+    p.setZ(i, bend * y * y);
+  }
+  g.computeVertexNormals();
+  return paint(g, base, tip);
+}
+
+// three.js łączy tylko siatki tego samego rodzaju, więc sprowadzamy wszystkie do nieindeksowanych
+const mergeGeometries = (list) => mergeRaw(list.map((g) => (g.index ? g.toNonIndexed() : g)));
+const solid = (g, color) => paint(g, color, color);
+const around = (g, angle, tilt = 0, y = 0) => g.rotateX(tilt).rotateY(angle).translate(0, y, 0);
+
+/** Geometria jednej rośliny (wysokość 1, skalowana na instancji) i jej wysokość w scenie dla uprawy i fazy. Stylizacja, nie pomiar. */
+function cropModel(key, stage, month) {
   const cereal = key === 'winter_wheat' || key === 'spring_barley';
-  const afterHarvest = stage === 'off_season' && month >= 7 && month <= 10;
-  if (stage === 'off_season') return cereal && afterHarvest ? { kind: 'stubble', h: .07, color: '#cdb57a' } : { kind: 'bare' };
+  const tuft = (n, w, bend, base, tip) => mergeGeometries(Array.from({ length: n }, (_, i) =>
+    around(leaf(w, bend * (.7 + .3 * (i % 2)), base, tip).scale(1, .75 + .25 * ((i * 7) % 3) / 2, 1), i * 2.4 + .3, .12 * (i % 3))));
+  if (stage === 'off_season') {
+    if (cereal && month >= 7 && month <= 10) {
+      return { h: .09, density: .55, label: 'ściernisko po zbiorze', geometry: mergeGeometries([0, 1, 2].map((i) =>
+        solid(new THREE.CylinderGeometry(.006, .008, 1, 4).translate(.03 * i, .5, .02 * (i % 2)), '#d8c48c'))) };
+    }
+    return { bare: true, h: 0, label: 'pole bez uprawy' };
+  }
   if (cereal) {
-    if (stage === 'dormant' || stage === 'initial') return { kind: 'blades', h: .16, color: '#5f9e3c' };
-    if (stage === 'development') return { kind: 'blades', h: .42, color: '#4f9a35' };
-    if (stage === 'mid') return { kind: 'cereal', h: .7, color: '#6fa83a', ear: '#a9c45a' };
-    return { kind: 'cereal', h: .72, color: '#c9a54a', ear: '#dfbf5e' };
+    if (stage === 'dormant' || stage === 'initial') return { h: .16, density: 1, geometry: tuft(3, .035, .25, '#2f5d20', '#6fae45') };
+    if (stage === 'development') return { h: .42, density: 1, geometry: tuft(4, .035, .3, '#2c5a1e', '#74b04a') };
+    const ripe = stage === 'late';
+    const stem = solid(new THREE.CylinderGeometry(.006, .009, 1, 4).translate(0, .5, 0), ripe ? '#cfae5c' : '#5f9a3a');
+    const ear = solid(new THREE.CylinderGeometry(.016, .01, .16, 6).translate(0, 1.06, 0), ripe ? '#e2c370' : '#a7c25c');
+    const leaves = tuft(2, .03, .35, ripe ? '#9c8442' : '#2f5f22', ripe ? '#d5b462' : '#6aa940').scale(1, .6, 1);
+    return { h: .72, density: 1, geometry: mergeGeometries([stem, ear, leaves]) };
   }
   if (key === 'maize') {
-    if (stage === 'initial') return { kind: 'blades', h: .18, color: '#5aa33a' };
-    if (stage === 'development') return { kind: 'maize', h: .8, color: '#4e9a33' };
-    if (stage === 'mid') return { kind: 'maize', h: 1.6, color: '#3f8d2d', ear: '#e3c75a' };
-    return { kind: 'maize', h: 1.55, color: '#bfa060', ear: '#d6b45a' };
+    if (stage === 'initial') return { h: .2, density: .6, geometry: tuft(4, .06, .35, '#2f6a24', '#6fb048') };
+    const ripe = stage === 'late';
+    const [baseC, tipC] = ripe ? ['#8c7448', '#cdb072'] : ['#2b5f20', '#5fa63b'];
+    const parts = [solid(new THREE.CylinderGeometry(.018, .026, 1, 6).translate(0, .5, 0), ripe ? '#a99060' : '#4b8a30')];
+    [.22, .36, .5, .64, .78].forEach((y, i) => parts.push(around(leaf(.09, .45, baseC, tipC).scale(1, .55, 1), i * 2.5, -.9, y)));
+    if (stage !== 'development') {
+      parts.push(solid(new THREE.ConeGeometry(.03, .14, 5).translate(0, 1.06, 0), '#c9b27a'));
+      parts.push(solid(new THREE.CylinderGeometry(.026, .022, .14, 6).rotateZ(.35).translate(.04, .55, 0), ripe ? '#b9965a' : '#9cc16a'));
+    }
+    return { h: stage === 'development' ? .8 : 1.5, density: .22, geometry: mergeGeometries(parts) };
   }
-  if (key === 'winter_rapeseed') {
-    if (stage === 'mid') return { kind: 'rapeseed', h: .95, color: '#5f9a3a', ear: '#f2d43a' };
-    if (stage === 'late') return { kind: 'rapeseed', h: .95, color: '#8d9a4a', ear: '#9a9a55' };
-    return { kind: 'bush', h: .16, color: '#4f8f3d' };
+  if (key === 'winter_rapeseed' && (stage === 'mid' || stage === 'late')) {
+    const flower = stage === 'mid' ? '#f3d23a' : '#8a8f48';
+    const parts = [solid(new THREE.CylinderGeometry(.008, .012, 1, 4).translate(0, .5, 0), '#5d8f3a'),
+      around(leaf(.08, .3, '#2f5d27', '#5e9a42').scale(1, .35, 1), 0, -.7, .15),
+      around(leaf(.08, .3, '#2f5d27', '#5e9a42').scale(1, .35, 1), 3, -.7, .25)];
+    for (let i = 0; i < 6; i++) parts.push(solid(new THREE.IcosahedronGeometry(.035, 0).translate(Math.cos(i) * .04, .95 + (i % 3) * .04, Math.sin(i) * .04), flower));
+    return { h: 1, density: .9, geometry: mergeGeometries(parts) };
   }
-  if (key === 'grassland') return { kind: 'blades', h: stage === 'dormant' ? .14 : .3, color: stage === 'dormant' ? '#7d9a5a' : '#58a63e' };
-  // ziemniak, burak: kępy liści
-  if (stage === 'initial' || stage === 'dormant') return { kind: 'bush', h: .14, color: '#5aa040' };
-  if (stage === 'late') return { kind: 'bush', h: .38, color: '#a3a548' };
-  return { kind: 'bush', h: .45, color: '#3f9a3a' };
+  if (key === 'grassland') {
+    const dry = stage === 'dormant';
+    return { h: dry ? .12 : .26, density: 1.3, geometry: tuft(5, .03, .35, dry ? '#4d5f34' : '#2e6322', dry ? '#97a76a' : '#7ec052') };
+  }
+  // rozeta liści: ziemniak, burak, rzepak przed kwitnieniem
+  const yellow = stage === 'late';
+  const n = key === 'potato' ? 8 : 7;
+  const parts = Array.from({ length: n }, (_, i) =>
+    around(leaf(.26, .55, yellow ? '#6d6a2c' : '#24561f', yellow ? '#b6ad4c' : '#5fa344'), i * (Math.PI * 2 / n), -.75 - (i % 2) * .25));
+  const h = stage === 'initial' || stage === 'dormant' ? .16 : key === 'winter_rapeseed' ? .2 : .42;
+  return { h, density: .35, geometry: mergeGeometries(parts) };
 }
 
-function plantGeometries(look) {
-  const parts = [];
-  if (look.kind === 'cereal') {
-    parts.push([new THREE.CylinderGeometry(.012, .016, 1, 4).translate(0, .5, 0), look.color]);
-    parts.push([new THREE.CylinderGeometry(.03, .022, .16, 5).translate(0, 1.04, 0), look.ear]);
-  } else if (look.kind === 'maize') {
-    parts.push([new THREE.CylinderGeometry(.025, .035, 1, 5).translate(0, .5, 0), look.color]);
-    const leaf = new THREE.BoxGeometry(.32, .012, .07).translate(.16, 0, 0);
-    const leaves = [.35, .55, .75].map((y, i) => leaf.clone().rotateZ(-.5).rotateY(i * 2.1).translate(0, y, 0));
-    parts.push([mergeGeometries(leaves), look.color]);
-    if (look.ear) parts.push([new THREE.CylinderGeometry(.03, .03, .12, 5).translate(.04, .62, 0), look.ear]);
-  } else if (look.kind === 'rapeseed') {
-    parts.push([new THREE.CylinderGeometry(.015, .02, 1, 4).translate(0, .5, 0), look.color]);
-    parts.push([new THREE.IcosahedronGeometry(.09, 0).scale(1, .6, 1).translate(0, 1, 0), look.ear]);
-  } else if (look.kind === 'bush') {
-    parts.push([new THREE.IcosahedronGeometry(.5, 0).scale(1, .8, 1).translate(0, .4, 0), look.color]);
-  } else if (look.kind === 'blades' || look.kind === 'stubble') {
-    parts.push([new THREE.ConeGeometry(.035, 1, 3).translate(0, .5, 0), look.color]);
-  }
-  return parts;
-}
-
-function mergeGeometries(list) {
-  const positions = [], normals = [], indices = [];
-  let offset = 0;
-  for (const g of list) {
-    const gi = g.index ? g : g.toNonIndexed();
-    positions.push(...gi.attributes.position.array);
-    normals.push(...gi.attributes.normal.array);
-    if (gi.index) indices.push(...Array.from(gi.index.array, (i) => i + offset));
-    offset += gi.attributes.position.count;
-  }
-  const merged = new THREE.BufferGeometry();
-  merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  if (indices.length) merged.setIndex(indices);
-  return merged;
-}
-
-const layerDepth = (cm) => .2 + cm * .009;   // grubość w scenie: cienkie warstwy też widoczne
+const layerDepth = (cm) => .18 + cm * .009;   // grubość warstwy w scenie (cienkie warstwy też widoczne)
+const GAP = .3;                                // odstęp między rozłożonymi warstwami
+const rootDepthCm = (report) => (report.soil?.root_depth_m ?? report.crop.root_depth_m ?? 0) * 100;
 
 export function Field3D({ report, height = 420 }) {
   const mount = useRef(null);
@@ -117,114 +182,145 @@ export function Field3D({ report, height = 420 }) {
   const layers = report.soil?.layers ?? [];
   const crop = report.crop;
   const month = Number(report.analysis_date.slice(5, 7));
-  const look = cropLook(crop.key, crop.stage_key, month);
-  const shapeInfo = parcelShape(report.parcel?.geometry);
+  const label = cropModel(crop.key, crop.stage_key, month).label;
+  const assumed = !report.parcel?.geometry;
+  const rootCm = rootDepthCm(report);
 
   useEffect(() => {
     const el = mount.current;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const model = cropModel(crop.key, crop.stage_key, month);
+    const shapeInfo = parcelShape(report.parcel?.geometry);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(el.clientWidth, height);
+    renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     el.appendChild(renderer.domElement);
+
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(35, el.clientWidth / height, .1, 200);
-    camera.position.set(11, 8, 12);
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.enablePan = false;
-    controls.minDistance = 7;
-    controls.maxDistance = 40;
-    controls.maxPolarAngle = Math.PI * .62;
-    controls.autoRotate = !reduced;
-    controls.autoRotateSpeed = .9;
-    controls.target.set(0, -1.2, 0);
-    scene.add(new THREE.HemisphereLight('#f4fbff', '#5a4a3a', 1.6));
-    const sun = new THREE.DirectionalLight('#fff4dc', 2.2);
-    sun.position.set(8, 14, 6);
-    scene.add(sun);
+    scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 1.5));
+    const sun = new THREE.DirectionalLight('#fff3df', 2.4);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 60 });
+    sun.shadow.bias = -.0005;
+    scene.add(sun, sun.target);
 
     const shape = new THREE.Shape(shapeInfo.outer.map(([x, y]) => new THREE.Vector2(x, y)));
     shapeInfo.holes.forEach((h) => shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y)))));
 
     // warstwy gleby: wytłoczony kształt działki, od powierzchni w dół
-    const soilGroup = new THREE.Group();
-    scene.add(soilGroup);
-    const meshes = [];
-    let top = 0;
     const soil = layers.length ? layers : [{ top_cm: 0, bottom_cm: 30, texture_key: 'loam' }];
+    const meshes = [];
+    let depthSum = 0;
     soil.forEach((layer, i) => {
       const depth = layerDepth(layer.bottom_cm - layer.top_cm);
-      const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }).rotateX(Math.PI / 2);
-      const material = new THREE.MeshLambertMaterial({ color: SOIL_COLORS[layer.texture_key] ?? '#8a6a48' });
-      const mesh = new THREE.Mesh(geom, material);
-      mesh.userData = { index: i, restY: -top, explodedY: -top - i * .28 };
-      mesh.position.y = 0;
-      soilGroup.add(mesh);
+      const [color, grain] = SOIL[layer.texture_key] ?? ['#806048', 1];
+      const tint = new THREE.Color(color).multiplyScalar(layer.top_cm < 30 ? .78 : 1);   // próchnica przyciemnia wierzch
+      const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: .015, bevelSize: .015, bevelSegments: 1 })
+        .rotateX(Math.PI / 2);
+      const mesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ map: soilTexture(`#${tint.getHexString()}`, grain, i === 0 && model.bare) }));
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      mesh.userData = { index: i, restY: -depthSum, explodedY: -depthSum - i * GAP };
+      mesh.position.y = reduced ? mesh.userData.explodedY : mesh.userData.restY;
+      scene.add(mesh);
       meshes.push(mesh);
-      top += depth;
+      depthSum += depth;
     });
-    // linia głębokości korzeni
-    const rootCm = (report.soil?.root_depth_m ?? crop.root_depth_m ?? 0) * 100;
-    let rootLine = null;
-    if (rootCm > 0 && layers.length) {
-      const pts = shapeInfo.outer.map(([x, y]) => new THREE.Vector3(x * 1.04, 0, y * 1.04));
-      rootLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
-        new THREE.LineDashedMaterial({ color: '#e5f7a8', dashSize: .3, gapSize: .2 }));
-      rootLine.computeLineDistances();
-      scene.add(rootLine);
-    }
-    const rootY = (exp) => {
-      let y = 0;
+    const bottom = -depthSum - (soil.length - 1) * GAP;
+
+    // miękki cień pod modelem, żeby stał na tle strony
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: .14 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = bottom - .6;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // linia zasięgu korzeni
+    const rootY = (open) => {
       for (const mesh of meshes) {
         const layer = soil[mesh.userData.index];
         if (rootCm >= layer.bottom_cm) continue;
         const frac = Math.max(0, (rootCm - layer.top_cm) / (layer.bottom_cm - layer.top_cm));
-        y = (exp ? mesh.userData.explodedY : mesh.userData.restY) - frac * layerDepth(layer.bottom_cm - layer.top_cm);
-        return y;
+        return (open ? mesh.userData.explodedY : mesh.userData.restY) - frac * layerDepth(layer.bottom_cm - layer.top_cm);
       }
-      return exp ? meshes.at(-1).userData.explodedY : meshes.at(-1).userData.restY;
+      return open ? meshes.at(-1).userData.explodedY : meshes.at(-1).userData.restY;
     };
+    let rootLine = null;
+    if (rootCm > 0 && layers.length) {
+      const pts = shapeInfo.outer.map(([x, y]) => new THREE.Vector3(x * 1.03, 0, y * 1.03));
+      rootLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineDashedMaterial({ color: '#2c7a40', dashSize: .25, gapSize: .15 }));
+      rootLine.computeLineDistances();
+      rootLine.position.y = rootY(true);
+      scene.add(rootLine);
+    }
 
     // rośliny: rzędy w granicach działki
-    const plantGroup = new THREE.Group();
-    scene.add(plantGroup);
     const spots = [];
     const xs = shapeInfo.outer.map((p) => p[0]), ys = shapeInfo.outer.map((p) => p[1]);
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    if (look.kind !== 'bare') {
-      const bushy = look.kind === 'bush' || look.kind === 'maize';
-      const step = Math.sqrt((maxX - minX) * (maxY - minY) / MAX_PLANTS) * (bushy ? 1.5 : 1);
-      for (let x = minX + step / 2; x < maxX; x += step * (bushy ? 1.4 : 1)) {
-        for (let y = minY + step / 2; y < maxY; y += step * (bushy ? .8 : 1)) {
-          const p = [x + (Math.random() - .5) * step * .3, y + (Math.random() - .5) * step * .3];
+    let plants = null;
+    if (!model.bare) {
+      const target = 9000 * model.density;
+      const step = Math.sqrt((maxX - minX) * (maxY - minY) / target);
+      const rowGap = step * (model.density < .5 ? 1.8 : 1.15), along = step / (model.density < .5 ? 1.8 : 1.15);
+      for (let y = minY + rowGap / 2; y < maxY; y += rowGap) {
+        for (let x = minX + along / 2; x < maxX; x += along) {
+          const p = [x + (Math.random() - .5) * along * .8, y + (Math.random() - .5) * rowGap * .25];
           if (inside(p, shapeInfo.outer) && !shapeInfo.holes.some((h) => inside(p, h))) spots.push(p);
         }
       }
+      plants = new THREE.InstancedMesh(model.geometry, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), spots.length);
+      plants.castShadow = true;
+      plants.receiveShadow = true;
+      const tint = new THREE.Color();
+      spots.forEach((_, i) => plants.setColorAt(i, tint.setScalar(.82 + Math.random() * .3)));
+      scene.add(plants);
     }
-    const plantScale = look.kind === 'bush' ? Math.min(.9, Math.sqrt((maxX - minX) * (maxY - minY) / MAX_PLANTS) * 1.3) : 1;
-    const instanced = plantGeometries(look).map(([geometry, color]) => {
-      const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshLambertMaterial({ color }), spots.length);
-      plantGroup.add(mesh);
-      return mesh;
-    });
-    const seeds = spots.map(() => [Math.random() * Math.PI * 2, .8 + Math.random() * .4]);
+    const seeds = spots.map(() => [Math.random() * Math.PI * 2, .8 + Math.random() * .4, (Math.random() - .5) * .25, (Math.random() - .5) * .25]);
     const dummy = new THREE.Object3D();
-    const setPlants = (grow, sway) => {
+    const grow = (t) => {
+      if (!plants) return;
       spots.forEach(([x, y], i) => {
-        const [rot, size] = seeds[i];
-        const delay = (x - minX) / (maxX - minX + .001) * .5;
-        const g = Math.min(1, Math.max(0, (grow - delay) / .5));
-        const h = look.h * size * (1 - (1 - g) ** 3);
-        dummy.position.set(x, .001, y);
-        dummy.rotation.set(Math.sin(sway + x * .6) * .05, rot, Math.cos(sway + y * .6) * .05);
-        dummy.scale.set(plantScale * (look.kind === 'bush' ? size : 1), Math.max(h, .0001), plantScale * (look.kind === 'bush' ? size : 1));
+        const [rot, size, tx, tz] = seeds[i];
+        const k = Math.min(1, Math.max(0, (t - (x - minX) / (maxX - minX + .001) * .6) / .7));
+        dummy.position.set(x, 0, y);
+        dummy.rotation.set(tx, rot, tz);
+        dummy.scale.set(size * .9 + .1, Math.max(model.h * size * (1 - (1 - k) ** 3), .0001), size * .9 + .1);
         dummy.updateMatrix();
-        instanced.forEach((m) => m.setMatrixAt(i, dummy.matrix));
+        plants.setMatrixAt(i, dummy.matrix);
       });
-      instanced.forEach((m) => { m.instanceMatrix.needsUpdate = true; });
+      plants.instanceMatrix.needsUpdate = true;
     };
-    setPlants(reduced ? 2 : 0, 0);
+    grow(reduced ? 9 : 0);
+
+    // kamera: stały widok z przodu i z lekkiej góry, dopasowany do modelu
+    const camera = new THREE.PerspectiveCamera(30, el.clientWidth / height, .1, 200);
+    const center = new THREE.Vector3(0, (model.h + bottom) / 2 - .15, 0);
+    const fit = () => {
+      const halfW = (maxX - minX) / 2 + .6, halfH = (model.h - bottom) / 2 + 1;
+      const vFov = THREE.MathUtils.degToRad(camera.fov / 2);
+      const hFov = Math.atan(Math.tan(vFov) * camera.aspect);
+      const dist = Math.max(halfH / Math.tan(vFov), halfW / Math.tan(hFov)) * 1.18 + (maxY - minY) / 2;
+      camera.position.copy(center).add(new THREE.Vector3(.3, .45, 1).normalize().multiplyScalar(dist));
+      camera.lookAt(center);
+    };
+    fit();
+    sun.position.set(6, center.y + 16, 8);
+    sun.target.position.copy(center);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.copy(center);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.enableZoom = false;
+    controls.minPolarAngle = Math.PI * .18;
+    controls.maxPolarAngle = Math.PI * .5;
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(9, 9);
@@ -239,28 +335,27 @@ export function Field3D({ report, height = 420 }) {
       camera.aspect = el.clientWidth / height;
       camera.updateProjectionMatrix();
       renderer.setSize(el.clientWidth, height);
+      fit();
+      controls.update();
     });
     resize.observe(el);
 
     const clock = new THREE.Clock();
-    let lastHover = null, frame = 0;
+    let lastHover = null, frame = 0, grown = reduced;
     const loop = () => {
       frame = requestAnimationFrame(loop);
-      const t = reduced ? 10 : clock.getElapsedTime();
+      const t = clock.getElapsedTime();
       const open = state.current.exploded;
       meshes.forEach((mesh) => {
-        const delay = .5 + mesh.userData.index * .18;
-        const k = Math.min(1, Math.max(0, (t - delay) / .9));
-        const target = open ? mesh.userData.explodedY : mesh.userData.restY;
-        const start = t < 3 ? mesh.userData.restY : mesh.position.y;
-        mesh.position.y = t < 3 ? start + (target - start) * (1 - (1 - k) ** 3) : mesh.position.y + (target - mesh.position.y) * .08;
+        const target = open && (reduced || t > .4 + mesh.userData.index * .15) ? mesh.userData.explodedY : mesh.userData.restY;
+        mesh.position.y += (target - mesh.position.y) * (reduced ? 1 : .07);
       });
-      if (rootLine) rootLine.position.y = rootLine.position.y + (rootY(open && t > 1) - rootLine.position.y) * .08;
-      if (t < 4 || !reduced) setPlants(t - .2, t * 1.4);
+      if (rootLine) rootLine.position.y += (rootY(open) - rootLine.position.y) * .07;
+      if (!grown) { grow(t * 1.2); grown = t > 2; }
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(meshes)[0]?.object.userData.index ?? null;
       if (hit !== lastHover) {
-        meshes.forEach((m, i) => m.material.emissive.set(i === hit ? '#3a3a20' : '#000000'));
+        meshes.forEach((m, i) => m.material.emissive.set(i === hit ? '#2a2414' : '#000000'));
         lastHover = hit;
         setHovered(hit);
         renderer.domElement.style.cursor = hit == null ? 'grab' : 'pointer';
@@ -275,7 +370,7 @@ export function Field3D({ report, height = 420 }) {
       controls.dispose();
       renderer.domElement.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('pointerleave', onLeave);
-      scene.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
+      scene.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose?.(); });
       renderer.dispose();
       el.removeChild(renderer.domElement);
     };
@@ -290,22 +385,20 @@ export function Field3D({ report, height = 420 }) {
   return <div className="field3d">
     <div ref={mount} className="field3d-canvas" style={{ height }} role="img"
       aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} warstw gleby`}/>
-    <Group className="field3d-top no-print" gap={6}>
-      <Badge variant="white" color="dark">{crop.name} · {crop.stage_name ?? 'faza nieznana'}</Badge>
-      {shapeInfo.assumed && <Badge variant="white" color="gray">kształt umowny (raport dla punktu)</Badge>}
+    <Group className="field3d-top" gap={6}>
+      <Badge variant="default" size="lg">{crop.name} · {label ?? crop.stage_name ?? 'faza nieznana'}</Badge>
+      {assumed && <Badge variant="default" color="gray">kształt umowny (raport dla punktu)</Badge>}
     </Group>
-    <Stack className="field3d-info" gap={4}>
+    <Button className="field3d-actions no-print" size="compact-sm" variant="default"
+      leftSection={exploded ? <IconArrowsMinimize size={14}/> : <IconArrowsMaximize size={14}/>} onClick={toggle}>
+      {exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
+    <Stack className="field3d-info" gap={2}>
       {active ? <>
         <Text fw={700} size="sm">{active.top_cm}–{active.bottom_cm} cm · {active.texture_label}</Text>
-        <Text size="xs">{number(active.available_water_mm)} mm wody dostępnej · pojemność polowa {number(active.field_capacity_vol_pct)}%</Text>
-        <Text size="xs">piasek {number(active.sand_pct)}% · pył {number(active.silt_pct)}% · ił {number(active.clay_pct)}%</Text>
-      </> : <Text size="xs">{layers.length ? 'Najedź na warstwę gleby. Przeciągnij, żeby obrócić.' : 'Brak profilu gleby: warstwa umowna.'}
-        {' '}Przerywana linia: zasięg korzeni.</Text>}
+        <Text size="xs" c="dimmed">{number(active.available_water_mm)} mm wody dostępnej · pojemność polowa {number(active.field_capacity_vol_pct)}%
+          {' '}· piasek {number(active.sand_pct)}%, pył {number(active.silt_pct)}%, ił {number(active.clay_pct)}%</Text>
+      </> : <Text size="xs" c="dimmed">{layers.length ? `${layers.length} warstw gleby z SoilGrids: najedź na warstwę, żeby zobaczyć skład.` : 'Brak profilu gleby: warstwa umowna.'}
+        {rootCm > 0 && ` Zielona przerywana linia: korzenie do ${number(rootCm)} cm.`}</Text>}
     </Stack>
-    <Group className="field3d-actions no-print" gap={6}>
-      <Button size="compact-sm" variant="white" color="dark" leftSection={exploded ? <IconArrowsMinimize size={14}/> : <IconArrowsMaximize size={14}/>}
-        onClick={toggle}>{exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
-      <IconRotate360 size={18} color="white" aria-hidden="true"/>
-    </Group>
   </div>;
 }
