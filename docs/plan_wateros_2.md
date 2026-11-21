@@ -104,16 +104,8 @@ Wszystko mieści się na jednym ekranie laptopa, bez przewijania.
   - kiedy,
   - dlaczego na tym polu (liczby z raportu),
   - pewność.
-- **Ocena działania** („RSI” ze szkicu; zakładam, że chodzi o zwrot z działania, czyli ROI). Wycena w złotówkach wymagałaby cen, plonów i kosztów, których nie mamy z otwartych danych. Dlatego ocena jest jakościowa, z tabeli przy regułach:
-
-  | Kryterium | Skala |
-  |---|---|
-  | Koszt | niski / średni / wysoki |
-  | Nakład pracy | jednorazowo / co sezon |
-  | Kiedy działa | od razu / w tym sezonie / po latach |
-  | Wpływ na wodę | mały / średni / duży, a gdzie się da: mm z bilansu (np. „ogranicza parowanie o ok. X mm w okresie bez okrywy”) |
-
-  Sortowanie: „szybkie i tanie najpierw”.
+- **Ocena rekomendacji dla RSI** (recursive self-improvement modelu ML): przy każdej karcie przyciski „Pomogło” / „Nie pomogło” / „Nie zrobiłem”, z datą wykonania. Ocena trafia do zbioru treningowego jako etykieta: (stan działki w dniu rekomendacji, działanie, wynik). Wynik mierzymy niezależnie od deklaracji rolnika: zmiana NDMI z Sentinel-2 i zapasu wody z bilansu w kolejnych 2–4 tygodniach wobec podobnych pól bez działania. Model okresowo trenuje się na tych etykietach i zmienia kolejność oraz pewność rekomendacji. To pętla samodoskonalenia.
+  - **Uczciwie:** dziś aplikacja nie ma wytrenowanego modelu (patrz [brief_model_ai.md](brief_model_ai.md)), a oceny wymagają backendu, który je zbiera. Na hackathon pokazujemy zbieranie ocen i opis pętli. Nie pokazujemy animacji „modelu, który się uczy”, bo byłaby nieprawdziwa (AGENTS.md: wynik liczony z danych, bez pozornej precyzji).
 - **Status u rolnika:** przyciski „Zrobione” / „Nie dotyczy” zapisywane w przeglądarce, a pulpit pokazuje tylko otwarte działania. Bez kont i bez danych osobowych.
 
 ### 3.3 Gleba

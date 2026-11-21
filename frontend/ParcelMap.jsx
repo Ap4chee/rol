@@ -19,12 +19,14 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
   pick.current = onPick;
   const [base, setBase] = useState('orto');
   const [boundaries, setBoundaries] = useState(Boolean(onPick));
+  const focus = !onPick && Boolean(parcel?.geometry);
   const ol = window.ol;
 
   useEffect(() => {
     if (!ol) return;
     const parcelSource = new ol.source.Vector();
     const terrainSource = new ol.source.Vector();
+    const maskSource = new ol.source.Vector();
     const orto = new ol.layer.Tile({ minZoom: 9, source: new ol.source.TileWMS({
       url: 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution',
       params: { LAYERS: 'Raster', FORMAT: 'image/jpeg', VERSION: '1.3.0' },
@@ -41,13 +43,16 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
       target: target.current,
       controls: defaults({ attributionOptions: { collapsible: false } }),
       layers: [osm, orto, borders, new ol.layer.Vector({
+        source: maskSource,
+        style: new ol.style.Style({ fill: new ol.style.Fill({ color: 'rgba(12, 22, 17, .74)' }) }),
+      }), new ol.layer.Vector({
         source: parcelSource,
-        style: new ol.style.Style({
+        style: [new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,241,162,.35)', width: 9 }) }), new ol.style.Style({
           stroke: new ol.style.Stroke({ color: '#fff1a2', width: 3 }),
           fill: new ol.style.Fill({ color: 'rgba(255,241,162,.18)' }),
           image: new ol.style.Circle({ radius: 6, fill: new ol.style.Fill({ color: '#205338' }),
             stroke: new ol.style.Stroke({ color: '#fff', width: 2 }) }),
-        }),
+        })],
       }), new ol.layer.Vector({ source: terrainSource, style: (f) => terrainStyle(ol, f) })],
       view: new ol.View({ center: ol.proj.fromLonLat([19.4, 52.0]), zoom: 6, maxZoom: 20 }),
     });
@@ -55,7 +60,7 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
       const [lon, lat] = ol.proj.toLonLat(coordinate);
       pick.current?.({ lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) });
     });
-    instance.current = { map, osm, orto, borders, parcelSource, terrainSource, format: new ol.format.GeoJSON() };
+    instance.current = { map, osm, orto, borders, parcelSource, terrainSource, maskSource, format: new ol.format.GeoJSON() };
     return () => { instance.current = null; map.setTarget(undefined); map.dispose(); };
   }, [ol]);
 
@@ -71,13 +76,28 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     const data = instance.current;
     if (!data) return;
     data.parcelSource.clear();
+    data.maskSource.clear();
     const geometry = parcel?.geometry ?? (point ? { type: 'Point', coordinates: [point.lon, point.lat] } : null);
     if (!geometry) return;
     const feature = data.format.readFeature({ type: 'Feature', geometry },
       { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
     data.parcelSource.addFeature(feature);
-    data.map.getView().fit(feature.getGeometry().getExtent(), { maxZoom: 17, padding: [35, 35, 35, 35] });
-  }, [parcel, point, ol]);
+    const view = data.map.getView();
+    if (!focus) {
+      view.fit(feature.getGeometry().getExtent(), { maxZoom: 17, padding: [35, 35, 35, 35] });
+      return;
+    }
+    // Widok jednej działki: wszystko poza jej granicą przyciemnione (maska z dziurą w kształcie działki).
+    const polygons = feature.getGeometry().getType() === 'MultiPolygon'
+      ? feature.getGeometry().getPolygons() : [feature.getGeometry()];
+    const world = ol.proj.get('EPSG:3857').getExtent();
+    const outer = [[world[0], world[1]], [world[2], world[1]], [world[2], world[3]], [world[0], world[3]], [world[0], world[1]]];
+    data.maskSource.addFeature(new ol.Feature(new ol.geom.Polygon([outer, ...polygons.map((poly) => poly.getLinearRing(0).getCoordinates())])));
+    const extent = feature.getGeometry().getExtent();
+    view.setCenter(ol.extent.getCenter(extent));
+    view.setZoom(12);
+    view.fit(extent, { padding: [28, 28, 28, 28], duration: 1400, easing: ol.easing.easeOut });
+  }, [parcel, point, ol, focus]);
 
   useEffect(() => {
     const data = instance.current;
@@ -92,7 +112,7 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
 
   if (!ol) return <Alert color="gray">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</Alert>;
   return <div className="parcel-map">
-    <Group justify="space-between" gap="xs" mb="xs" className="no-print">
+    <Group justify="space-between" gap="xs" mb="xs" className="no-print" display={focus ? 'none' : undefined}>
       <SegmentedControl size="xs" value={base} onChange={setBase} aria-label="Podkład mapy"
         data={[{ value: 'orto', label: 'Zdjęcie lotnicze' }, { value: 'osm', label: 'Mapa' }]}/>
       <Switch size="sm" label="Granice działek" checked={boundaries} onChange={(event) => setBoundaries(event.currentTarget.checked)}/>

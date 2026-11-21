@@ -167,6 +167,7 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 | React i React DOM 19.3.1 | komponenty i renderowanie UI | MIT ([React](https://github.com/react/react/blob/main/LICENSE), `static/vendor/REACT_LICENSE.txt`) |
 | esbuild 0.28.2 | budowanie frontendu | MIT ([esbuild](https://github.com/evanw/esbuild/blob/main/LICENSE.md)) |
 | Mantine 9.8.2 (`@mantine/core`, `@mantine/hooks`) | komponenty interfejsu: formularze, karty, tabele, wykresy postępu | MIT ([Mantine](https://github.com/mantinedev/mantine/blob/master/LICENSE)) |
+| three.js 0.187.0 | model 3D działki: kształt z ULDK, warstwy gleby z SoilGrids, uprawa w fazie z dnia analizy (stylizacja) | MIT ([three.js](https://github.com/mrdoob/three.js/blob/dev/LICENSE)) |
 | Tabler Icons for React 3.52.0 | ikony interfejsu | MIT ([Tabler Icons](https://github.com/tabler/tabler-icons/blob/main/LICENSE)) |
 | Bricolage Grotesque, Inter, JetBrains Mono | samodzielnie serwowane fonty interfejsu | SIL Open Font License 1.1 (`static/design/fonts/*-OFL.txt`) |
 

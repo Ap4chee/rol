@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Accordion, Alert, Anchor, Badge, Box, Button, Card, Code, Divider, Grid, Group, Image, List, Paper, Progress, RingProgress,
+  Accordion, Alert, Anchor, SegmentedControl, Badge, Box, Button, Card, Code, Divider, Grid, Group, Image, List, Paper, Progress, RingProgress,
   SimpleGrid, Slider, Stack, Table, Text, ThemeIcon, Title,
 } from '@mantine/core';
 import {
   IconArrowLeft, IconCalendar, IconCloudRain, IconDeviceFloppy, IconDroplet, IconMapPin, IconMountain, IconPlant2,
   IconPrinter, IconRefresh, IconSatellite, IconStack2, IconTemperature, IconWaveSine,
 } from '@tabler/icons-react';
+import { Field3D } from './Field3D.jsx';
 import { ParcelMap } from './ParcelMap.jsx';
 import { api, Note, Paragraphs, Sparkline, Status, statusColor } from './ui.jsx';
 import { dateText, number, satelliteMeasurements, seasonMonths, waterPercent } from './model.js';
@@ -401,6 +402,7 @@ export function Report({ field, onSave, onEdit, onSatellite, saved }) {
   const terrain = topo.result ?? (topo.failure ? { status: 'error', reason: topo.failure } : report.terrain);
   const terrainActions = terrain.recommendations ?? [];
   const [notice, setNotice] = useState('');
+  const [view, setView] = useState('3d');
   const limited = report.water_status.spans_classes || report.water_status.soil_assumed;
 
   useEffect(() => { heading.current.focus({ preventScroll: true }); }, []);
@@ -423,7 +425,7 @@ export function Report({ field, onSave, onEdit, onSatellite, saved }) {
         </Group>
       </Group>
       <Grid gutter="lg" align="stretch">
-        <Grid.Col span={{ base: 12, md: 7 }}>
+        <Grid.Col span={{ base: 12, md: 5 }}>
           <Stack gap="sm" justify="center" h="100%">
             <Text size="sm" c="dimmed" tt="uppercase" fw={600} lts={0.5}>Raport wody na działce</Text>
             <Title order={1} tabIndex={-1} ref={heading}>{field.name}</Title>
@@ -439,8 +441,11 @@ export function Report({ field, onSave, onEdit, onSatellite, saved }) {
             {notice && <Text role="status" size="sm" c="forest.8">{notice}</Text>}
           </Stack>
         </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 5 }} className="report-map">
-          <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>
+        <Grid.Col span={{ base: 12, md: 7 }} className="report-map">
+          <SegmentedControl size="xs" mb="xs" className="no-print" value={view} onChange={setView}
+            data={[{ value: '3d', label: 'Model pola i gleby' }, { value: 'map', label: 'Zdjęcie lotnicze' }]}/>
+          {view === '3d' ? <Field3D report={report}/>
+            : <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>}
         </Grid.Col>
       </Grid>
     </Stack>
