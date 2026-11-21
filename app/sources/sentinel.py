@@ -6,10 +6,13 @@ Zasady jak w specyfikacji modelu ML (outputs/specyfikacja_treningu_ml_kowr.md, r
 - reflektancja = DN · scale + offset, a skala i offset pochodzą z `raster:bands` sceny
   (sprawdzone 21.11.2026: kolekcja `sentinel-2-c1-l2a` ma offset −0,1; starsze sceny w `sentinel-2-l2a` offset 0),
 - wyjątek: w `sentinel-2-l2a` sceny z bazą przetwarzania od 04.00 (2022 i ponownie przetworzone starsze) mają
-  przesunięcie 1000 DN już odjęte w pikselach (`earthsearch:boa_offset_applied = true`), choć `raster:bands`
-  nadal podaje offset −0,1. Wtedy offset = 0. Sprawdzone 22.11.2026 na tej samej scenie w obu kolekcjach
-  (`scripts/check_sentinel_offset.py`, 3.06.2023, kafel 34UEB: B8A 5108 DN w c1 i 4108 DN w l2a);
-  bez tego NDMI wychodzi zawyżone o ok. 0,2, a NDVI zwykle nie powstaje (czerwień ujemna),
+  przesunięcie 1000 DN już odjęte w pikselach, choć `raster:bands` nadal podaje offset −0,1. Dla tej kolekcji
+  offset = 0. Flaga `earthsearch:boa_offset_applied` tego nie rozstrzyga: z 1570 scen z 2022 r. (70 obszarów
+  w Polsce) 92 miały `false`, a ich piksele też były już po korekcie (91 z 92 dawało reflektancję o 0,1 za niską).
+  Sprawdzone 22.11.2026 na tej samej scenie w obu kolekcjach (`scripts/check_sentinel_offset.py`, 3.06.2023,
+  kafel 34UEB: B8A 5108 DN w c1 i 4108 DN w l2a) oraz na sąsiednich kaflach tego samego przelotu (10.05.2022:
+  B11 1911 DN z flagą `false` i 1908 DN z flagą `true`). Bez tego NDMI wychodzi zawyżone o ok. 0,2, a NDVI
+  zwykle nie powstaje (czerwień ujemna),
 - NDMI = (B8A − B11) / (B8A + B11), NDVI = (B8A − B04) / (B8A + B04); B04 uśredniane z 10 m do siatki 20 m.
 
 Kolekcja `sentinel-2-c1-l2a` nie ma wszystkich starszych scen (czerwiec–lipiec 2018 nad Lubelszczyzną:
@@ -51,10 +54,11 @@ from app.sources import SourceError
 
 STAC_URL = "https://earth-search.aws.element84.com/v1"
 COLLECTIONS = ("sentinel-2-c1-l2a", "sentinel-2-l2a")  # pierwsza ma pierwszeństwo przy tej samej scenie
+OFFSET_APPLIED_COLLECTION = "sentinel-2-l2a"   # piksele tej kolekcji są już po odjęciu przesunięcia reflektancji
 ASSETS = ("nir08", "swir16", "red", "scl")
 # Wersja wpisów w pamięci podręcznej (lista scen i obserwacje). Zmiana sposobu liczenia reflektancji = nowa wersja,
 # żeby stare wpisy z błędnym offsetem nie wróciły do raportu.
-CACHE_VERSION = "v2"
+CACHE_VERSION = "v3"   # v2: poprawka offsetu; v3: mediany pasm w obserwacji
 WINDOW_DAYS = 45
 MIN_PIXELS = 6
 MIN_COVERAGE = 0.65
@@ -138,6 +142,10 @@ class Observation:
     reject_reason: str | None = None
     ndvi: float | None = None
     ndmi: float | None = None
+    # mediany reflektancji po pikselach z roślinnością (cechy modelu prognozy NDMI, kowr_ml/features.py)
+    nir08: float | None = None
+    swir16: float | None = None
+    red: float | None = None
 
     @property
     def coverage(self) -> float:
@@ -170,7 +178,8 @@ def _stac_client():
 def _scene_from_item(item, collection: str) -> Scene | None:
     hrefs, scale, offset, nodata = {}, {}, {}, {}
     # Przesunięcie reflektancji już odjęte w pikselach (patrz opis modułu): nie odejmujemy go drugi raz.
-    offset_applied = bool(item.properties.get("earthsearch:boa_offset_applied"))
+    # W `sentinel-2-l2a` dotyczy to każdej sceny, także gdy flaga w metadanych mówi inaczej.
+    offset_applied = collection == OFFSET_APPLIED_COLLECTION or bool(item.properties.get("earthsearch:boa_offset_applied"))
     for key in ASSETS:
         asset = item.assets.get(key)
         if asset is None:
@@ -373,8 +382,15 @@ def read_indices(scene: Scene, obs: Observation, context: dict) -> Observation:
     futures = {key: _band_pool.submit(band, key) for key in ("nir08", "swir16", "red")}
     nir, swir = futures["nir08"].result(), futures["swir16"].result()
     obs.ndmi = median_index(nir, swir)
+    used = vegetation & np.isfinite(nir) & np.isfinite(swir) & (nir >= 0) & (swir >= 0) & ((nir + swir) > 1e-6)
+    if obs.ndmi is not None:
+        obs.nir08, obs.swir16 = float(np.median(nir[used])), float(np.median(swir[used]))
     try:
-        obs.ndvi = median_index(nir, futures["red"].result())
+        red = futures["red"].result()
+        obs.ndvi = median_index(nir, red)
+        used_red = used & np.isfinite(red) & (red >= 0) & ((nir + red) > 1e-6)
+        if obs.ndvi is not None and used_red.sum() >= MIN_PIXELS:
+            obs.red = float(np.median(red[used_red]))
     except Exception:   # brak NDVI nie unieważnia NDMI
         obs.ndvi = None
     if obs.ndmi is None:
