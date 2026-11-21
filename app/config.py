@@ -19,7 +19,9 @@ TIMEOUT_WEATHER_POWER_S = 20.0
 TIMEOUT_WEATHER_RECENT_S = 8.0
 TIMEOUT_SOIL_REST_S = 14.0  # pełne zapytanie REST trwało 11,8 s (pomiar 21.11.2026)
 TIMEOUT_SOIL_TOTAL_S = 22.0
-TIMEOUT_SATELLITE_S = 24.0
+# Satelita: tyle raport czeka na zdjęcia; niedokończone pobieranie trwa w tle (GET /api/satellite).
+SATELLITE_INLINE_BUDGET_S = 14.0
+SATELLITE_DEFERRED_BUDGET_S = 100.0
 TIMEOUT_HYDRO_S = 8.0
 TIMEOUT_TERRAIN_S = 45.0
 

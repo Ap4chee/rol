@@ -17,7 +17,7 @@ class Status(str, Enum):
     ok = "ok"            # dane są i weszły do obliczeń
     no_data = "no_data"  # źródło odpowiedziało, ale nie ma danych dla tej działki lub daty
     error = "error"      # źródło nie odpowiedziało (błąd, limit zapytań, przekroczony czas)
-    pending = "pending"  # liczone osobno, wynik pod adresem z pola `endpoint` (tylko teren)
+    pending = "pending"  # liczone osobno, wynik pod adresem z pola `endpoint` (teren; satelita na wolnym łączu)
 
 
 class CropKey(str, Enum):
@@ -262,7 +262,9 @@ class SatelliteObservation(BaseModel):
     valid_pixels: int
     total_pixels: int
     coverage_pct: float
-    accepted: bool
+    bare_pixels: int = Field(default=0, description="piksele z odkrytą glebą (SCL 5)")
+    cloudy_pixels: int = Field(default=0, description="piksele z chmurą albo cieniem chmury")
+    accepted: bool = Field(description="czy z tej sceny policzono wskaźniki")
     reject_reason: str | None = None
     ndvi: float | None = None
     ndmi: float | None = None
@@ -279,6 +281,10 @@ class SatelliteSection(BaseModel):
     ndmi_change: float | None = None
     ndvi_change: float | None = None
     agreement: str | None = Field(default=None, description="confirms | diverges | inconclusive")
+    green_cover: bool | None = Field(
+        default=None, description="czy najnowsze czyste zdjęcie pokazuje zieloną okrywę (False = odkryta gleba)")
+    endpoint: str | None = Field(
+        default=None, description="przy statusie pending: adres GET, pod którym frontend dociąga komplet zdjęć")
     text: list[str] = []
 
 
@@ -319,6 +325,14 @@ class TerrainResponse(BaseModel):
     recommendations: list[Recommendation] = []
     text: list[str] = []
     limitations: list[str] = []
+
+
+class SatelliteResponse(BaseModel):
+    """Wynik `GET /api/satellite`: komplet obserwacji, gdy nie zdążyły się wczytać razem z raportem."""
+    satellite: SatelliteSection
+    source: SourceInfo
+    field_checks: list[Recommendation] = Field(
+        default=[], description="oględziny pola wynikające z rozbieżności zdjęć i bilansu (frontend dopisuje je do listy)")
 
 
 # ---------- hydrologia ----------

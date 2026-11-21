@@ -10,6 +10,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -17,8 +18,8 @@ import numpy as np
 from fastapi import HTTPException
 from shapely.geometry import Point as ShapelyPoint
 
-from app.config import HISTORY_YEARS, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
-from app.core import analysis
+from app.config import HISTORY_YEARS, SATELLITE_INLINE_BUDGET_S, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
+from app.core import analysis, satellite_logic
 from app.core.crops import (
     CROPS,
     GROWTH_TEMP_THRESHOLD_C,
@@ -58,6 +59,7 @@ from app.schemas import (
     Recommendations,
     ReportRequest,
     ReportResponse,
+    SatelliteObservation,
     SatelliteSection,
     SeasonStress,
     SeasonSummary,
@@ -69,7 +71,7 @@ from app.schemas import (
     WaterStatus,
     WeatherWindow,
 )
-from app.sources import NoData, SourceError, soilgrids, uldk, weather
+from app.sources import NoData, SourceError, sentinel, soilgrids, uldk, weather
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -594,6 +596,115 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
     return CausesSection(status=Status.ok, reason=reason, windows=windows, items=items, not_assessed=not_assessed)
 
 
+# ---------- satelita ----------
+
+SATELLITE_SOURCE_NAME = "Sentinel-2 L2A (Copernicus) przez Earth Search STAC (Element 84)"
+SATELLITE_NO_IMPACT = ("Bilans wodny nie zależy od zdjęć: brakuje tylko niezależnego potwierdzenia, "
+                       "czy rośliny reagują tak, jak pokazuje bilans.")
+
+
+def satellite_endpoint(request: ReportRequest, parcel_id: str) -> str:
+    return "/api/satellite?" + urlencode({"parcel_id": parcel_id, "crop": request.crop.value, "date": request.date.isoformat()})
+
+
+async def finish_satellite(task: asyncio.Task | None, started_at: float) -> tuple[sentinel.SatelliteResult | None, SourceInfo]:
+    """Odbiera wynik zadania satelitarnego. Błąd nie przerywa raportu."""
+    info = SourceInfo(
+        key="satellite", name=SATELLITE_SOURCE_NAME, status=Status.ok,
+        resolution="piksel 20 m (B8A, B11, maska SCL); B04 z 10 m uśrednione do 20 m",
+        license="dane Copernicus Sentinel: dostęp bezpłatny, pełny i otwarty",
+        url="https://earth-search.aws.element84.com/v1")
+    if task is None:
+        info.status, info.impact = Status.no_data, SATELLITE_NO_IMPACT
+        info.reason = "Brak granicy działki (raport dla punktu), więc nie ma czego wyciąć ze zdjęć."
+        return None, info
+    result: sentinel.SatelliteResult | None = None
+    try:
+        result = await task
+        info.data_from, info.data_to = result.window_from, result.window_to
+        info.from_cache = result.cached_observations == result.scenes_found and result.scenes_found > 0
+        info.notes = [f"Sceny w oknie 45 dni: {result.scenes_found}. Czas: szukanie {fmt(result.timings_s.get('search', 0), 1)} s, "
+                      f"maski chmur {fmt(result.timings_s.get('scl', 0), 1)} s, pasma {fmt(result.timings_s.get('bands', 0), 1)} s.",
+                      *result.notes]
+    except (SourceError, NoData) as exc:
+        info.status, info.reason, info.impact = Status.error, str(exc), SATELLITE_NO_IMPACT
+    except Exception as exc:  # odczyt rastrów w wątku może zgłosić dowolny wyjątek biblioteki
+        info.status, info.impact = Status.error, SATELLITE_NO_IMPACT
+        info.reason = f"Błąd odczytu zdjęć satelitarnych ({type(exc).__name__})."
+    info.elapsed_s = round(time.perf_counter() - started_at, 2)
+    return result, info
+
+
+def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo, c: Computed, class_key: str,
+                      request: ReportRequest, parcel_id: str | None) -> tuple[SatelliteSection, bool]:
+    """Sekcja satelitarna i informacja, czy rozbieżność z bilansem uzasadnia oględziny pola."""
+    if result is None:
+        return SatelliteSection(status=info.status, reason=info.reason, text=[SATELLITE_NO_IMPACT]), False
+    observations = [SatelliteObservation(
+        scene_id=o.scene_id, date=date.fromisoformat(o.date), valid_pixels=o.valid_pixels, total_pixels=o.total_pixels,
+        coverage_pct=round(100 * o.coverage, 0), bare_pixels=o.bare_pixels, cloudy_pixels=o.cloudy_pixels,
+        accepted=o.accepted and o.ndmi is not None, reject_reason=o.reject_reason,
+        ndvi=round(o.ndvi, 3) if o.ndvi is not None else None, ndmi=round(o.ndmi, 3) if o.ndmi is not None else None)
+        for o in result.observations]
+    section = SatelliteSection(status=Status.ok, window_from=result.window_from, window_to=result.window_to,
+                               scenes_found=result.scenes_found, observations=observations)
+    used = [o for o in observations if o.accepted]
+    pending = result.unfinished > 0
+
+    # co pokazuje najnowsze czyste zdjęcie: zieloną okrywę czy odkrytą glebę
+    clear = [o for o in observations if o.total_pixels and (o.valid_pixels + o.bare_pixels) >= 0.65 * o.total_pixels]
+    if clear:
+        newest = clear[-1]
+        section.green_cover = newest.valid_pixels >= newest.bare_pixels
+    too_small = observations and all(o.total_pixels < sentinel.MIN_PIXELS for o in observations)
+
+    if used:
+        assessment = satellite_logic.assess(
+            [satellite_logic.IndexPoint(o.date, o.ndvi, o.ndmi) for o in used], request.date, c.in_season,
+            c.crop_daily.stage[-1], class_key, c.crop.name)
+        section.latest = used[-1]
+        section.agreement = assessment.agreement
+        section.ndmi_change = round(assessment.ndmi_change, 3) if assessment.ndmi_change is not None else None
+        section.ndvi_change = round(assessment.ndvi_change, 3) if assessment.ndvi_change is not None else None
+        section.text = assessment.text
+        field_check = assessment.field_check
+    else:
+        field_check = False
+        section.agreement = "inconclusive"
+        if too_small:
+            section.status = Status.no_data
+            section.reason = (f"Działka jest za mała albo za wąska dla Sentinel-2: mieści {observations[0].total_pixels} "
+                              f"środków pikseli 20 m, a potrzeba co najmniej {sentinel.MIN_PIXELS}.")
+        elif not observations:
+            section.status = Status.no_data
+            section.reason = (f"W oknie {fmt_date(result.window_from)}–{fmt_date(result.window_to)} nie ma zdjęć Sentinel-2 "
+                              "dla tej działki (archiwum L2A zaczyna się w 2017 r.).")
+        elif not pending:
+            cloudy = sum(1 for o in observations if o.reject_reason and "chmury" in o.reject_reason)
+            bare = sum(1 for o in observations if o.reject_reason and "brak zielonej roślinności" in o.reject_reason)
+            section.status = Status.no_data
+            section.reason = (f"W oknie 45 dni przed datą było {len(observations)} zdjęć, ale żadne nie pokazuje czystej "
+                              f"roślinności na działce: {cloudy} z chmurami, {bare} bez zielonej roślinności, "
+                              f"{len(observations) - cloudy - bare} z innych powodów.")
+            if bare and section.green_cover is False:
+                newest_bare = max(o.date for o in observations if o.reject_reason and "brak zielonej roślinności" in o.reject_reason)
+                section.text.append(
+                    f"Najnowsze czyste zdjęcie ({fmt_date(newest_bare)}) pokazuje pole bez zielonej roślinności: odkrytą glebę, "
+                    "resztki albo zaschnięte, dojrzałe rośliny. Wskaźniki roślinne nie mają wtedy zastosowania.")
+        if section.status != Status.ok:
+            section.text.append(SATELLITE_NO_IMPACT)
+
+    if pending and parcel_id:
+        section.status = Status.pending
+        section.endpoint = satellite_endpoint(request, parcel_id)
+        section.reason = (f"Część zdjęć jeszcze się wczytuje ({result.unfinished} scen; łącze do archiwum zdjęć jest wolne). "
+                          "Wynik uzupełni się sam, zwykle w ciągu minuty.")
+    if not c.in_season and section.green_cover is True and c.crop_daily.stage[-1] == "off_season":
+        section.text.append("Na polu widać zieloną okrywę, choć według kalendarza wybranej uprawy pole powinno być puste. "
+                            "To może być międzyplon, samosiewy albo inna uprawa niż wybrana.")
+    return section, field_check
+
+
 # ---------- raport ----------
 
 def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sources: list[SourceInfo],
@@ -620,7 +731,9 @@ def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sourc
         limitations=[reason], sources=sources, timings_s=timings)
 
 
-async def build_report(request: ReportRequest, today: date | None = None) -> ReportResponse:
+async def build_report(request: ReportRequest, today: date | None = None,
+                       satellite_budget_s: float = SATELLITE_INLINE_BUDGET_S) -> ReportResponse:
+    """Pełny raport. `satellite_budget_s` to czas, jaki raport czeka na zdjęcia satelitarne."""
     started = time.perf_counter()
     today = today or today_warsaw()
     if request.date > today:
@@ -640,8 +753,14 @@ async def build_report(request: ReportRequest, today: date | None = None) -> Rep
         parcel, uldk_info = await resolve_parcel(client, request)
         timings["uldk"] = round(time.perf_counter() - t0, 2)
         lon, lat = parcel.centroid_lonlat if parcel else (request.point.lon, request.point.lat)
-
         geometry = parcel.geometry if parcel else ShapelyPoint(lon, lat)
+
+        # Zdjęcia satelitarne czytamy w wątku od razu po poznaniu działki, równolegle z resztą źródeł.
+        satellite_started = time.perf_counter()
+        satellite_task = None
+        if parcel is not None:
+            satellite_task = asyncio.create_task(asyncio.to_thread(
+                sentinel.observe, parcel.id, parcel.geometry, request.date, today, satellite_budget_s))
 
         async def timed(name: str, coro):
             started_at = time.perf_counter()
@@ -658,17 +777,28 @@ async def build_report(request: ReportRequest, today: date | None = None) -> Rep
     sources = [uldk_info, *weather_sources(weather_result), soil_info]
     soil = soil_section(soil_data, soil_info, crop)
     if weather_result.series is None or len(weather_result.series.dates) < 400:
+        _satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
+        sources.append(satellite_info)
         return _no_weather_report(request, parcel, sources, started, timings, soil)
 
     t0 = time.perf_counter()
     soil_assumed = soil_data is None
     variants = [assumed_variant()] if soil_assumed else build_variants(soil_data.layers, crop.root_depth_m)
-
     computed = compute(weather_result.series, crop, variants)
     status = water_status(computed, soil_assumed)
     history = history_section(computed)
     causes = causes_section(computed, status, soil_assumed)
     timings["compute"] = round(time.perf_counter() - t0, 3)
+
+    satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
+    timings["satellite"] = satellite_info.elapsed_s or 0.0
+    satellite, _satellite_field_check = satellite_section(
+        satellite_result, satellite_info, computed, status.class_key or "none", request, parcel.id if parcel else None)
+    if satellite.status != Status.ok and satellite_info.status == Status.ok:
+        satellite_info.status, satellite_info.reason = satellite.status, satellite.reason
+        if satellite.status == Status.no_data:
+            satellite_info.impact = SATELLITE_NO_IMPACT
+    sources.append(satellite_info)
 
     limitations = list(MODEL_LIMITATIONS)
     last = computed.dates[-1]
@@ -690,10 +820,7 @@ async def build_report(request: ReportRequest, today: date | None = None) -> Rep
         generated_at=datetime.now(timezone.utc), elapsed_s=round(time.perf_counter() - started, 2),
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
         crop=crop_info(computed, request.date), summary=summary,
-        water_status=status,
-        satellite=SatelliteSection(status=Status.no_data, reason=NOT_CONNECTED),
-        history=history, causes=causes,
-        soil=soil,
+        water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,
         terrain=TerrainRef(status=Status.no_data, reason=NOT_CONNECTED),
         hydrology=HydrologySection(status=Status.no_data, reason=NOT_CONNECTED),
         recommendations=Recommendations(status=Status.no_data, reason=NOT_CONNECTED),

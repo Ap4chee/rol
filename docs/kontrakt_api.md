@@ -49,6 +49,10 @@ Błędne wejście (zły format, data z przyszłości, punkt poza Polską) daje `
 
 Teren i spływ liczone osobno, bo wycinek NMT z WCS GUGiK trwa kilkanaście sekund. Wynik (`TerrainResponse`): spadek, drogi spływu i punkty wejścia/wyjścia jako GeoJSON, a także dodatkowe przyczyny i rekomendacje wynikające z terenu, które frontend dopisuje do odpowiednich sekcji raportu.
 
-## `GET /api/parcels/search?q=...` i `GET /api/parcels/by-point?lon=..&lat=..`
+## `GET /api/satellite?parcel_id=...&crop=...&date=...`
 
-Wyszukiwanie działki po nazwie obrębu i numerze (może zwrócić wiele trafień do wyboru) albo po punkcie na mapie.
+Raport czeka na zdjęcia Sentinel-2 najwyżej kilkanaście sekund. Gdy łącze do archiwum zdjęć jest wolne, sekcja `satellite` ma status `pending` i pole `endpoint` z tym adresem, a pobieranie trwa dalej w tle. Wynik (`SatelliteResponse`): pełna sekcja `satellite`, wpis źródła i ewentualne oględziny pola (`field_checks`), które frontend dopisuje do listy.
+
+## `GET /api/parcels/search?q=...`, `GET /api/parcels/by-point?lon=..&lat=..`, `GET /api/parcels/by-id?id=...`
+
+Wyszukiwanie działki po nazwie obrębu i numerze (może zwrócić wiele trafień do wyboru), po punkcie na mapie albo po pełnym identyfikatorze. Dwa ostatnie zwracają też geometrię działki (`parcel`).

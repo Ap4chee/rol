@@ -1,11 +1,13 @@
 """Serwer aplikacji: API raportu i statyczny frontend. Uruchomienie: `uvicorn app.main:app`."""
 from __future__ import annotations
 
+from datetime import date as Date
+
 import httpx
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 
-from app.config import SOIL_ASSETS_DIR, STATIC_DIR, USER_AGENT
+from app.config import SATELLITE_DEFERRED_BUDGET_S, SOIL_ASSETS_DIR, STATIC_DIR, USER_AGENT
 from app.core.crops import CROPS
 from app.report import _parcel_info, build_report
 from app.schemas import (
@@ -15,6 +17,7 @@ from app.schemas import (
     ParcelSearchResponse,
     ReportRequest,
     ReportResponse,
+    SatelliteResponse,
     Status,
 )
 from app.sources import NoData, SourceError, uldk
@@ -84,6 +87,20 @@ async def parcels_by_id(id: str = Query(min_length=5, max_length=80)) -> ParcelS
 async def report(request: ReportRequest) -> ReportResponse:
     """Raport dla działki (identyfikator albo punkt), uprawy i daty. Liczony na żywo."""
     return await build_report(request)
+
+
+@app.get("/api/satellite", response_model=SatelliteResponse)
+async def satellite(parcel_id: str = Query(min_length=5, max_length=80), crop: CropKey = Query(),
+                    date: Date = Query()) -> SatelliteResponse:
+    """Komplet obserwacji satelitarnych, gdy nie zdążyły się wczytać razem z raportem (wolne łącze do archiwum).
+
+    Pogoda, gleba i działka są już w pamięci podręcznej, więc bilans potrzebny do oceny zgodności liczy się od razu.
+    """
+    full = await build_report(ReportRequest(parcel_id=parcel_id, crop=crop, date=date),
+                              satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S)
+    source = next((s for s in full.sources if s.key == "satellite"), None)
+    checks = [r for r in full.recommendations.field_checks if r.key == "satellite_divergence"]
+    return SatelliteResponse(satellite=full.satellite, source=source, field_checks=checks)
 
 
 # Ilustracje warstw gleby (umowne, dobierane po klasie uziarnienia; opis w outputs/assety_gleby/README.md).
