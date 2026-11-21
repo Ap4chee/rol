@@ -20,6 +20,7 @@ from shapely.geometry import Point as ShapelyPoint
 
 from app.config import HISTORY_YEARS, SATELLITE_INLINE_BUDGET_S, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
 from app.core import analysis, satellite_logic
+from app.core import recommendations as rules
 from app.core.crops import (
     CROPS,
     GROWTH_TEMP_THRESHOLD_C,
@@ -56,6 +57,7 @@ from app.schemas import (
     HydrologySection,
     ParcelInfo,
     Point,
+    Recommendation,
     Recommendations,
     ReportRequest,
     ReportResponse,
@@ -484,6 +486,10 @@ def history_section(c: Computed) -> HistorySection:
             f"a co najmniej {LONG_STRESS_DAYS} dni w {long_ones} z {len(past)} sezonów. "
             f"Najdłużej w sezonie {worst['season']}: {plural_days(worst['stress_days_critical'])}, "
             f"w tym {plural_days(worst['longest_stress_run_days'])} z rzędu.")
+        severe = [r for r in past if r["severe_days_critical"] >= SEVERE_SEASON_DAYS]
+        text.append(
+            f"Silny niedobór (wyczerpana ponad połowa wody trudno dostępnej) trwał co najmniej {SEVERE_SEASON_DAYS} dni "
+            f"w {len(severe)} z {len(past)} sezonów" + (f": {', '.join(r['season'] for r in severe)}." if severe else "."))
     if current:
         text.append(
             f"Bieżący sezon {current['season']} (okres krytyczny trwa do {fmt_date(current['critical_to'])}): "
@@ -511,6 +517,7 @@ ET0_EXCESS_PCT = 110.0      # ET0 powyżej tego odsetka mediany z 10 lat uznajem
 MIN_DIFFERENCE_MM = 10.0    # i tylko wtedy, gdy różnica od mediany to co najmniej tyle milimetrów
 LOW_AWC_M3_M3 = 0.10        # mniej niż 100 mm wody dostępnej na metr gleby = mała pojemność
 LONG_STRESS_DAYS = 14       # „długi” stres w okresie krytycznym (do opisu historii)
+SEVERE_SEASON_DAYS = 7      # tyle dni silnego niedoboru w okresie krytycznym wyróżnia sezon w opisie historii
 
 
 def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> CausesSection:
@@ -705,6 +712,72 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
     return section, field_check
 
 
+# ---------- rekomendacje ----------
+
+def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySection, soil_data: soilgrids.SoilData | None,
+                         soil: SoilSection, satellite: SatelliteSection, satellite_field_check: bool,
+                         hydrology: HydrologySection) -> rules.Facts:
+    """Policzone wartości działki w postaci, na której działają reguły rekomendacji."""
+    crop, last = c.crop, c.dates[-1]
+    main = status.result
+    variant = c.variants[0]
+    past = [s for s in history.seasons if s.complete]
+    stressed_days = [s.stress_days_critical for s in past if s.stressed]
+    etc = float(c.main.etc_mm[-7:].mean())
+    days_to_stress = None
+    if main.depletion_mm <= main.raw_mm and etc > 0.3:
+        days_to_stress = max(int((main.raw_mm - main.depletion_mm) / etc), 0)
+
+    harvest_day = next_sowing = bare_days = None
+    if not crop.perennial:
+        season = season_containing(crop, last) or last_completed_season(crop, last)
+        harvest_day = season.harvest - timedelta(days=1)
+        next_sowing = season_for_harvest_year(crop, season.label + 1).sowing
+        bare_days = (next_sowing - harvest_day).days - 1
+    bare = analysis.bare_period_stats(c.dates, crop, c.main, c.series.rain_mm)
+
+    soc = None
+    if soil_data is not None:
+        top = [(layer.soc_g_kg, min(layer.bottom_cm, 30) - layer.top_cm) for layer in soil_data.layers
+               if layer.top_cm < 30 and layer.soc_g_kg is not None]
+        if top:
+            soc = sum(v * w for v, w in top) / sum(w for _, w in top)
+
+    return rules.Facts(
+        crop_key=crop.key, crop_name=crop.name, perennial=crop.perennial, analysis_day=last,
+        in_season=c.in_season, stage=c.crop_daily.stage[-1], class_key=main.class_key,
+        depletion_mm=main.depletion_mm, raw_mm=main.raw_mm, taw_mm=main.taw_mm,
+        variants=[(v.depletion_mm, v.raw_mm) for v in status.variants],
+        spans_classes=status.spans_classes, soil_assumed=status.soil_assumed,
+        awc_mm_per_m=(variant.fc_root - variant.wp_root) * 1000.0,
+        topsoil_label=soil.layers[0].texture_label if soil.layers else None, soc_0_30_g_kg=soc,
+        seasons_total=len(past), seasons_with_stress=len(stressed_days),
+        seasons_with_long_stress=sum(1 for d in stressed_days if d >= LONG_STRESS_DAYS),
+        median_stress_days=float(np.median(stressed_days)) if stressed_days else None,
+        days_to_stress=days_to_stress, etc_mm_day=etc,
+        harvest_day=harvest_day, next_sowing_day=next_sowing, bare_period_days=bare_days,
+        bare_rain_mm=bare["rain_mm"] if bare else None, bare_evaporation_mm=bare["evaporation_mm"] if bare else None,
+        bare_from=bare["date_from"] if bare else None, bare_to=bare["date_to"] if bare else None,
+        satellite_green_cover=satellite.green_cover, satellite_agreement=satellite.agreement,
+        satellite_field_check=satellite_field_check,
+        watercourse_distance_m=hydrology.nearest_watercourse_distance_m,
+        watercourse_name=hydrology.nearest_watercourse_name)
+
+
+def recommendations_section(facts: rules.Facts) -> Recommendations:
+    result = rules.build(facts)
+
+    def convert(items: list[rules.Rec]) -> list[Recommendation]:
+        return [Recommendation(key=r.key, category=r.category, title=r.title, what=r.what, where=r.where, why=r.why,
+                               confidence=r.confidence, confidence_reason=r.confidence_reason, evidence=r.evidence)
+                for r in items]
+
+    return Recommendations(
+        status=Status.ok, retention=convert(result.retention), agrotechnical=convert(result.agrotechnical),
+        irrigation=convert(result.irrigation), field_checks=convert(result.field_checks),
+        irrigation_note=result.irrigation_note)
+
+
 # ---------- raport ----------
 
 def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sources: list[SourceInfo],
@@ -792,7 +865,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
 
     satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
     timings["satellite"] = satellite_info.elapsed_s or 0.0
-    satellite, _satellite_field_check = satellite_section(
+    satellite, satellite_field_check = satellite_section(
         satellite_result, satellite_info, computed, status.class_key or "none", request, parcel.id if parcel else None)
     if satellite.status != Status.ok and satellite_info.status == Status.ok:
         satellite_info.status, satellite_info.reason = satellite.status, satellite.reason
@@ -810,11 +883,18 @@ async def build_report(request: ReportRequest, today: date | None = None,
     if soil_assumed:
         limitations.insert(0, "Brak danych o glebie: bilans policzono dla gleby umownej, wynik jest orientacyjny.")
 
+    hydrology = HydrologySection(status=Status.no_data, reason=NOT_CONNECTED)
+    recommendations = recommendations_section(recommendation_facts(
+        computed, status, history, soil_data, soil, satellite, satellite_field_check, hydrology))
+
     summary = [status.headline or ""]
     if status.text:
         summary.append(status.text[-1] if not computed.in_season else status.text[0])
     if status.uncertainty_text:
         summary.append(status.uncertainty_text)
+    first = next(iter([*recommendations.retention, *recommendations.agrotechnical]), None)
+    if first:
+        summary.append(f"Najważniejsze działanie: {first.title.lower()}.")
 
     return ReportResponse(
         generated_at=datetime.now(timezone.utc), elapsed_s=round(time.perf_counter() - started, 2),
@@ -822,6 +902,5 @@ async def build_report(request: ReportRequest, today: date | None = None,
         crop=crop_info(computed, request.date), summary=summary,
         water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,
         terrain=TerrainRef(status=Status.no_data, reason=NOT_CONNECTED),
-        hydrology=HydrologySection(status=Status.no_data, reason=NOT_CONNECTED),
-        recommendations=Recommendations(status=Status.no_data, reason=NOT_CONNECTED),
+        hydrology=hydrology, recommendations=recommendations,
         limitations=limitations, sources=sources, timings_s=timings)

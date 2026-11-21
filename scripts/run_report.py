@@ -73,7 +73,8 @@ def main() -> None:
     for line in h.text:
         print("   -", line)
     for s in h.seasons:
-        print(f"     {s.season}: stres {s.stress_days_critical:3d} dni (ciąg {s.longest_stress_run_days:3d}), "
+        print(f"     {s.season}: stres {s.stress_days_critical:3d} dni, silny {s.severe_days_critical:3d} "
+              f"(ciąg {s.longest_stress_run_days:3d}), "
               f"max {s.max_depletion_pct_taw:3.0f}%{'' if s.complete else ' (sezon trwa)'}")
     c = report.causes
     print("\n[2] PRZYCZYNY", c.status.value, c.reason or "")

@@ -105,6 +105,8 @@ def season_stress(dates: list[date], season: Season, crop_daily: CropDaily, bala
     if c_hi <= c_lo or (season.critical_start - dates[0]).days < 0:
         return None
     stressed = balance.depletion_mm[c_lo:c_hi] > balance.raw_mm[c_lo:c_hi] + 1e-9
+    # silny niedobór: wyczerpana ponad połowa wody trudno dostępnej (klasa „severe” z water_balance.classify)
+    severe = balance.depletion_mm[c_lo:c_hi] > balance.raw_mm[c_lo:c_hi] + 0.5 * (balance.taw_mm - balance.raw_mm[c_lo:c_hi])
     s_lo = max((season.sowing - dates[0]).days, 0)
     s_hi = min((season.harvest - dates[0]).days, n)
     in_season = slice(max(s_lo, c_lo - 60), s_hi)
@@ -115,6 +117,7 @@ def season_stress(dates: list[date], season: Season, crop_daily: CropDaily, bala
         "critical_from": season.critical_start,
         "critical_to": season.critical_end - timedelta(days=1),
         "stress_days_critical": int(stressed.sum()),
+        "severe_days_critical": int(severe.sum()),
         "longest_stress_run_days": longest_run(stressed),
         "max_depletion_pct_taw": max_pct,
         "stressed": bool(stressed.any()),
@@ -149,6 +152,26 @@ def same_day_comparison(dates: list[date], depletion_pct: np.ndarray, years: int
         return None
     return {"current_pct": current, "median_pct": float(np.median(hist)), "years": len(hist),
             "drier_years": int(sum(1 for h in hist if h > current))}
+
+
+def bare_period_stats(dates: list[date], crop: Crop, balance: BalanceResult, rain_mm: np.ndarray,
+                      min_days: int = 14) -> dict | None:
+    """Opad i parowanie z odkrytej gleby w ostatnim okresie bez uprawy (między zbiorem a kolejnym siewem).
+
+    Bierze najnowszy taki okres, z którego seria ma co najmniej `min_days` dni. None dla upraw trwałych.
+    """
+    if crop.perennial:
+        return None
+    last = dates[-1]
+    for label in range(last.year + 1, last.year - 3, -1):
+        start = season_for_harvest_year(crop, label - 1).harvest
+        end = min(season_for_harvest_year(crop, label).sowing - timedelta(days=1), last)
+        lo, hi = (start - dates[0]).days, (end - dates[0]).days + 1
+        if lo < 0 or hi - lo < min_days:
+            continue
+        return {"date_from": start, "date_to": end, "rain_mm": float(rain_mm[lo:hi].sum()),
+                "evaporation_mm": float(balance.eta_mm[lo:hi].sum())}
+    return None
 
 
 def season_summary(dates: list[date], season: Season, crop_daily: CropDaily, balance: BalanceResult,

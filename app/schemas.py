@@ -234,7 +234,8 @@ class SeasonStress(BaseModel):
     season: str
     critical_from: Date
     critical_to: Date
-    stress_days_critical: int
+    stress_days_critical: int = Field(description="dni z ubytkiem powyżej progu RAW w okresie krytycznym")
+    severe_days_critical: int = Field(default=0, description="w tym dni silnego niedoboru (klasa severe)")
     longest_stress_run_days: int
     max_depletion_pct_taw: float
     stressed: bool
