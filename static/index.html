@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zatrzymaj wodę, chroń plony – raport dla działki</title>
+  <link rel="stylesheet" href="vendor/ol.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top no-print">
+    <h1>Zatrzymaj wodę, chroń plony</h1>
+    <p>Wskaż działkę, wybierz uprawę i datę. Raport policzymy z otwartych danych: pogody, gleby, zdjęć satelitarnych i ukształtowania terenu.</p>
+  </header>
+
+  <main>
+    <section class="panel no-print" aria-label="Dane do raportu">
+      <form id="form" autocomplete="off">
+        <div class="step">
+          <label for="parcel-query"><span class="step-num">1</span> Działka</label>
+          <div class="row">
+            <input id="parcel-query" type="text" maxlength="80"
+                   placeholder="np. Niedrzwica Kościelna 580/2 albo 060910_2.0011.580/2">
+            <button type="button" id="parcel-search" class="secondary">Szukaj</button>
+          </div>
+          <p class="hint">Wpisz nazwę obrębu i numer działki albo kliknij swoje pole na mapie.</p>
+          <div id="parcel-candidates" class="candidates" hidden></div>
+          <p id="parcel-selected" class="selected" hidden></p>
+          <p id="parcel-message" class="message" role="status"></p>
+        </div>
+        <div class="step two">
+          <div>
+            <label for="crop"><span class="step-num">2</span> Uprawa</label>
+            <select id="crop" required></select>
+          </div>
+          <div>
+            <label for="date"><span class="step-num">3</span> Data</label>
+            <input id="date" type="date" required>
+          </div>
+        </div>
+        <button type="submit" id="submit" class="primary" disabled>Przygotuj raport</button>
+        <p id="progress" class="message" role="status"></p>
+      </form>
+    </section>
+
+    <section class="map-card" aria-label="Mapa">
+      <div class="layer-switch no-print" role="group" aria-label="Warstwy mapy">
+        <button type="button" data-base="orto" class="active">Zdjęcie lotnicze</button>
+        <button type="button" data-base="osm">Mapa</button>
+        <button type="button" id="toggle-parcels" class="active" aria-pressed="true">Granice działek</button>
+      </div>
+      <div id="map"></div>
+      <div id="map-legend" class="legend" hidden></div>
+    </section>
+
+    <article id="report" hidden></article>
+  </main>
+
+  <footer class="no-print">
+    <p>Prototyp konkursowy (HackNation 2026, zadanie KOWR). Wyniki są szacunkiem z modeli i danych otwartych, nie pomiarem na polu.</p>
+  </footer>
+
+  <script src="vendor/ol.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
