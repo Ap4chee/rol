@@ -76,8 +76,9 @@ app/
   terrain_service.py   teren liczony w tle, pamięć podręczna po działce
   cache.py, config.py, geo.py, textfmt.py
   sources/             pobieranie danych (zwykłe importowalne funkcje, do użycia także przy treningu ML)
-    uldk.py            działka z ULDK GUGiK
-    egib_wfs.py        zapas przy awarii ULDK: granica działki ze zbiorczego WFS ewidencji GUGiK
+    parcels.py         wyszukiwanie działki: wybór źródła (ULDK → WFS EGiB), cache, pochodzenie wyniku
+    uldk.py            adapter ULDK GUGiK (sam protokół)
+    egib_wfs.py        adapter zapasowy: granica działki ze zbiorczego WFS ewidencji GUGiK, kody obrębów z PRG
     weather.py         Open-Meteo Archive → NASA POWER → dobór ostatnich dni z Open-Meteo Forecast
     soilgrids.py       SoilGrids: WCS → REST → kafle GeoTIFF, średnia ważona komórek 250 m
     sentinel.py        Sentinel-2 L2A z Earth Search STAC: maska SCL, NDVI, NDMI

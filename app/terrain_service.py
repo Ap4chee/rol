@@ -13,7 +13,7 @@ from app import cache
 from app.config import USER_AGENT
 from app.core import terrain_rules
 from app.schemas import Cause, Recommendation, SourceInfo, Status, TerrainResponse
-from app.sources import NoData, SourceError, terrain, uldk
+from app.sources import NoData, SourceError, parcels, terrain
 
 _tasks: dict[str, asyncio.Task] = {}
 NO_TERRAIN_IMPACT = ("Bez modelu terenu raport nie ocenia spadku ani dróg spływu. "
@@ -31,7 +31,7 @@ def _source(status: Status, reason: str | None = None, elapsed_s: float | None =
         from_cache=from_cache, notes=notes or [])
 
 
-async def _compute(parcel: uldk.Parcel) -> TerrainResponse:
+async def _compute(parcel: parcels.Parcel) -> TerrainResponse:
     try:
         async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
             analysis = await terrain.terrain_for_parcel(client, parcel.geometry)
@@ -60,7 +60,7 @@ async def _compute(parcel: uldk.Parcel) -> TerrainResponse:
     return response
 
 
-def start(parcel: uldk.Parcel) -> None:
+def start(parcel: parcels.Parcel) -> None:
     """Uruchamia liczenie terenu w tle, jeśli wyniku nie ma w pamięci podręcznej i zadanie jeszcze nie trwa."""
     if cache.get("terrain", parcel.id) is not None:
         return
@@ -69,7 +69,7 @@ def start(parcel: uldk.Parcel) -> None:
         _tasks[parcel.id] = asyncio.create_task(_compute(parcel))
 
 
-async def get(parcel: uldk.Parcel) -> TerrainResponse:
+async def get(parcel: parcels.Parcel) -> TerrainResponse:
     cached = cache.get("terrain", parcel.id)
     if cached is not None:
         response = TerrainResponse(**cached)

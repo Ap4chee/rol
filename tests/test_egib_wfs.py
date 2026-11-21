@@ -72,8 +72,8 @@ def test_parse_districts():
 
 
 def test_split_district_and_number():
-    from app.sources import uldk
-    assert uldk.split_district_and_number("Niedrzwica Kościelna 580/2") == ("Niedrzwica Kościelna", "580/2")
-    assert uldk.split_district_and_number("Niedrzwica Kościelna, 580/2") == ("Niedrzwica Kościelna", "580/2")
-    assert uldk.split_district_and_number("Niedrzwica") is None
-    assert uldk.split_district_and_number("Niedrzwica Kościelna") is None
+    from app.sources import parcels
+    assert parcels.split_district_and_number("Niedrzwica Kościelna 580/2") == ("Niedrzwica Kościelna", "580/2")
+    assert parcels.split_district_and_number("Niedrzwica Kościelna, 580/2") == ("Niedrzwica Kościelna", "580/2")
+    assert parcels.split_district_and_number("Niedrzwica") is None
+    assert parcels.split_district_and_number("Niedrzwica Kościelna") is None

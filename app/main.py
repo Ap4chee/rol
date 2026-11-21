@@ -25,7 +25,7 @@ from app.schemas import (
     Status,
     TerrainResponse,
 )
-from app.sources import NoData, SourceError, uldk
+from app.sources import NoData, SourceError, parcels
 from app.sources.weather import fetch_dashboard_forecast
 
 # Windows bierze typy plików z rejestru i często nie zna tych rozszerzeń.
@@ -59,7 +59,7 @@ async def parcels_search(q: str = Query(min_length=2, max_length=80)) -> ParcelS
     """Szukanie działki po „nazwa obrębu numer” albo po identyfikatorze. Może zwrócić wiele trafień."""
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
         try:
-            candidates, truncated = await uldk.search_parcels(client, q)
+            candidates, truncated = await parcels.search_parcels(client, q)
         except NoData as exc:
             return ParcelSearchResponse(status=Status.no_data, reason=str(exc))
         except SourceError as exc:
@@ -70,7 +70,7 @@ async def parcels_search(q: str = Query(min_length=2, max_length=80)) -> ParcelS
                                 candidates=[ParcelCandidate(**c) for c in candidates])
 
 
-def _parcel_response(parcel: uldk.Parcel) -> ParcelSearchResponse:
+def _parcel_response(parcel: parcels.Parcel) -> ParcelSearchResponse:
     return ParcelSearchResponse(status=Status.ok, parcel=_parcel_info(parcel), candidates=[ParcelCandidate(
         id=parcel.id, number=parcel.number, region=parcel.region, commune=parcel.commune,
         county=parcel.county, voivodeship=parcel.voivodeship)])
@@ -81,7 +81,7 @@ async def parcels_by_point(lon: float = Query(ge=14.0, le=24.3), lat: float = Qu
     """Działka zawierająca punkt wskazany na mapie (EPSG:4326), z geometrią."""
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
         try:
-            parcel, _ = await uldk.get_parcel_by_point(client, lon, lat)
+            parcel, _ = await parcels.get_parcel_by_point(client, lon, lat)
         except NoData as exc:
             return ParcelSearchResponse(status=Status.no_data, reason=str(exc))
         except SourceError as exc:
@@ -94,7 +94,7 @@ async def parcels_by_id(id: str = Query(min_length=5, max_length=80)) -> ParcelS
     """Działka po pełnym identyfikatorze, z geometrią."""
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
         try:
-            parcel, _ = await uldk.get_parcel_by_id(client, id)
+            parcel, _ = await parcels.get_parcel_by_id(client, id)
         except NoData as exc:
             return ParcelSearchResponse(status=Status.no_data, reason=str(exc))
         except SourceError as exc:
@@ -143,7 +143,7 @@ async def terrain(parcel_id: str = Query(min_length=5, max_length=80)) -> Terrai
     """
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
         try:
-            parcel, _ = await uldk.get_parcel_by_id(client, parcel_id)
+            parcel, _ = await parcels.get_parcel_by_id(client, parcel_id)
         except (NoData, SourceError) as exc:
             return TerrainResponse(status=Status.error, reason=f"Nie udało się pobrać granic działki: {exc}",
                                    parcel_id=parcel_id,

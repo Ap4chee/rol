@@ -84,7 +84,7 @@ from app.schemas import (
     WeatherWindow,
 )
 from app import terrain_service
-from app.sources import NoData, SourceError, egib_wfs, imgw_hydro, sentinel, soilgrids, uldk, weather
+from app.sources import NoData, SourceError, egib_wfs, imgw_hydro, parcels, sentinel, soilgrids, weather
 from app.sources import soil_moisture as moisture_source
 from app.textfmt import fmt, fmt_date, plural_days
 
@@ -123,7 +123,7 @@ def today_warsaw() -> date:
 
 # ---------- działka ----------
 
-def _parcel_info(parcel: uldk.Parcel) -> ParcelInfo:
+def _parcel_info(parcel: parcels.Parcel) -> ParcelInfo:
     lon, lat = parcel.centroid_lonlat
     minx, miny, maxx, maxy = parcel.geometry.bounds
     return ParcelInfo(
@@ -133,7 +133,7 @@ def _parcel_info(parcel: uldk.Parcel) -> ParcelInfo:
         bbox=[minx, miny, maxx, maxy])
 
 
-async def resolve_parcel(client: httpx.AsyncClient, request: ReportRequest) -> tuple[uldk.Parcel | None, SourceInfo]:
+async def resolve_parcel(client: httpx.AsyncClient, request: ReportRequest) -> tuple[parcels.Parcel | None, SourceInfo]:
     """Działka z ULDK. Przy awarii ULDK i podanym punkcie raport powstaje dla samego punktu."""
     t0 = time.perf_counter()
     info = SourceInfo(
@@ -143,9 +143,9 @@ async def resolve_parcel(client: httpx.AsyncClient, request: ReportRequest) -> t
         data_date="stan ewidencji w dniu pobrania")
     try:
         if request.parcel_id:
-            parcel, from_cache = await uldk.get_parcel_by_id(client, request.parcel_id)
+            parcel, from_cache = await parcels.get_parcel_by_id(client, request.parcel_id)
         else:
-            parcel, from_cache = await uldk.get_parcel_by_point(client, request.point.lon, request.point.lat)
+            parcel, from_cache = await parcels.get_parcel_by_point(client, request.point.lon, request.point.lat)
     except NoData as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (SourceError, RuntimeError) as exc:
@@ -1087,7 +1087,7 @@ def recommendations_section(facts: rules.Facts) -> Recommendations:
 
 # ---------- raport ----------
 
-def _no_weather_report(request: ReportRequest, parcel: uldk.Parcel | None, sources: list[SourceInfo],
+def _no_weather_report(request: ReportRequest, parcel: parcels.Parcel | None, sources: list[SourceInfo],
                        started: float, timings: dict[str, float], soil: SoilSection,
                        hydrology: HydrologySection) -> ReportResponse:
     reason = ("Żaden dostawca pogody nie odpowiedział. Bez opadu i ewapotranspiracji nie da się policzyć "

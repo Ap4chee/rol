@@ -21,7 +21,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.report import today_warsaw  # noqa: E402
-from app.sources import sentinel, uldk  # noqa: E402
+from app.sources import parcels, sentinel  # noqa: E402
 
 EXPECTED = {
     "S2A_T34UEB_20250604T094120_L2A": (11, 11, 0.59225),
@@ -30,9 +30,9 @@ EXPECTED = {
 }
 
 
-async def get_parcel(parcel_id: str) -> uldk.Parcel:
+async def get_parcel(parcel_id: str) -> parcels.Parcel:
     async with httpx.AsyncClient() as client:
-        parcel, _ = await uldk.get_parcel_by_id(client, parcel_id)
+        parcel, _ = await parcels.get_parcel_by_id(client, parcel_id)
     return parcel
 
 
@@ -47,7 +47,7 @@ def main() -> None:
     print("WYNIK:", "wszystkie wzorce zgodne" if problems == 0 else f"{problems} niezgodności")
 
 
-def check(parcel: uldk.Parcel, parcel_id: str, day: date) -> int:
+def check(parcel: parcels.Parcel, parcel_id: str, day: date) -> int:
     t0 = time.perf_counter()
     result = sentinel.observe(parcel.id, parcel.geometry, day, today_warsaw(), budget_s=60.0)
     print(f"{parcel.id} okno {result.window_from}..{result.window_to}: scen {result.scenes_found}, "

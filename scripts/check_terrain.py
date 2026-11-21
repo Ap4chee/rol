@@ -19,14 +19,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core import terrain_rules  # noqa: E402
 from app.geo import reproject  # noqa: E402
-from app.sources import terrain, uldk  # noqa: E402
+from app.sources import parcels, terrain  # noqa: E402
 
 
 async def main() -> None:
     parcel_id = sys.argv[1] if len(sys.argv) > 1 else "060910_2.0011.580/2"
     sys.stdout.reconfigure(encoding="utf-8")
     async with httpx.AsyncClient() as client:
-        parcel, _ = await uldk.get_parcel_by_id(client, parcel_id)
+        parcel, _ = await parcels.get_parcel_by_id(client, parcel_id)
         if len(sys.argv) > 2:
             import rasterio
             with rasterio.open(sys.argv[2]) as ds:
