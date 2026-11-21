@@ -30,6 +30,17 @@ npm run build
 npm test
 ```
 
+### Inny wygląd niż u innej osoby z zespołu
+
+Jeśli pod `http://127.0.0.1:8000` widzisz inny interfejs niż ktoś z zespołu, sprawdź po kolei:
+
+1. Czy jesteś w repozytorium `rol` na aktualnym `main`: `git pull --rebase`, potem `git log -1` (u obu osób ten sam commit).
+2. Czy serwer był uruchomiony po ostatnim `git pull`. Uvicorn działa bez `--reload`, więc nowy kod API wchodzi dopiero po restarcie (Ctrl+C i ponowne uruchomienie). Pliki z `static/` są czytane z dysku przy każdym żądaniu.
+3. Czy przeglądarka nie trzyma starego `ui.js` i `ui.css` (adresy nie mają wersji). Odśwież stronę z Ctrl+F5 albo otwórz ją w oknie prywatnym.
+4. Czy `git status` nie pokazuje zmienionego `static/ui.js`. Lokalny `npm run build` po edycji `frontend/` daje inny build niż ten w repozytorium.
+
+`127.0.0.1` to zawsze własny komputer, więc każda osoba widzi swoją kopię aplikacji. Żeby udostępnić swoją w sieci lokalnej, uruchom serwer z `--host 0.0.0.0` i podaj adres `http://<twoje-IP>:8000`.
+
 Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip install -r requirements.txt` i `.venv/bin/python -m uvicorn app.main:app`.
 
 ## Funkcje
