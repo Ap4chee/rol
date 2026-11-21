@@ -12,14 +12,11 @@ const SOURCE_STATE = {
 };
 
 /** Zakładka „Źródła”: skąd są dane i z jakiego okresu, czego nie wiemy, jak to policzono. */
-export function SourcesTab({ report, satelliteSource, terrain }) {
+export function SourcesTab({ report }) {
   const water = report.water_status;
   const limitations = report.limitations ?? [];
-  let sources = report.sources ?? [];
-  // wyniki dociągane osobno (zdjęcia satelitarne, teren) zastępują swoje wpisy z raportu
-  for (const source of [satelliteSource, terrain?.source]) {
-    if (source) sources = [...sources.filter((entry) => entry.key !== source.key), source];
-  }
+  // raport jest już scalony z dociągniętymi częściami (completion.js), więc wpisy źródeł są aktualne
+  const sources = report.sources ?? [];
   return <div className="flex flex-col gap-14">
     <Section title="Skąd to wiemy">
       {/* w wąskim miejscu (telefon, wąska kolumna obok menu) okres danych schodzi pod nazwę źródła zamiast przewijania tabeli */}

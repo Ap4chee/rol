@@ -125,11 +125,11 @@ function IrrigationNeed({ need, crop, intro }) {
  * Rekomendacje w stałej kolejności (retencja → agrotechnika → nawadnianie), z działaniami z analizy terenu
  * dopisanymi do swoich grup, i lista oględzin pola. `intro`: wejście grup przy pierwszym pokazaniu raportu.
  */
-export function Recommendations({ report, terrainActions, satelliteChecks, intro = false }) {
+export function Recommendations({ report, terrainActions, intro = false }) {
   const printing = usePrinting();
   const data = report.recommendations;
   const checks = [...new Map([
-    ...(data.field_checks ?? []), ...satelliteChecks, ...terrainActions.filter((item) => item.category === 'field_check'),
+    ...(data.field_checks ?? []), ...terrainActions.filter((item) => item.category === 'field_check'),
   ].map((item) => [item.key, item])).values()];
   const checksMotion = enter(intro, 3);
 

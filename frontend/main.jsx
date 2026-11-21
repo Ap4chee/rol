@@ -13,6 +13,7 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { AddFieldForm } from './AddField.jsx';
 import { Dashboard } from './Dashboard.jsx';
 import { Report } from './Report.jsx';
+import { mergeSatellite } from './completion.js';
 import { Brand, Sidebar } from './Sidebar.jsx';
 import { dateText, fieldFromReport, fieldHref, fieldTabHref, readFields, routeTab, STORAGE_KEY, upsertField } from './model.js';
 import { generateReport } from './ui.jsx';
@@ -126,14 +127,7 @@ function App() {
   }, []);
 
   const onSatellite = useCallback((id, generatedAt, result) => {
-    const merge = (entry) => ({
-      ...entry, report: { ...entry.report, satellite: result.satellite,
-        sources: result.source ? [...entry.report.sources.filter((s) => s.key !== result.source.key), result.source] : entry.report.sources,
-        recommendations: { ...entry.report.recommendations, field_checks: [...new Map([
-          ...entry.report.recommendations.field_checks, ...(result.field_checks ?? []),
-        ].map((item) => [item.key, item])).values()] },
-      },
-    });
+    const merge = (entry) => ({ ...entry, report: mergeSatellite(entry.report, result) });
     const saved = currentFields.current.find((field) => field.id === id && field.report.generated_at === generatedAt);
     if (saved) persist(upsertField(currentFields.current, merge(saved)));
     setPreview((field) => field?.id === id && field.report.generated_at === generatedAt ? merge(field) : field);

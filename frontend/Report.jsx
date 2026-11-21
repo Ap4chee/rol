@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Printer, RefreshCw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/toaster';
 import { TextStates } from '@/components/spectrumui/text-states';
 import { usePrinting } from '@/lib/printing';
 import { cn } from '@/lib/utils';
-import { api, Status } from './ui.jsx';
+import { Status } from './ui.jsx';
 import { dateText, number, TABS } from './model.js';
 import { HistoryTab } from './report/HistoryTab.jsx';
 import { GROUPS, groupActions, Recommendations } from './report/Recommendations.jsx';
@@ -16,23 +16,7 @@ import { SourcesTab } from './report/SourcesTab.jsx';
 import { Summary } from './report/Summary.jsx';
 import { TerrainTab } from './report/TerrainTab.jsx';
 import { WeatherTab } from './report/WeatherTab.jsx';
-
-/** Część raportu liczona osobno (zdjęcia satelitarne, teren): dociągana po pokazaniu raportu, z ponowieniem. */
-function useDeferred(endpoint) {
-  const [result, setResult] = useState(null);
-  const [failure, setFailure] = useState('');
-  const [tries, setTries] = useState(0);
-  useEffect(() => {
-    if (!endpoint) return;
-    const controller = new AbortController();
-    setResult(null);
-    setFailure('');
-    api(endpoint, { signal: controller.signal }).then(setResult)
-      .catch((error) => { if (!controller.signal.aborted) setFailure(error.message); });
-    return () => controller.abort();
-  }, [endpoint, tries]);
-  return { result, failure, retry: () => setTries((n) => n + 1) };
-}
+import { useReportCompletion } from './report/useCompletion.js';
 
 const SAVE_LABELS = ['Zapisz pole', 'Zapisz', 'Zapisano'];
 const SAVED_FEEDBACK_MS = 1800;
@@ -48,15 +32,15 @@ function SaveIcon({ done }) {
 
 /** Widok pola: nagłówek z działaniami i zakładki raportu; przy drukowaniu wszystkie części jedna pod drugą. */
 export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }) {
-  const { report } = field;
   const title = useRef(null);
   const tabs = useRef(null);
   const printing = usePrinting();
   const { toast } = useToast();
-  const sat = useDeferred(report.satellite.endpoint);
-  const topo = useDeferred(report.terrain.endpoint);
-  const satellite = sat.result?.satellite ?? (sat.failure ? { status: 'error', reason: sat.failure } : report.satellite);
-  const terrain = topo.result ?? (topo.failure ? { status: 'error', reason: topo.failure } : report.terrain);
+  // jedna wersja raportu z dociągniętymi zdjęciami i terenem: ekran, wydruk i zapis widzą to samo
+  const settleSatellite = useCallback((result) => onSatellite(field.id, field.report.generated_at, result),
+    [field.id, field.report.generated_at, onSatellite]);
+  const { report, satellite: sat, terrain: topo } = useReportCompletion(field.report, settleSatellite);
+  const { satellite, terrain } = report;
   const terrainActions = terrain.recommendations ?? [];
   const water = report.water_status;
   const limited = water.spans_classes || water.soil_assumed;
@@ -69,9 +53,6 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
 
   useEffect(() => { title.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => { if (tab !== firstTab) setSwitched(true); }, [tab, firstTab]);
-  useEffect(() => {
-    if (sat.result && sat.result.satellite?.status !== 'pending') onSatellite(field.id, report.generated_at, sat.result);
-  }, [field.id, report.generated_at, sat.result, onSatellite]);
   useEffect(() => {
     if (!justSaved) return;
     const timer = setTimeout(() => setJustSaved(false), SAVED_FEEDBACK_MS);
@@ -98,12 +79,12 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
     podsumowanie: () => <Summary report={report} terrain={terrain} satellite={satellite} sat={sat} limited={limited}
       onTab={openTab} printing={printing} intro={intro('podsumowanie')}/>,
     rekomendacje: () => <Recommendations report={report} terrainActions={terrainActions}
-      satelliteChecks={sat.result?.field_checks ?? []} intro={intro('rekomendacje')}/>,
+      intro={intro('rekomendacje')}/>,
     gleba: () => <SoilTab report={report} printing={printing} intro={intro('gleba')}/>,
     pogoda: () => <WeatherTab report={report}/>,
-    teren: () => <TerrainTab report={report} terrain={terrain} failed={topo.failure} retry={topo.retry}/>,
+    teren: () => <TerrainTab report={report} terrain={terrain} control={topo}/>,
     historia: () => <HistoryTab report={report} intro={intro('historia')}/>,
-    zrodla: () => <SourcesTab report={report} satelliteSource={sat.result?.source} terrain={terrain}/>,
+    zrodla: () => <SourcesTab report={report}/>,
   };
   const facts = [
     { text: report.crop.name },

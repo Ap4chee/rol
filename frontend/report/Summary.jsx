@@ -306,8 +306,8 @@ export function Summary({ report, terrain, satellite, sat, limited, onTab, print
     <WaterReserve report={report} intro={intro}/>
     <div className="grid gap-14 md:grid-cols-12 md:gap-12">
       <div className="min-w-0 md:col-span-7"><Causes report={report} terrain={terrain} onTab={onTab}/></div>
-      <div className="min-w-0 md:col-span-5"><Greenness satellite={satellite} failed={sat.failure} retry={sat.retry}
-        canRetry={Boolean(report.satellite?.endpoint)} printing={printing}/></div>
+      <div className="min-w-0 md:col-span-5"><Greenness satellite={satellite} failed={sat.failed} retry={sat.retry}
+        canRetry={sat.canRetry} printing={printing}/></div>
     </div>
   </div>;
 }

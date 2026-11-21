@@ -21,7 +21,7 @@ function measure(value, unit) {
 }
 
 /** Zakładka „Teren i woda”: mapa z drogami spływu, spadki i przyczyny z terenu, rzeki w okolicy. */
-export function TerrainTab({ report, terrain, failed, retry }) {
+export function TerrainTab({ report, terrain, control }) {
   const hydro = report.hydrology;
   const pending = terrain?.status === 'pending';
   const causes = terrain?.causes ?? [];
@@ -49,8 +49,8 @@ export function TerrainTab({ report, terrain, failed, retry }) {
             </Accordion>}
           </div>}
           {/* ponów także, gdy serwer odpowiedział błędem źródła (np. WCS GUGiK nie odpowiedział): błędy nie trafiają do pamięci podręcznej */}
-          {(failed || terrain?.status === 'error') && report.terrain?.endpoint ? <Button className="no-print self-start" variant="secondary" size="sm"
-            icon={<RefreshCw/>} onClick={retry}>Ponów pobieranie terenu</Button> : null}
+          {(control.failed || terrain?.status === 'error') && control.canRetry ? <Button className="no-print self-start" variant="secondary" size="sm"
+            icon={<RefreshCw/>} onClick={control.retry}>Ponów pobieranie terenu</Button> : null}
         </div>
       </Section>
     </div>
