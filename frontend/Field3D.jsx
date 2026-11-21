@@ -295,7 +295,7 @@ export function Field3D({ report, height = 420, cropArea = null }) {
       plants.receiveShadow = true;
       const tint = new THREE.Color();
       spots.forEach((_, i) => plants.setColorAt(i, tint.setScalar(.82 + Math.random() * .3)));
-      scene.add(plants);
+      meshes[0].add(plants);   // rośliny są częścią wierzchniej warstwy: wysuwają się i rozkładają razem z nią
     }
     const seeds = spots.map(() => [Math.random() * Math.PI * 2, .8 + Math.random() * .4, (Math.random() - .5) * .25, (Math.random() - .5) * .25]);
     const dummy = new THREE.Object3D();
@@ -311,6 +311,8 @@ export function Field3D({ report, height = 420, cropArea = null }) {
         plants.setMatrixAt(i, dummy.matrix);
       });
       plants.instanceMatrix.needsUpdate = true;
+      plants.boundingSphere = null;   // three.js zapamiętuje sferę z pierwszego trafienia; po wzroście trzeba ją przeliczyć
+      plants.boundingBox = null;
     };
     grow(reduced ? 9 : 0);
 
@@ -338,7 +340,9 @@ export function Field3D({ report, height = 420, cropArea = null }) {
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(9, 9);
+    let moved = false;
     const onMove = (event) => {
+      moved = true;
       const rect = renderer.domElement.getBoundingClientRect();
       const px = event.clientX - rect.left, py = event.clientY - rect.top;
       pointer.set(px / rect.width * 2 - 1, -py / rect.height * 2 + 1);
@@ -350,7 +354,7 @@ export function Field3D({ report, height = 420, cropArea = null }) {
         host.dataset.tipSide = px > rect.width - 300 ? 'left' : 'right';
       }
     };
-    const onLeave = () => pointer.set(9, 9);
+    const onLeave = () => { pointer.set(9, 9); moved = true; };
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerleave', onLeave);
     const resize = new ResizeObserver(() => {
@@ -376,10 +380,16 @@ export function Field3D({ report, height = 420, cropArea = null }) {
       });
       if (rootLine) rootLine.position.y += (rootY(open) - rootLine.position.y) * .07;
       if (!grown) { grow(t * 1.2); grown = t > 2; }
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(meshes)[0]?.object.userData.index ?? null;
+      let hit = lastHover;
+      if (moved) {   // promień liczony tylko po ruchu kursora (rośliny to tysiące instancji)
+        moved = false;
+        raycaster.setFromCamera(pointer, camera);
+        const object = raycaster.intersectObjects(meshes, true)[0]?.object;
+        hit = object == null ? null : object === plants ? 'crop' : object.userData.index ?? null;
+      }
       if (hit !== lastHover) {
         meshes.forEach((m, i) => m.material.emissive.set(i === hit ? '#2a2414' : '#000000'));
+        plants?.material.emissive.set(hit === 'crop' ? '#1c2a12' : '#000000');
         lastHover = hit;
         setHovered(hit);
         renderer.domElement.style.cursor = hit == null ? 'grab' : 'pointer';
@@ -405,13 +415,14 @@ export function Field3D({ report, height = 420, cropArea = null }) {
     setExploded(state.current.exploded);
   }
 
-  const active = hovered != null ? layers[hovered] : null;
+  const active = typeof hovered === 'number' ? layers[hovered] : null;
   return <div className="field3d" ref={box}>
     <div ref={mount} className="field3d-canvas" style={{ height }} role="img"
       aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} ${layersWord(layers.length)} gleby`}/>
     <Button className="field3d-actions no-print" size="compact-sm" variant="default"
       leftSection={exploded ? <IconArrowsMinimize size={14}/> : <IconArrowsMaximize size={14}/>} onClick={toggle}>
       {exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
+    {hovered === 'crop' && <CropTip report={report} rootCm={rootCm}/>}
     {active && <div className="layer-tip" key={hovered} role="tooltip">
       <Text size="xs" c="dimmed" fw={600}>{active.top_cm}–{active.bottom_cm} cm{active.top_cm < rootCm ? ' · w zasięgu korzeni' : ''}</Text>
       <Text fw={700}>{active.texture_label}</Text>
@@ -432,8 +443,40 @@ export function Field3D({ report, height = 420, cropArea = null }) {
           {assumed ? ' · kształt umowny (raport dla punktu)' : ''}</Text>
         <Text size="xs" c="dimmed">{layers.length ? `${layers.length} ${layersWord(layers.length)} gleby (SoilGrids). ` : 'Brak profilu gleby: warstwa umowna. '}
           {fill != null && rootCm > 0 ? `Niebieski odcień do ${number(rootCm)} cm: zapas wody w strefie korzeni (${number(fill * 100)}%). ` : ''}
-          Najedź na warstwę, żeby zobaczyć skład.</Text>
+          Najedź na uprawę albo warstwę gleby, żeby zobaczyć szczegóły.</Text>
       </>}
     </Stack>
+  </div>;
+}
+
+const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+
+function CropTip({ report, rootCm }) {
+  const crop = report.crop;
+  const need = report.irrigation_need;
+  const today = report.water_status?.series?.at(-1);
+  const max = Math.max(1, ...(need?.monthly ?? []).map((m) => m.mm));
+  const short = (iso) => iso?.slice(5).split('-').reverse().join('.');
+  return <div className="layer-tip crop-tip" key="crop" role="tooltip">
+    <Text size="xs" c="dimmed" fw={600}>{crop.stage_name?.split(' (')[0] ?? 'faza nieznana'}</Text>
+    <Text fw={700}>{crop.name}</Text>
+    <dl>
+      {today && crop.in_season !== false && <><dt>Zużycie wody dziś</dt><dd>{number(today.etc_mm, 1)} mm</dd></>}
+      {crop.kc != null && <><dt>Współczynnik Kc</dt><dd>{number(crop.kc, 2)}</dd></>}
+      <dt>Korzenie</dt><dd>do {number(rootCm)} cm</dd>
+      {crop.critical_from && <><dt>Okres krytyczny</dt><dd>{short(crop.critical_from)}–{short(crop.critical_to)}</dd></>}
+    </dl>
+    {need?.status === 'ok' && <>
+      <Text size="xs" fw={700} mt={8}>Potrzeba nawadniania (netto)</Text>
+      <dl>
+        {need.so_far_mm != null && <><dt>Ten sezon do dziś</dt><dd>{number(need.so_far_mm)} mm</dd></>}
+        {need.typical_mm != null && <><dt>Typowy sezon</dt><dd>{number(need.typical_mm)} mm</dd></>}
+        {need.dry_mm != null && <><dt>Suchy rok</dt><dd>{number(need.dry_mm)} mm</dd></>}
+      </dl>
+      {need.monthly?.some((m) => m.mm > 0) && <div className="need-bars" aria-label="Typowa potrzeba nawadniania w miesiącach">
+        {need.monthly.map((m) => <div key={m.month}><span style={{ height: `${Math.max(2, 100 * m.mm / max)}%` }}/>
+          <small>{MONTHS[m.month - 1]}</small></div>)}
+      </div>}
+    </>}
   </div>;
 }

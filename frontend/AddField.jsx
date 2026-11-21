@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Grid, Group, Loader, Paper, SegmentedControl, Select, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { Alert, Button, Grid, Group, Loader, Paper, SegmentedControl, Select, Stack, Switch, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { IconArrowRight, IconCalendar, IconCircleCheck, IconMapPin, IconSearch } from '@tabler/icons-react';
 import { ParcelMap } from './ParcelMap.jsx';
 import { api, generateReport } from './ui.jsx';
 import { fieldFromReport, FULL_ID, number, oldestDate, today } from './model.js';
+import { testParcel } from './testParcel.js';
+
+const TEST_AVAILABLE = new URLSearchParams(window.location.search).has('test');
+const TEST_POINT = { lat: 52.0, lon: 19.0 };   // gdy w trybie testowym nie wskazano miejsca
 
 function describe(parcel) {
   return [parcel.region, parcel.commune && 'gm. ' + parcel.commune, parcel.voivodeship].filter(Boolean).join(', ');
@@ -25,6 +29,7 @@ export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [test, setTest] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -98,8 +103,15 @@ export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
 
   function submit(event) {
     event.preventDefault();
-    if (busy || !crop || !(parcel || point)) return;
+    if (busy || !crop || !(parcel || point || test)) return;
     request('report', async (signal) => {
+      if (test) {   // analiza na żywo dla punktu, w widoku obrys testowy
+        const where = parcel?.centroid ?? point ?? TEST_POINT;
+        const result = await generateReport({ crop, date, point: { lat: where.lat, lon: where.lon } }, signal);
+        const shape = testParcel(where.lat, where.lon);
+        if (!signal.aborted) onReport(fieldFromReport({ ...result, parcel: shape.parcel, test_crop_area: shape.cropArea }, name || 'Działka testowa'));
+        return;
+      }
       const result = await generateReport({ crop, date, ...(parcel ? { parcel_id: parcel.id } : { point }) }, signal);
       if (!signal.aborted) onReport(fieldFromReport(result, name));
     });
@@ -136,6 +148,8 @@ export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
     </Group>
     {!split && <TextInput label="Nazwa pola" description="opcjonalnie" value={name} maxLength={80} disabled={disabled}
       onChange={(event) => setName(event.target.value)} placeholder="np. Pod lasem"/>}
+    {TEST_AVAILABLE && <Switch color="red" checked={test} onChange={(event) => setTest(event.currentTarget.checked)} disabled={disabled}
+      label="Tryb testowy" description="Obrys działki testowej w wybranym miejscu (albo w środku Polski). Pogoda, gleba i bilans liczą się na żywo dla tego punktu."/>}
     {cropsError && <Alert color="red" variant="light">Nie udało się pobrać upraw. {cropsError}</Alert>}
     {error && <Alert color="red" variant="light" role="alert">{error}</Alert>}
     {busy && <Group gap="xs" role="status"><Loader size="xs"/><Text size="sm">
@@ -143,7 +157,7 @@ export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
     <Group justify="flex-end" mt="xs">
       {onCancel && <Button variant="default" onClick={onCancel}>Anuluj</Button>}
       <Button type="submit" size={split ? 'md' : 'sm'} rightSection={<IconArrowRight size={18}/>}
-        disabled={Boolean(busy) || !(parcel || point) || !crop} fullWidth={split}>Sprawdź wodę na polu</Button>
+        disabled={Boolean(busy) || !(parcel || point || test) || !crop} fullWidth={split}>Sprawdź wodę na polu</Button>
     </Group>
   </Stack>;
 

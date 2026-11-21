@@ -159,6 +159,43 @@ def typical_band(dates: list[date], available_pct: np.ndarray, start: int, years
     return out
 
 
+def irrigation_need(dates: list[date], crop: Crop, crop_daily: CropDaily, irrigated: BalanceResult,
+                    rain_mm: np.ndarray, years: int = 10) -> dict | None:
+    """Zapotrzebowanie na nawadnianie (bilans z dawkami przy przekroczeniu RAW): bieżący sezon do ostatniego dnia
+    serii oraz pełne sezony z `years` poprzednich lat (mediana, 90. percentyl, rozkład na miesiące).
+    Sezon wlicza się tylko, gdy cały mieści się w serii po roku rozbiegu bilansu."""
+    irr, labels, last = irrigated.irrigation_mm, crop_daily.season_label, dates[-1]
+    if irr is None:
+        return None
+    current = int(labels[-1]) if labels[-1] and crop_daily.in_field[-1] else None
+    past = []
+    for label in sorted({int(x) for x in labels if x}):
+        idx = np.nonzero(labels == label)[0]
+        if label == current or idx[0] < 365 or idx[-1] >= len(dates) - 1:
+            continue                      # sezon bieżący, w rozbiegu albo niedomknięty w serii
+        events = irr[idx][irr[idx] > 0]
+        months: dict[int, float] = {}
+        for i in idx:
+            months[dates[i].month] = months.get(dates[i].month, 0.0) + float(irr[i])
+        past.append({"label": label, "total": float(irr[idx].sum()), "events": events, "months": months})
+    past = past[-years:]
+    out = {"current_label": current, "seasons": len(past)}
+    if current is not None:
+        idx = np.nonzero(labels == current)[0]
+        out.update(so_far_mm=float(irr[idx].sum()), so_far_events=int((irr[idx] > 0).sum()),
+                   etc_so_far_mm=float(irrigated.etc_mm[idx].sum()), rain_so_far_mm=float(rain_mm[idx].sum()),
+                   season_from=dates[idx[0]])
+    if len(past) >= 5:
+        totals = [p["total"] for p in past]
+        doses = np.concatenate([p["events"] for p in past]) if any(len(p["events"]) for p in past) else np.array([])
+        order = sorted({m for p in past for m in p["months"]}, key=lambda m: (m - dates[np.nonzero(labels == past[-1]["label"])[0][0]].month) % 12)
+        out.update(typical_mm=float(np.median(totals)), dry_mm=float(np.percentile(totals, 90)),
+                   seasons_without=int(sum(1 for t in totals if t < 1)),
+                   dose_mm=float(np.median(doses)) if len(doses) else None,
+                   monthly=[(m, float(np.median([p["months"].get(m, 0.0) for p in past]))) for m in order])
+    return out
+
+
 def same_day_comparison(dates: list[date], depletion_pct: np.ndarray, years: int = 10) -> dict | None:
     """Wyczerpanie w dniu analizy na tle tego samego dnia roku w poprzednich latach."""
     current = float(depletion_pct[-1])

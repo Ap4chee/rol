@@ -44,7 +44,7 @@ Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip ins
 - **Raport w narzuconej kolejności**:
   1. Sytuacja wodna: ubytek wody w strefie korzeni względem RAW i TAW w czterech klasach słownych, przedział niepewności gleby, klimatyczny bilans wodny z 60 dni, wykres, zdjęcia satelitarne (czy potwierdzają bilans), podatność w ostatnich 10 sezonach, podsumowanie minionego sezonu.
   2. Przyczyny: opad i ET0 z 30, 60 i 90 dni względem mediany z 10 lat, pojemność wodna gleby, faza uprawy, niedobór przeniesiony z poprzedniego sezonu, spadek terenu i skoncentrowany spływ, stan rzeki na najbliższym wodowskazie IMGW na tle tych samych dni w poprzednich latach (czy susza dotyczy też wód w okolicy).
-  3. Rekomendacje retencyjne, 4. agrotechniczne, 5. nawadnianie (tylko gdy niedobór pozostaje i uprawa jest w fazie, w której ma to sens).
+  3. Rekomendacje retencyjne, 4. agrotechniczne, 5. nawadnianie (tylko gdy niedobór pozostaje i uprawa jest w fazie, w której ma to sens). Przy nawadnianiu: ile wody netto potrzebowałaby uprawa w tym sezonie, w typowym i w suchym roku (bilans FAO-56 z dawką 25 mm, gdy zapas spada poniżej progu stresu).
   - „Co sprawdzić na polu” tam, gdzie dane nie rozstrzygają.
   - Profil gleby, założenia o uprawie, źródła z datami i statusem, ograniczenia.
 - **Data poza okresem wzrostu**: raport mówi to wprost, pokazuje stan zapasu wody w glebie i miniony sezon.

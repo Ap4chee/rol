@@ -304,6 +304,7 @@ function Recommendations({ report, terrainActions, satelliteChecks }) {
           : <Text c="dimmed">{data.status !== 'ok' ? 'Na tym etapie brakuje danych do zaleceń.'
             : i === 2 ? data.irrigation_note || 'Raport nie wskazuje potrzeby nawadniania.' : 'Raport nie wskazuje działań w tej grupie.'}</Text>}
         {i === 2 && items.length > 0 && data.irrigation_note && <Text size="sm" c="dimmed" mt="xs">{data.irrigation_note}</Text>}
+        {i === 2 && <IrrigationNeed need={report.irrigation_need} crop={report.crop}/>}
       </div>;
     })}</Stack>
     {checks.length > 0 && <Box mt={36}>
@@ -312,6 +313,33 @@ function Recommendations({ report, terrainActions, satelliteChecks }) {
         <Text size="sm">{item.what}</Text><Text size="xs" c="dimmed">{item.why}</Text></List.Item>)}</List>
     </Box>}
   </Section>;
+}
+
+function IrrigationNeed({ need, crop }) {
+  if (!need) return null;
+  if (need.status !== 'ok') return <Note section={need}/>;
+  const max = Math.max(1, ...need.monthly.map((m) => m.mm));
+  return <Grid mt="lg" gutter="xl" align="flex-end" className="irrigation-need">
+    <Grid.Col span={{ base: 12, md: 5 }}>
+      <Text fw={700} mb={4}>Ile wody potrzebuje {crop.name.toLowerCase()} w sezonie</Text>
+      <SimpleGrid cols={3} spacing="md" mb="sm">
+        <Fact label="ten sezon do dziś" value={need.so_far_mm != null ? `${number(need.so_far_mm)} mm` : '—'}/>
+        <Fact label="typowy sezon" value={need.typical_mm != null ? `${number(need.typical_mm)} mm` : '—'}/>
+        <Fact label="suchy rok" value={need.dry_mm != null ? `${number(need.dry_mm)} mm` : '—'}/>
+      </SimpleGrid>
+      <Paragraphs lines={need.text} size="xs" c="dimmed"/>
+    </Grid.Col>
+    <Grid.Col span={{ base: 12, md: 7 }}>
+      {need.monthly.some((m) => m.mm > 0) && <>
+        <Text size="sm" c="dimmed" mb={6}>Typowa potrzeba nawadniania w miesiącach sezonu (mediana {need.seasons_compared} lat)</Text>
+        <div className="month-need">{need.monthly.map((m) => <div key={m.month}>
+          <Text size="xs" fw={700}>{m.mm >= 1 ? number(m.mm) : ''}</Text>
+          <span style={{ height: `${Math.max(2, 100 * m.mm / max)}%` }}/>
+          <Text size="xs" c="dimmed">{MONTHS[m.month - 1]}</Text>
+        </div>)}</div>
+      </>}
+    </Grid.Col>
+  </Grid>;
 }
 
 // ---------- 5. źródła ----------
@@ -383,7 +411,7 @@ export function Report({ field, onSave, onEdit, onSatellite, saved }) {
             <SegmentedControl size="xs" value={view} onChange={setView}
               data={[{ value: '3d', label: 'Pole i gleba' }, { value: 'map', label: 'Zdjęcie lotnicze' }]}/>
           </Group>
-          {view === '3d' ? <Field3D report={report}/>
+          {view === '3d' ? <Field3D report={report} cropArea={report.test_crop_area}/>
             : <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>}
         </Grid.Col>
       </Grid>

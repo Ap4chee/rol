@@ -64,6 +64,10 @@ body { background: var(--mantine-color-white); }
   transform-origin: bottom; animation: grow .8s ease-out both; }
 .season-bars .stressed span { background: var(--mantine-color-orange-5); }
 @keyframes grow { from { transform: scaleY(0); } }
+.month-need { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; height: 140px; align-items: end; }
+.month-need > div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; height: 100%; }
+.month-need span { width: 100%; max-width: 40px; border-radius: 4px 4px 0 0; background: var(--mantine-color-blue-5);
+  transform-origin: bottom; animation: grow .8s ease-out both; }
 .month { padding: 3px 8px; border-radius: var(--mantine-radius-sm); font-size: 12px; color: var(--mantine-color-gray-6); }
 .month.critical { background: var(--mantine-color-orange-1); color: var(--mantine-color-orange-9); font-weight: 700; }
 
@@ -112,6 +116,11 @@ body { background: var(--mantine-color-white); }
 .layer-tip dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 8px 0 0; font-size: 12px; }
 .layer-tip dt { color: var(--mantine-color-gray-6); }
 .layer-tip dd { margin: 0; font-weight: 600; text-align: right; }
+.crop-tip { width: 260px; }
+.need-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; height: 54px; margin-top: 6px; align-items: end; }
+.need-bars > div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 2px; }
+.need-bars span { width: 100%; border-radius: 2px 2px 0 0; background: var(--mantine-color-blue-5); }
+.need-bars small { font-size: 9px; color: var(--mantine-color-gray-6); }
 .texture-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 6px 0 3px; }
 .texture-bar .sand { background: #d7b47c; }
 .texture-bar .silt { background: #9c8664; }

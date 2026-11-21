@@ -100,3 +100,27 @@ def test_four_classes_relative_to_raw_and_taw():
     assert classify(40.0, raw_mm=50.0, taw_mm=100.0) == "watch"
     assert classify(60.0, raw_mm=50.0, taw_mm=100.0) == "moderate"
     assert classify(90.0, raw_mm=50.0, taw_mm=100.0) == "severe"
+
+
+def test_refill_at_raw_keeps_depletion_below_raw_and_counts_doses():
+    import numpy as np
+    from app.core.water_balance import run_water_balance
+    n = 60
+    rain, et0, kc = np.zeros(n), np.full(n, 5.0), np.full(n, 1.0)
+    in_field = np.ones(n, dtype=bool)
+    r = run_water_balance(rain, et0, kc, in_field, taw_mm=100, p_table=.5, tew_mm=20, rew_mm=8, adjust_p=False, refill_at_raw=True)
+    assert (r.depletion_mm <= 50 + 1e-9).all()            # nigdy poniżej progu stresu
+    assert (r.irrigation_mm > 0).sum() == 5                 # 55 mm wyczerpania co 11 dni, przez 60 dni
+    assert abs(r.irrigation_mm.sum() - (r.etc_mm.sum() - r.depletion_mm[-1])) < 1e-6   # bilans się zamyka
+    plain = run_water_balance(rain, et0, kc, in_field, taw_mm=100, p_table=.5, tew_mm=20, rew_mm=8, adjust_p=False)
+    assert plain.irrigation_mm is None
+
+
+def test_fixed_dose_repeats_until_below_raw():
+    import numpy as np
+    from app.core.water_balance import run_water_balance
+    n = 40
+    r = run_water_balance(np.zeros(n), np.full(n, 5.0), np.ones(n), np.ones(n, dtype=bool), taw_mm=100, p_table=.5,
+                          tew_mm=20, rew_mm=8, adjust_p=False, refill_at_raw=True, dose_mm=25)
+    assert set(np.round(r.irrigation_mm[r.irrigation_mm > 0], 6)) == {25.0}
+    assert r.depletion_mm.max() <= 55 + 1e-9                # najwyżej jeden dzień ponad RAW, potem dawka

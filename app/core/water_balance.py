@@ -90,6 +90,7 @@ class BalanceResult:
     eta_mm: np.ndarray         # ewapotranspiracja rzeczywista
     deep_percolation_mm: np.ndarray
     taw_mm: float
+    irrigation_mm: np.ndarray | None = None   # dawki nawodnienia (tylko przy refill_at_raw)
 
 
 def run_water_balance(
@@ -103,6 +104,8 @@ def run_water_balance(
     rew_mm: float,
     initial_depletion_mm: float = 0.0,
     adjust_p: bool = True,
+    refill_at_raw: bool = False,
+    dose_mm: float | None = None,
 ) -> BalanceResult:
     """Bilans dzienny dla ciągu kolejnych dni.
 
@@ -113,6 +116,9 @@ def run_water_balance(
     p_table         – frakcja wyczerpania bez stresu z tab. 22
     tew_mm, rew_mm  – woda możliwa do odparowania z warstwy powierzchniowej (łącznie i w fazie 1)
     adjust_p        – czy korygować p o dzienne ETc (False odtwarza przykład 37 z FAO-56)
+    refill_at_raw   – nawadnianie wg FAO-56 rozdz. 8: gdy uprawa jest w polu, a Dr przekroczy RAW,
+                      dawka uzupełnia strefę korzeni do pojemności polowej (Dr = 0) albo, przy `dose_mm`,
+                      jest stała (kolejna następnego dnia, jeśli nadal Dr > RAW); dawki w `irrigation_mm`
     """
     n = len(rain_mm)
     depletion = np.zeros(n)
@@ -121,6 +127,7 @@ def run_water_balance(
     etc_out = np.zeros(n)
     eta_out = np.zeros(n)
     dp_out = np.zeros(n)
+    irr_out = np.zeros(n)
 
     tew = max(tew_mm, 1e-6)
     rew = min(max(rew_mm, 0.0), tew)
@@ -147,9 +154,12 @@ def run_water_balance(
             dp_out[i] = -dr_new
             dr_new = 0.0
         dr = min(dr_new, taw_mm)
+        if refill_at_raw and in_field[i] and dr > p * taw_mm:
+            irr_out[i] = dr if dose_mm is None else min(dose_mm, dr)
+            dr -= irr_out[i]
         depletion[i] = dr
         raw[i] = p * taw_mm
         ks_out[i] = ks
         etc_out[i] = etc
         eta_out[i] = eta
-    return BalanceResult(depletion, raw, ks_out, etc_out, eta_out, dp_out, taw_mm)
+    return BalanceResult(depletion, raw, ks_out, etc_out, eta_out, dp_out, taw_mm, irr_out if refill_at_raw else None)

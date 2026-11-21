@@ -59,6 +59,8 @@ from app.schemas import (
     HistorySection,
     HydrologySection,
     HydroYear,
+    IrrigationNeed,
+    MonthAmount,
     ParcelInfo,
     Point,
     Recommendation,
@@ -777,6 +779,48 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
     return section, field_check
 
 
+# ---------- zapotrzebowanie na nawadnianie ----------
+
+IRRIGATION_DOSE_MM = 25.0   # założona dawka jednego nawadniania (założenie projektowe, do zmiany przy znanej instalacji)
+
+
+def _count(n: int, one: str, few: str, many: str) -> str:
+    return f"{n} {one if n == 1 else few if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else many}"
+
+
+def irrigation_need_section(c: Computed) -> IrrigationNeed:
+    variant = c.variants[0]
+    irrigated = run_water_balance(
+        c.series.rain_mm, c.series.et0_mm, c.crop_daily.kc, c.crop_daily.in_field, taw_mm=c.main.taw_mm, p_table=c.crop.p,
+        tew_mm=total_evaporable_water_mm(variant.fc_top, variant.wp_top), rew_mm=variant.rew_mm, refill_at_raw=True,
+        dose_mm=IRRIGATION_DOSE_MM)
+    need = analysis.irrigation_need(c.dates, c.crop, c.crop_daily, irrigated, c.series.rain_mm, HISTORY_YEARS)
+    if not need or (need.get("current_label") is None and "typical_mm" not in need):
+        return IrrigationNeed(status=Status.no_data, reason="Za mało pełnych sezonów w danych, żeby policzyć zapotrzebowanie.")
+    text = []
+    if need.get("current_label") is not None:
+        text.append(f"W tym sezonie (od {fmt_date(need['season_from'])}) utrzymanie zapasu powyżej progu stresu wymagałoby "
+                    f"{fmt(need['so_far_mm'])} mm wody ({_count(need['so_far_events'], 'dawka', 'dawki', 'dawek')} po {fmt(IRRIGATION_DOSE_MM)} mm). Uprawa zużyła w tym czasie ok. "
+                    f"{fmt(need['etc_so_far_mm'])} mm, a spadło {fmt(need['rain_so_far_mm'])} mm deszczu.")
+    if "typical_mm" in need:
+        text.append(f"W typowym sezonie z ostatnich {need['seasons']} lat potrzeba {fmt(need['typical_mm'])} mm, w suchym "
+                    f"(co dziesiąty rok) {fmt(need['dry_mm'])} mm. "
+                    + (f"Bez potrzeby nawadniania: {_count(need['seasons_without'], 'sezon', 'sezony', 'sezonów')}." if need['seasons_without'] else ""))
+    text.append(f"To ilość netto, która ma trafić do gleby: dawka {fmt(IRRIGATION_DOSE_MM)} mm, gdy zapas spada poniżej progu "
+                "stresu. Do wydajności instalacji trzeba doliczyć jej straty; wynik dotyczy przyjętego kalendarza uprawy i gleby "
+                "z SoilGrids.")
+    return IrrigationNeed(
+        status=Status.ok, season_label=need.get("current_label"), season_from=need.get("season_from"),
+        so_far_mm=round(need["so_far_mm"]) if "so_far_mm" in need else None, so_far_events=need.get("so_far_events"),
+        etc_so_far_mm=round(need["etc_so_far_mm"]) if "etc_so_far_mm" in need else None,
+        rain_so_far_mm=round(need["rain_so_far_mm"]) if "rain_so_far_mm" in need else None,
+        typical_mm=round(need["typical_mm"]) if "typical_mm" in need else None,
+        dry_mm=round(need["dry_mm"]) if "dry_mm" in need else None, seasons_compared=need["seasons"],
+        seasons_without=need.get("seasons_without", 0),
+        dose_mm=round(need["dose_mm"]) if need.get("dose_mm") else None,
+        monthly=[MonthAmount(month=m, mm=round(v, 1)) for m, v in need.get("monthly", [])], text=text)
+
+
 # ---------- prognoza zapasu wody ----------
 
 async def fetch_forecast_safe(client: httpx.AsyncClient, lat: float, lon: float, today: date):
@@ -1127,6 +1171,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
     status = water_status(computed, soil_assumed)
     status.forecast_reason = forecast_reason
     project_forecast(status, computed, forecast)
+    irrigation_need = irrigation_need_section(computed)
     history = history_section(computed)
     causes = causes_section(computed, status, soil_assumed)
     timings["compute"] = round(time.perf_counter() - t0, 3)
@@ -1189,5 +1234,5 @@ async def build_report(request: ReportRequest, today: date | None = None,
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
         crop=crop_info(computed, request.date), summary=summary,
         water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,
-        soil_moisture=soil_moisture, terrain=terrain_ref, hydrology=hydrology, recommendations=recommendations,
+        soil_moisture=soil_moisture, irrigation_need=irrigation_need, terrain=terrain_ref, hydrology=hydrology, recommendations=recommendations,
         limitations=limitations, sources=sources, timings_s=timings)

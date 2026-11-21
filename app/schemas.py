@@ -459,6 +459,32 @@ class SoilMoistureSection(BaseModel):
     text: list[str] = []
 
 
+# ---------- zapotrzebowanie na nawadnianie ----------
+
+class MonthAmount(BaseModel):
+    month: int = Field(description="1–12")
+    mm: float
+
+
+class IrrigationNeed(BaseModel):
+    """Ile wody trzeba by dodać, żeby zapas nie spadł poniżej progu stresu (FAO-56 rozdz. 8, dawka uzupełnia do pojemności polowej)."""
+    status: Status
+    reason: str | None = None
+    season_label: int | None = Field(default=None, description="rok zbioru bieżącego sezonu")
+    season_from: Date | None = None
+    so_far_mm: float | None = Field(default=None, description="bieżący sezon do dnia analizy, mm netto")
+    so_far_events: int | None = None
+    etc_so_far_mm: float | None = None
+    rain_so_far_mm: float | None = None
+    typical_mm: float | None = Field(default=None, description="mediana pełnych sezonów z 10 lat, mm netto")
+    dry_mm: float | None = Field(default=None, description="90. percentyl sezonów (suchy rok), mm netto")
+    seasons_compared: int = 0
+    seasons_without: int = Field(default=0, description="w ilu sezonach nawadnianie nie było potrzebne")
+    dose_mm: float | None = Field(default=None, description="typowa pojedyncza dawka, mm")
+    monthly: list[MonthAmount] = Field(default=[], description="mediana na miesiąc w kolejności sezonu")
+    text: list[str] = []
+
+
 # ---------- rekomendacje ----------
 
 class Recommendations(BaseModel):
@@ -491,6 +517,7 @@ class ReportResponse(BaseModel):
     causes: CausesSection
     soil: SoilSection
     soil_moisture: SoilMoistureSection | None = None
+    irrigation_need: IrrigationNeed | None = None
     terrain: TerrainRef
     hydrology: HydrologySection
     recommendations: Recommendations
