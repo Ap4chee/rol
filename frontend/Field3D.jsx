@@ -5,7 +5,7 @@ import { mergeGeometries as mergeRaw } from 'three/examples/jsm/utils/BufferGeom
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { layersWord, mergeSoilLayers, number } from './model.js';
+import { balanceText, layersWord, number, soilProfile } from './model.js';
 
 const FIELD_SIZE = 10;     // dłuższy bok działki w jednostkach sceny
 const SOIL = {             // kolor bazowy i ziarno faktury dla klas uziarnienia
@@ -178,7 +178,6 @@ function cropModel(key, stage, month) {
 
 const layerDepth = (cm) => .18 + cm * .009;   // grubość warstwy w scenie (cienkie warstwy też widoczne)
 const GAP = .3;                                // odstęp między rozłożonymi warstwami
-const rootDepthCm = (report) => (report.soil?.root_depth_m ?? report.crop.root_depth_m ?? 0) * 100;
 
 /** `cropArea`: opcjonalna geometria GeoJSON (EPSG:4326) części działki z uprawą; bez niej rośliny rosną na całej działce. */
 /** `toolbar`: element po lewej w pasku nad modelem (np. przełącznik widoku); `intro`: wejście tylko przy pierwszym pokazaniu. */
@@ -188,12 +187,13 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
   const [exploded, setExploded] = useState(true);
   const [hovered, setHovered] = useState(null);
   const box = useRef(null);
-  const layers = mergeSoilLayers(report.soil?.layers);   // te same klasy gleby obok siebie jako jedna warstwa
+  const profile = soilProfile(report);   // to samo znaczenie warstw i zasięgu co w tabeli gleby
+  const { layers } = profile;
   const crop = report.crop;
   const month = Number(report.analysis_date.slice(5, 7));
   const label = cropModel(crop.key, crop.stage_key, month).label;
   const assumed = !report.parcel?.geometry;
-  const rootCm = rootDepthCm(report);
+  const rootCm = profile.balanceCm;   // strefa bilansu (stała); korzenie z dnia analizy: profile.rootsNowCm
   const result = report.water_status?.result;
   const fill = result && result.taw_mm > 0 ? Math.min(1, Math.max(0, result.available_mm / result.taw_mm)) : null;
 
@@ -233,7 +233,7 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
       const [color, grain] = SOIL[layer.texture_key] ?? ['#806048', 1];
       const tint = new THREE.Color(color).multiplyScalar(layer.top_cm < 30 ? .78 : 1);   // próchnica przyciemnia wierzch
       // warstwy w zasięgu korzeni zabarwione według zapasu z bilansu (jedna wartość dla całej strefy, jak w FAO-56)
-      if (fill != null && layer.top_cm < rootCm) tint.lerp(new THREE.Color('#3a6a8f'), .25 * fill);
+      if (fill != null && layer.balance !== 'none') tint.lerp(new THREE.Color('#3a6a8f'), .25 * fill);
       const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: .015, bevelSize: .015, bevelSegments: 1 })
         .rotateX(Math.PI / 2);
       const mesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ map: soilTexture(`#${tint.getHexString()}`, grain, i === 0 && model.bare) }));
@@ -248,7 +248,7 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
     const bottom = -depthSum - (soil.length - 1) * GAP;
 
     // korzenie widoczne na ściankach bloku gleby (jak w odkrywce profilu), do głębokości z dnia analizy
-    const rootNowCm = (crop.root_depth_now_m ?? 0) * 100;
+    const rootNowCm = profile.rootsNowCm ?? 0;
     if (rootNowCm > 0 && !model.bare && layers.length) {
       const ring = shapeInfo.outer;
       const signed = ring.reduce((sum, [x1, y1], i) => { const [x2, y2] = ring[(i + 1) % ring.length]; return sum + x1 * y2 - x2 * y1; }, 0);
@@ -492,7 +492,7 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
       <div ref={mount} className={cn('field3d-canvas', intro && 'intro')} style={{ height }} role="img"
         aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} ${layersWord(layers.length)} gleby`}/>
       {hovered === 'crop' && <CropTip report={report} rootCm={rootCm}/>}
-      {active && <LayerTip layer={active} rootCm={rootCm}/>}
+      {active && <LayerTip layer={active} profile={profile}/>}
     </div>
     <div className="mt-3 min-h-12">
       <p className="text-[13px] font-medium leading-snug text-neutral-700">
@@ -518,11 +518,11 @@ const TIP_RULE = 'border-t border-black/[0.06] pt-2';   // włosowa linia międz
  * Dymek warstwy gleby. Położenie przy kursorze, kreska z kropką i wejście: `.layer-tip` w app.css.
  * Ten sam element zostaje przy przejściu na sąsiednią warstwę, więc kolejne dymki pokazują się od razu, bez animacji.
  */
-function LayerTip({ layer, rootCm }) {
+function LayerTip({ layer, profile }) {
   return <div className="layer-tip" role="tooltip">
     {/* głębokość jako mikro-etykieta, informacja o korzeniach zwykłym pismem (wersalikami nie mieści się w jednej linii) */}
     <p className="eyebrow num">{layer.top_cm}–{layer.bottom_cm} cm
-      {layer.top_cm < rootCm && <span className="font-sans text-[11px] font-medium normal-case tracking-normal text-brand-700"> · w zasięgu korzeni</span>}</p>
+      {layer.balance !== 'none' && <span className="font-sans text-[11px] font-medium normal-case tracking-normal text-brand-700"> · {balanceText(layer, profile.balanceCm)}</span>}</p>
     <p className={TIP_TITLE}>{layer.texture_label}</p>
     {/* uziarnienie: odcinki w proporcji piasek / pył / ił, rozdzielone szczeliną zamiast obramowania */}
     <div className="mt-2.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">

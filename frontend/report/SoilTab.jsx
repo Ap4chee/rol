@@ -1,5 +1,5 @@
 import { Field3D } from '../Field3D.jsx';
-import { mergeSoilLayers, number } from '../model.js';
+import { balanceText, number, soilProfile } from '../model.js';
 import { Note } from '../ui.jsx';
 import { Card } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
@@ -14,17 +14,16 @@ const DRY = new Set(['low', 'very_low']);
 
 /** Zakładka „Gleba”: model 3D pola, profil gleby i wilgotność warstw w okolicy. */
 export function SoilTab({ report, printing, intro = false }) {
-  const { soil, soil_moisture: moisture, crop } = report;
-  const rootCm = (soil.root_depth_m ?? crop.root_depth_m ?? 0) * 100;
+  const { soil, soil_moisture: moisture } = report;
   const regional = moisture?.status === 'ok' ? moisture.layers ?? [] : [];
-  const layers = mergeSoilLayers(soil.layers);   // te same klasy gleby obok siebie jako jedna warstwa, jak w modelu 3D
+  const profile = soilProfile(report);   // to samo znaczenie warstw i zasięgu co w modelu 3D
   const narrow = useMediaQuery(NARROW);   // na telefonie niższa scena (model jest wąski)
   return <div className="flex flex-col gap-14">
     {!printing && <Field3D report={report} cropArea={report.test_crop_area} height={narrow ? 320 : 480} intro={intro}/>}
     <div className="grid gap-12 lg:grid-cols-12">
       <Section title="Profil gleby" className="lg:col-span-7">
         <Note section={soil}/>
-        {layers.length > 0 && <SoilProfile layers={layers} rootCm={rootCm}/>}
+        {!profile.missing && <SoilProfile profile={profile}/>}
       </Section>
       <Section title="Wilgotność w okolicy" className="lg:col-span-5">
         {regional.length ? <RegionalMoisture layers={regional}/>
@@ -36,23 +35,27 @@ export function SoilTab({ report, printing, intro = false }) {
 }
 
 /** Warstwy gleby: głębokość z paskiem położenia w profilu, uziarnienie, woda dostępna, pojemność polowa.
- *  Warstwy od głębokości korzeni w dół są wyszarzone (bilans ich nie liczy). */
-function SoilProfile({ layers, rootCm }) {
+ *  Warstwy całkiem poniżej strefy bilansu są wyszarzone; warstwa przecięta granicą strefy ma dopisek, do jakiej głębokości. */
+function SoilProfile({ profile }) {
+  const { layers, balanceCm, rootsNowCm, belowBalance } = profile;
   const depthCm = Math.max(1, layers.at(-1).bottom_cm);
   const maxWater = Math.max(1, ...layers.map((layer) => layer.available_water_mm ?? 0));
-  const deeper = rootCm > 0 && layers.some((layer) => layer.top_cm >= rootCm);
   return <Table>
-    <Caption className="pt-3.5"><SoilLegend rootCm={rootCm} deeper={deeper}/></Caption>
+    <Caption className="pt-3.5"><SoilLegend balanceCm={balanceCm} rootsNowCm={rootsNowCm} deeper={belowBalance}/></Caption>
     <THead><TR>
       <TH>Warstwa</TH><TH>Gleba</TH><TH>Woda dostępna</TH><TH className="text-right">Pojemność polowa</TH>
     </TR></THead>
     <TBody>{layers.map((layer) => {
-      const reached = layer.top_cm < rootCm;
+      const reached = layer.balance !== 'none';
       return <TR key={layer.top_cm} className={reached ? undefined : 'text-neutral-400'}>
         <TD className="py-3">
           <div className="flex items-start gap-3">
-            <DepthRail layer={layer} depthCm={depthCm} rootCm={rootCm} reached={reached}/>
-            <span className={cn('whitespace-nowrap font-medium', reached && 'text-neutral-900')}>{layer.top_cm}–{layer.bottom_cm} cm</span>
+            <DepthRail layer={layer} depthCm={depthCm} rootCm={balanceCm} reached={reached}/>
+            <span>
+              <span className={cn('block whitespace-nowrap font-medium', reached && 'text-neutral-900')}>{layer.top_cm}–{layer.bottom_cm} cm</span>
+              {layer.balance === 'partial' && <span className="mt-0.5 block whitespace-nowrap text-[12px] text-neutral-500">
+                {balanceText(layer, balanceCm)}</span>}
+            </span>
           </div>
         </TD>
         <TD className="py-3">
@@ -98,17 +101,19 @@ function Texture({ layer, reached }) {
   </>;
 }
 
-function SoilLegend({ rootCm, deeper }) {
+function SoilLegend({ balanceCm, rootsNowCm, deeper }) {
   return <span className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
     <span className="inline-flex items-center gap-3">
       {FRACTIONS.map(([key, name, color]) => <span key={key} className="inline-flex items-center gap-1.5">
         <span aria-hidden className={cn('h-1 w-3 rounded-full', color)}/>{name}
       </span>)}
     </span>
-    {rootCm > 0 && <span className="inline-flex items-center gap-1.5">
-      <span aria-hidden className="h-0.5 w-3 rounded-full bg-brand-500"/>strefa korzeni do {number(rootCm)} cm
+    {balanceCm > 0 && <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden className="h-0.5 w-3 rounded-full bg-brand-500"/>strefa korzeni w bilansie do {number(balanceCm)} cm
     </span>}
-    {deeper && <span>szare wiersze: poniżej strefy korzeni</span>}
+    {/* bilans liczy stałą strefę; korzenie w dniu analizy mogą sięgać płycej (FAO-56 rozdz. 8) */}
+    {rootsNowCm != null && rootsNowCm < balanceCm && <span>korzenie w dniu analizy: ok. {number(rootsNowCm)} cm</span>}
+    {deeper && <span>szare wiersze: poniżej strefy bilansu</span>}
   </span>;
 }
 

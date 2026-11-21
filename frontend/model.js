@@ -125,4 +125,41 @@ export function mergeSoilLayers(layers) {
   return out;
 }
 
-export const layersWord = (n) => (n === 1 ? 'warstwa' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'warstwy' : 'warstw');
+/** Jaka część warstwy [0–1] leży nad głębokością `depthCm` (rzeczywiste przecięcie, nie sam początek warstwy). */
+export function shareAbove(layer, depthCm) {
+  const thickness = layer.bottom_cm - layer.top_cm;
+  if (!(depthCm > 0) || thickness <= 0) return 0;
+  return Math.min(1, Math.max(0, (depthCm - layer.top_cm) / thickness));
+}
+
+const reach = (share) => (share >= 1 ? 'full' : share > 0 ? 'partial' : 'none');
+
+/**
+ * Wspólne znaczenie profilu gleby dla tabeli i modelu 3D.
+ * - `balanceCm`: strefa korzeni liczona w bilansie (stała na cały sezon, FAO-56);
+ * - `rootsNowCm`: głębokość korzeni w dniu analizy (rośnie od siewu; null, gdy uprawy nie ma na polu);
+ * - każda warstwa (po scaleniu sąsiednich tej samej klasy) dostaje udział i zasięg względem obu głębokości:
+ *   'full' | 'partial' | 'none'. Brak profilu to `missing: true`, a nie warstwa umowna.
+ */
+export function soilProfile(report) {
+  const balanceCm = (report.soil?.root_depth_m ?? report.crop?.root_depth_m ?? 0) * 100;
+  const rootsNowCm = report.crop?.root_depth_now_m != null ? report.crop.root_depth_now_m * 100 : null;
+  const layers = mergeSoilLayers(report.soil?.layers).map((layer) => {
+    const balanceShare = shareAbove(layer, balanceCm);
+    const rootsShare = rootsNowCm == null ? 0 : shareAbove(layer, rootsNowCm);
+    return { ...layer, balanceShare, balance: reach(balanceShare), rootsShare, roots: reach(rootsShare) };
+  });
+  return {
+    layers, balanceCm, rootsNowCm, missing: layers.length === 0,
+    belowBalance: balanceCm > 0 && layers.some((layer) => layer.balance === 'none'),
+  };
+}
+
+/** Krótki opis zasięgu warstwy do tabeli i dymku, np. „w strefie bilansu”, „w strefie bilansu do 80 cm”. */
+export function balanceText(layer, balanceCm) {
+  if (layer.balance === 'full') return 'w strefie bilansu';
+  if (layer.balance === 'partial') return `w strefie bilansu do ${number(balanceCm)} cm`;
+  return 'poniżej strefy bilansu';
+}
+
+export const layersWord =(n) => (n === 1 ? 'warstwa' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'warstwy' : 'warstw');
