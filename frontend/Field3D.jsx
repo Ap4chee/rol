@@ -179,6 +179,7 @@ export function Field3D({ report, height = 420 }) {
   const state = useRef({ exploded: true });
   const [exploded, setExploded] = useState(true);
   const [hovered, setHovered] = useState(null);
+  const box = useRef(null);
   const layers = report.soil?.layers ?? [];
   const crop = report.crop;
   const month = Number(report.analysis_date.slice(5, 7));
@@ -330,7 +331,15 @@ export function Field3D({ report, height = 420 }) {
     const pointer = new THREE.Vector2(9, 9);
     const onMove = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+      const px = event.clientX - rect.left, py = event.clientY - rect.top;
+      pointer.set(px / rect.width * 2 - 1, -py / rect.height * 2 + 1);
+      // dymek jedzie za kursorem; przy prawej krawędzi przechodzi na lewą stronę kursora
+      const host = box.current;
+      if (host) {
+        host.style.setProperty('--tip-x', `${px}px`);
+        host.style.setProperty('--tip-y', `${py}px`);
+        host.dataset.tipSide = px > rect.width - 300 ? 'left' : 'right';
+      }
     };
     const onLeave = () => pointer.set(9, 9);
     renderer.domElement.addEventListener('pointermove', onMove);
@@ -353,6 +362,8 @@ export function Field3D({ report, height = 420 }) {
       meshes.forEach((mesh) => {
         const target = open && (reduced || t > .4 + mesh.userData.index * .15) ? mesh.userData.explodedY : mesh.userData.restY;
         mesh.position.y += (target - mesh.position.y) * (reduced ? 1 : .07);
+        // warstwa pod kursorem wysuwa się w stronę patrzącego jak szuflada
+        mesh.position.z += ((mesh.userData.index === lastHover ? .5 : 0) - mesh.position.z) * (reduced ? 1 : .15);
       });
       if (rootLine) rootLine.position.y += (rootY(open) - rootLine.position.y) * .07;
       if (!grown) { grow(t * 1.2); grown = t > 2; }
@@ -386,18 +397,28 @@ export function Field3D({ report, height = 420 }) {
   }
 
   const active = hovered != null ? layers[hovered] : null;
-  return <div className="field3d">
+  return <div className="field3d" ref={box}>
     <div ref={mount} className="field3d-canvas" style={{ height }} role="img"
       aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} warstw gleby`}/>
     <Button className="field3d-actions no-print" size="compact-sm" variant="default"
       leftSection={exploded ? <IconArrowsMinimize size={14}/> : <IconArrowsMaximize size={14}/>} onClick={toggle}>
       {exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
+    {active && <div className="layer-tip" key={hovered} role="tooltip">
+      <Text size="xs" c="dimmed" fw={600}>{active.top_cm}–{active.bottom_cm} cm{active.top_cm < rootCm ? ' · w zasięgu korzeni' : ''}</Text>
+      <Text fw={700}>{active.texture_label}</Text>
+      <div className="texture-bar" aria-hidden="true">
+        <i style={{ width: `${active.sand_pct}%` }} className="sand"/><i style={{ width: `${active.silt_pct}%` }} className="silt"/>
+        <i style={{ width: `${active.clay_pct}%` }} className="clay"/></div>
+      <Text size="xs">piasek {number(active.sand_pct)}% · pył {number(active.silt_pct)}% · ił {number(active.clay_pct)}%</Text>
+      <dl>
+        <dt>Woda dostępna</dt><dd>{number(active.available_water_mm)} mm</dd>
+        <dt>Pojemność polowa</dt><dd>{number(active.field_capacity_vol_pct)}%</dd>
+        <dt>Punkt więdnięcia</dt><dd>{number(active.wilting_point_vol_pct)}%</dd>
+        {active.soc_g_kg != null && <><dt>Węgiel organiczny</dt><dd>{number(active.soc_g_kg, 1)} g/kg</dd></>}
+      </dl>
+    </div>}
     <Stack className="field3d-info" gap={2}>
-      {active ? <>
-        <Text fw={700} size="sm">{active.top_cm}–{active.bottom_cm} cm · {active.texture_label}</Text>
-        <Text size="xs" c="dimmed">{number(active.available_water_mm)} mm wody dostępnej · pojemność polowa {number(active.field_capacity_vol_pct)}%
-          {' '}· piasek {number(active.sand_pct)}%, pył {number(active.silt_pct)}%, ił {number(active.clay_pct)}%</Text>
-      </> : <>
+      {<>
         <Text size="sm" fw={600}>{crop.name} · {label ?? crop.stage_name?.split(' (')[0] ?? 'faza nieznana'}
           {assumed ? ' · kształt umowny (raport dla punktu)' : ''}</Text>
         <Text size="xs" c="dimmed">{layers.length ? `${layers.length} warstw gleby z SoilGrids. ` : 'Brak profilu gleby: warstwa umowna. '}

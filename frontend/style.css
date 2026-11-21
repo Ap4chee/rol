@@ -97,6 +97,27 @@ body { background: var(--mantine-color-white); }
 .field3d-canvas canvas:active { cursor: grabbing; }
 .field3d-actions { position: absolute; top: 0; right: 0; }
 .field3d-info { min-height: 48px; }
+/* dymek warstwy: wysuwa się z miejsca pod kursorem */
+.layer-tip { position: absolute; z-index: 5; left: var(--tip-x, 0); top: var(--tip-y, 0); width: 240px; padding: 12px 14px;
+  pointer-events: none; background: rgba(255, 255, 255, .96); border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-md); box-shadow: var(--mantine-shadow-md); backdrop-filter: blur(6px);
+  transform: translate(22px, -50%); transform-origin: left center; animation: tip-out .28s cubic-bezier(.2, .8, .2, 1) both; }
+.field3d[data-tip-side="left"] .layer-tip { transform: translate(calc(-100% - 22px), -50%); transform-origin: right center;
+  animation-name: tip-out-left; }
+.layer-tip::before { content: ''; position: absolute; top: 50%; left: -22px; width: 22px; border-top: 1.5px solid var(--mantine-color-gray-5); }
+.layer-tip::after { content: ''; position: absolute; top: calc(50% - 4px); left: -26px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--mantine-color-forest-8); box-shadow: 0 0 0 3px white; }
+.field3d[data-tip-side="left"] .layer-tip::before { left: auto; right: -22px; }
+.field3d[data-tip-side="left"] .layer-tip::after { left: auto; right: -26px; }
+.layer-tip dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 8px 0 0; font-size: 12px; }
+.layer-tip dt { color: var(--mantine-color-gray-6); }
+.layer-tip dd { margin: 0; font-weight: 600; text-align: right; }
+.texture-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 6px 0 3px; }
+.texture-bar .sand { background: #d7b47c; }
+.texture-bar .silt { background: #9c8664; }
+.texture-bar .clay { background: #6d4230; }
+@keyframes tip-out { from { opacity: 0; clip-path: inset(0 100% 0 0); transform: translate(6px, -50%); } }
+@keyframes tip-out-left { from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translate(calc(-100% - 6px), -50%); } }
 @keyframes field-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 @media (max-width: 48em) {
@@ -105,7 +126,7 @@ body { background: var(--mantine-color-white); }
   .chart-legend { padding-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .field3d-canvas, .water-chart .actual, .water-chart .today-dot, .season-bars span { animation: none; stroke-dashoffset: 0; }
+  .field3d-canvas, .water-chart .actual, .water-chart .today-dot, .season-bars span, .layer-tip { animation: none; stroke-dashoffset: 0; }
 }
 
 @media print {
