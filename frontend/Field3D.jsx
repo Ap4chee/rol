@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries as mergeRaw } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Button, Stack, Text } from '@mantine/core';
 import { IconArrowsMaximize, IconArrowsMinimize } from '@tabler/icons-react';
-import { number } from './model.js';
+import { layersWord, mergeSoilLayers, number } from './model.js';
 
 const FIELD_SIZE = 10;     // dłuższy bok działki w jednostkach sceny
 const SOIL = {             // kolor bazowy i ziarno faktury dla klas uziarnienia
@@ -180,7 +180,7 @@ export function Field3D({ report, height = 420 }) {
   const [exploded, setExploded] = useState(true);
   const [hovered, setHovered] = useState(null);
   const box = useRef(null);
-  const layers = report.soil?.layers ?? [];
+  const layers = mergeSoilLayers(report.soil?.layers);   // te same klasy gleby obok siebie jako jedna warstwa
   const crop = report.crop;
   const month = Number(report.analysis_date.slice(5, 7));
   const label = cropModel(crop.key, crop.stage_key, month).label;
@@ -399,7 +399,7 @@ export function Field3D({ report, height = 420 }) {
   const active = hovered != null ? layers[hovered] : null;
   return <div className="field3d" ref={box}>
     <div ref={mount} className="field3d-canvas" style={{ height }} role="img"
-      aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} warstw gleby`}/>
+      aria-label={`Model działki: ${crop.name}, ${crop.stage_name ?? ''}; pod nią ${layers.length} ${layersWord(layers.length)} gleby`}/>
     <Button className="field3d-actions no-print" size="compact-sm" variant="default"
       leftSection={exploded ? <IconArrowsMinimize size={14}/> : <IconArrowsMaximize size={14}/>} onClick={toggle}>
       {exploded ? 'Złóż warstwy' : 'Rozłóż warstwy'}</Button>
@@ -421,7 +421,7 @@ export function Field3D({ report, height = 420 }) {
       {<>
         <Text size="sm" fw={600}>{crop.name} · {label ?? crop.stage_name?.split(' (')[0] ?? 'faza nieznana'}
           {assumed ? ' · kształt umowny (raport dla punktu)' : ''}</Text>
-        <Text size="xs" c="dimmed">{layers.length ? `${layers.length} warstw gleby z SoilGrids. ` : 'Brak profilu gleby: warstwa umowna. '}
+        <Text size="xs" c="dimmed">{layers.length ? `${layers.length} ${layersWord(layers.length)} gleby (SoilGrids). ` : 'Brak profilu gleby: warstwa umowna. '}
           {fill != null && rootCm > 0 ? `Niebieski odcień do ${number(rootCm)} cm: zapas wody w strefie korzeni (${number(fill * 100)}%). ` : ''}
           Najedź na warstwę, żeby zobaczyć skład.</Text>
       </>}

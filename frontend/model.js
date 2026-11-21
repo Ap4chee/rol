@@ -87,3 +87,24 @@ export function seasonMonths(crop) {
   }
   return months;
 }
+
+/** Sąsiednie warstwy SoilGrids o tej samej klasie gleby jako jedna warstwa: woda dostępna sumowana,
+ *  udziały frakcji, pojemności i węgiel uśrednione ważone grubością. */
+export function mergeSoilLayers(layers) {
+  const out = [];
+  for (const layer of layers ?? []) {
+    const last = out.at(-1);
+    if (!last || last.texture_key !== layer.texture_key || last.bottom_cm !== layer.top_cm) {
+      out.push({ ...layer });
+      continue;
+    }
+    const a = last.bottom_cm - last.top_cm, b = layer.bottom_cm - layer.top_cm;
+    const mean = (key) => (last[key] == null || layer[key] == null ? null : (last[key] * a + layer[key] * b) / (a + b));
+    for (const key of ['sand_pct', 'silt_pct', 'clay_pct', 'field_capacity_vol_pct', 'wilting_point_vol_pct', 'soc_g_kg']) last[key] = mean(key);
+    last.available_water_mm += layer.available_water_mm;
+    last.bottom_cm = layer.bottom_cm;
+  }
+  return out;
+}
+
+export const layersWord = (n) => (n === 1 ? 'warstwa' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'warstwy' : 'warstw');

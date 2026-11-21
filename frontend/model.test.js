@@ -38,3 +38,16 @@ test('zadania biorą zalecenia z raportów i wskazują najpierw silny niedobór'
     field('b', 'severe', { irrigation: [{ title: 'Podlej' }] }), field('c', 'none', {})];
   assert.deepEqual(actionItems(entries).map((item) => item.action.title), ['Podlej', 'Zatrzymaj wodę']);
 });
+
+test('sąsiednie warstwy tej samej gleby łączą się w jedną', async () => {
+  const { mergeSoilLayers, layersWord } = await import('./model.js');
+  const layer = (top, bottom, key, water, sand) => ({ top_cm: top, bottom_cm: bottom, texture_key: key, available_water_mm: water,
+    sand_pct: sand, silt_pct: 40, clay_pct: 60 - sand, field_capacity_vol_pct: 30, wilting_point_vol_pct: 15, soc_g_kg: null });
+  const merged = mergeSoilLayers([layer(0, 5, 'loam', 10, 30), layer(5, 15, 'loam', 16, 36), layer(15, 30, 'silt_loam', 24, 20),
+    layer(30, 60, 'loam', 40, 40)]);
+  assert.deepEqual(merged.map((l) => [l.top_cm, l.bottom_cm, l.texture_key, l.available_water_mm]),
+    [[0, 15, 'loam', 26], [15, 30, 'silt_loam', 24], [30, 60, 'loam', 40]]);
+  assert.equal(merged[0].sand_pct, 34);          // (30·5 + 36·10) / 15
+  assert.equal(merged[0].soc_g_kg, null);        // brak danych zostaje brakiem
+  assert.deepEqual([1, 3, 5, 12, 22].map(layersWord), ['warstwa', 'warstwy', 'warstw', 'warstw', 'warstwy']);
+});
