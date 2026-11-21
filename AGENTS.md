@@ -11,6 +11,7 @@ Webowa aplikacja dla rolnika. Rolnik wskazuje działkę ewidencyjną (numer albo
 Dokumenty:
 - [docs/zadanie_kowr.md](docs/zadanie_kowr.md) — streszczenie zadania, kryteriów i wymagań. Przy wątpliwościach co do zakresu zajrzyj tam.
 - [specyfikacja_treningu_ml_kowr.md](specyfikacja_treningu_ml_kowr.md) — specyfikacja modelu prognozy zmiany NDMI.
+- [docs/brief_model_ai.md](docs/brief_model_ai.md) — brief modelu AI: bilans FAO-56 + ML, wejścia, wyjścia, walidacja.
 
 ## Jak jury to testuje
 
