@@ -1,0 +1,26 @@
+Fonty używane w interfejsie (pliki woff2 serwowane lokalnie, bez łączenia z Google Fonts)
+=====================================================================================
+
+Lexend (nagłówki)
+  Pliki:    lexend-latin.woff2, lexend-latin-ext.woff2 (font zmienny, grubość 400–700)
+  Źródło:   https://fonts.google.com/specimen/Lexend
+            pliki pobrane 21.11.2026 z fonts.gstatic.com (s/lexend/v26), podzbiory latin i latin-ext
+  Licencja: SIL Open Font License 1.1
+            https://github.com/google/fonts/blob/main/ofl/lexend/OFL.txt
+            "Copyright 2018 The Lexend Project Authors (https://github.com/googlefonts/lexend),
+            with Reserved Font Name "RevReading Lexend"."
+
+Source Sans 3 (tekst)
+  Pliki:    source-sans-3-latin.woff2, source-sans-3-latin-ext.woff2 (font zmienny, grubość 400–700)
+  Źródło:   https://fonts.google.com/specimen/Source+Sans+3
+            pliki pobrane 21.11.2026 z fonts.gstatic.com (s/sourcesans3/v20), podzbiory latin i latin-ext
+  Licencja: SIL Open Font License 1.1
+            https://github.com/google/fonts/blob/main/ofl/sourcesans3/OFL.txt
+            "Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+            All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries."
+
+Treść licencji sprawdzono u źródła (repozytorium google/fonts) 21.11.2026. Pełny tekst:
+https://openfontlicense.org/open-font-license-official-text/
+Pliki są w postaci, w jakiej udostępnia je Google Fonts (podzbiory znaków), bez własnych modyfikacji.
+Licencja OFL pozwala na używanie, osadzanie i rozpowszechnianie fontów razem z oprogramowaniem,
+także komercyjnym; nie wolno sprzedawać samych fontów.
