@@ -69,11 +69,12 @@ def predict(observations: list, weather, t: date, model_dir: str | Path | None =
             f"ostatnie czyste zdjęcie z {last}, a model wymaga zdjęcia z {hi} dni przed datą analizy "
             f"albo braki w pogodzie z ostatnich 30 dni")}
     models, card = load(str(model_dir))
-    import pandas as pd
-    X = pd.DataFrame([{k: row.get(k, np.nan) for k in models["features"]}])
+    # Tablica numpy w kolejności cech z modelu: aplikacja nie potrzebuje pandas.
+    X = np.array([[row.get(k, np.nan) for k in models["features"]]], dtype=float)
     p50 = float(models["median"].predict(X)[0])
     lo_, hi_ = float(models["p10"].predict(X)[0]), float(models["p90"].predict(X)[0])
-    p10, p90 = min(lo_, hi_, p50), max(lo_, hi_, p50)
+    adj = float(models.get("interval_adjust", 0.0))  # kalibracja przedziału z treningu (train.interval_adjustment)
+    p10, p90 = min(lo_, hi_, p50) - adj, max(lo_, hi_, p50) + adj
     k = row["_last_index"]
     return {
         "available": True,
