@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useReducer, useRef, useState } from 'react';
 import { ArrowRight, Calendar, Check, ChevronRight, Search, Sprout } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -13,6 +13,7 @@ import { ParcelMap } from './ParcelMap.jsx';
 import { api, generateReport } from './ui.jsx';
 import { fieldFromReport, FULL_ID, number, oldestDate, today } from './model.js';
 import { testParcel } from './testParcel.js';
+import { initialSelection, insidePoland, isReady, OUTSIDE_AREA, QUERY_TOO_SHORT, selectionReducer } from './parcelSelection.js';
 
 const TEST_AVAILABLE = new URLSearchParams(window.location.search).has('test');
 const TEST_POINT = { lat: 52.0, lon: 19.0 };   // gdy w trybie testowym nie wskazano miejsca
@@ -104,17 +105,16 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
   const form = useRef(null);
   const finderInput = useRef(null);
   const hadCandidates = useRef(false);
-  const [query, setQuery] = useState(initial?.report.request.parcel_id ?? initial?.report.parcel?.id ?? '');
-  const [parcel, setParcel] = useState(initial?.report.parcel ?? null);
-  const [point, setPoint] = useState(initial?.report.parcel ? null : initial?.report.request.point ?? null);
+  const lookups = useRef(0);   // licznik wskazań działki: odpowiedź starszego zapytania jest pomijana
+  // wybór działki (tekst, lista, punkt, ważność) w jednym miejscu: parcelSelection.js
+  const [selection, dispatch] = useReducer(selectionReducer, initial, initialSelection);
+  const { query, parcel, point, candidates, message, problem } = selection;
   const [name, setName] = useState(initial?.name ?? '');
   const [crop, setCrop] = useState(initial?.report.crop.key ?? null);
   const [date, setDate] = useState(initial?.report.analysis_date ?? today());
   const [crops, setCrops] = useState(null);
   const [cropsError, setCropsError] = useState('');
-  const [candidates, setCandidates] = useState([]);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState('');   // błąd liczenia raportu
   const [busy, setBusy] = useState('');
   const [test, setTest] = useState(false);
 
@@ -132,72 +132,82 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
     hadCandidates.current = candidates.length > 0;
   }, [candidates]);
 
-  async function request(mode, work) {
+  /** Anuluje trwające zapytanie (działka albo raport) i daje sygnał nowemu. */
+  function takeOver() {
     active.current?.abort();
     const controller = new AbortController();
     active.current = controller;
+    return controller;
+  }
+
+  const errorText = (err) => (err.name === 'TimeoutError' ? 'Serwer nie odpowiedział na czas. Spróbuj ponownie.' : err.message);
+
+  /** Nowe wskazanie działki: unieważnia poprzedni wybór i trwające sprawdzanie. */
+  function lookup(work, keepCandidates = false) {
+    const controller = takeOver();
+    const seq = ++lookups.current;
     setError('');
-    setBusy(mode);
-    try { await work(controller.signal); }
-    catch (err) { if (!controller.signal.aborted) setError(err.name === 'TimeoutError' ? 'Serwer nie odpowiedział na czas. Spróbuj ponownie.' : err.message); }
-    finally { if (active.current === controller) setBusy(''); }
+    setBusy('');
+    dispatch({ type: 'start', seq, keepCandidates });
+    work(controller.signal, (event) => { if (!controller.signal.aborted) dispatch({ ...event, seq }); })
+      .catch((err) => { if (!controller.signal.aborted) dispatch({ type: 'failed', seq, text: errorText(err) }); });
   }
 
-  async function getParcel(id, signal) {
+  async function getParcel(id, signal, report) {
     const response = await api('/api/parcels/by-id?id=' + encodeURIComponent(id), { signal });
-    if (response.status !== 'ok' || !response.parcel) throw new Error(response.reason || 'Nie znaleziono działki.');
-    select(response.parcel);
+    if (response.status === 'ok' && response.parcel) report({ type: 'selected', parcel: response.parcel });
+    else if (response.status === 'no_data') report({ type: 'notFound', text: response.reason || 'Nie znaleziono działki.' });
+    else report({ type: 'failed', text: response.reason || 'Usługa działek nie odpowiedziała.' });
   }
 
-  function select(next) {
-    setParcel(next);
-    setPoint(null);
-    setQuery(next.id);
-    setCandidates([]);
-    setMessage('');
+  function reject(text) {
+    active.current?.abort();
+    dispatch({ type: 'reject', seq: ++lookups.current, text });
+  }
+
+  function edit(value) {
+    active.current?.abort();
+    setError('');
+    dispatch({ type: 'edit', seq: ++lookups.current, query: value });
   }
 
   function search() {
     const input = query.trim();
-    if (input.length < 2) { setError('Wpisz nazwę obrębu i numer działki.'); return; }
-    setParcel(null);
-    setPoint(null);
-    setCandidates([]);
-    setMessage('');
-    request('search', async (signal) => {
-      if (FULL_ID.test(input)) return getParcel(input, signal);
+    if (input.length < 2) { reject(QUERY_TOO_SHORT); return; }
+    lookup(async (signal, report) => {
+      if (FULL_ID.test(input)) return getParcel(input, signal, report);
       const response = await api('/api/parcels/search?q=' + encodeURIComponent(input), { signal });
-      if (response.status !== 'ok' || !response.candidates.length) throw new Error(response.reason || 'Nie znaleziono działki.');
-      if (response.candidates.length === 1) return getParcel(response.candidates[0].id, signal);
-      setCandidates(response.candidates);
-      setMessage(response.truncated ? 'Wybierz działkę lub doprecyzuj nazwę obrębu.' : 'Wybierz swoją działkę z wyników.');
+      if (response.status === 'ok' && response.candidates.length === 1) return getParcel(response.candidates[0].id, signal, report);
+      if (response.status === 'ok' && response.candidates.length) {
+        report({ type: 'candidates', list: response.candidates, truncated: response.truncated });
+      } else if (response.status === 'error') report({ type: 'failed', text: response.reason || 'Usługa działek nie odpowiedziała.' });
+      else report({ type: 'notFound', text: response.reason || 'Nie znaleziono działki.' });
     });
+  }
+
+  function choose(item) {
+    lookup((signal, report) => getParcel(item.id, signal, report), true);
   }
 
   function pick(next) {
     if (busy === 'report') return;
-    if (next.lat < 48.9 || next.lat > 55 || next.lon < 14 || next.lon > 24.3) {
-      setError('Wskaż miejsce w granicach Polski.');
-      return;
-    }
-    setParcel(null);
-    setPoint(null);
-    setCandidates([]);
-    setMessage('');
-    request('search', async (signal) => {
+    if (!insidePoland(next)) { reject(OUTSIDE_AREA); return; }
+    lookup(async (signal, report) => {
       const response = await api('/api/parcels/by-point?' + new URLSearchParams(next), { signal });
-      if (response.status === 'ok' && response.parcel) { select(response.parcel); return; }
-      if (response.status === 'error') {
-        setPoint(next);
-        setMessage('Usługa działek jest niedostępna. Raport będzie dotyczył wskazanego punktu.');
-      } else throw new Error(response.reason || 'W tym miejscu nie ma działki.');
+      if (response.status === 'ok' && response.parcel) report({ type: 'selected', parcel: response.parcel });
+      else if (response.status === 'error') report({ type: 'pointOnly', point: next });
+      else report({ type: 'notFound', text: response.reason || 'W tym miejscu nie ma działki.' });
     });
   }
 
   function submit(event) {
     event.preventDefault();
-    if (busy || !crop || !(parcel || point || test)) return;
-    request('report', async (signal) => {
+    if (busy || selection.checking || !crop || !(isReady(selection) || test)) return;
+    const controller = takeOver();
+    setError('');
+    setBusy('report');
+    (async () => {
+      const signal = controller.signal;
       if (test) {   // analiza na żywo dla punktu, w widoku obrys testowy
         const where = parcel?.centroid ?? point ?? TEST_POINT;
         const result = await generateReport({ crop, date, point: { lat: where.lat, lon: where.lon } }, signal);
@@ -207,15 +217,16 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
       }
       const result = await generateReport({ crop, date, ...(parcel ? { parcel_id: parcel.id } : { point }) }, signal);
       if (!signal.aborted) onReport(fieldFromReport(result, name));
-    });
+    })().catch((err) => { if (!controller.signal.aborted) setError(errorText(err)); })
+      .finally(() => { if (active.current === controller) setBusy(''); });
   }
 
   const disabled = busy === 'report';
-  const searching = busy === 'search';
+  const searching = selection.checking;
   const status = searching ? 'Sprawdzam działkę…' : message;
-  // Błąd wyszukiwania stoi przy wyszukiwarce; błąd raportu przy przycisku (wtedy działka, punkt albo tryb testowy już są).
-  const finderError = parcel || point || test ? '' : error;
-  const submitError = finderError ? '' : error;
+  // Problem z działką stoi przy wyszukiwarce (brak działki spokojniej niż błąd usługi); błąd raportu przy przycisku.
+  const finderProblem = test ? null : problem;
+  const submitError = error;
 
   const finder = <>
     <Field label="Numer działki lub obręb" hint="Np. Niedrzwica Kościelna 580/2">{(id, describedBy) =>
@@ -225,10 +236,10 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
           <Input ref={finderInput} id={id} icon={searching ? <Spinner className="text-brand-600"/> : <Search/>}
             placeholder="Obręb i nr działki" aria-describedby={describedBy} value={query} maxLength={80} autoComplete="off" spellCheck={false}
             enterKeyHint="search" disabled={disabled} data-autofocus
-            onChange={(event) => { active.current?.abort(); setQuery(event.target.value); setParcel(null); setPoint(null); setCandidates([]); setError(''); setMessage(''); }}
+            onChange={(event) => edit(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); search(); } }}/>
         </div>
-        <Button variant="secondary" onClick={search} disabled={Boolean(busy)}>Szukaj</Button>
+        <Button variant="secondary" onClick={search} disabled={disabled}>Szukaj</Button>
       </div>}
     </Field>
     {/* region statusu jest zawsze w drzewie, żeby czytnik ekranu ogłaszał każdą zmianę */}
@@ -237,12 +248,13 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
         : parcel ? <span className="sr-only">Wybrano działkę {parcel.number || parcel.id}.</span>
           : point ? <span className="sr-only">Wybrano punkt na mapie.</span> : null}
     </div>
-    {finderError && <Callout tone="danger" role="alert" className="mt-3">{finderError}</Callout>}
+    {finderProblem && <Callout tone={finderProblem.kind === 'not_found' ? 'warning' : 'danger'} role="alert" className="mt-3">
+      {finderProblem.text}</Callout>}
     {candidates.length > 0 && <ul aria-label="Znalezione działki" className={cn(
       'mt-2 max-h-[min(19rem,42vh)] overflow-y-auto overscroll-contain rounded-xl border border-black/[0.08] bg-white p-1 shadow-hairline',
       'animate-in fade-in-0 slide-in-from-top-1 duration-200 ease-out motion-reduce:[--tw-enter-translate-y:0]')}>
       {candidates.map((item) => <li key={item.id}>
-        <button type="button" onClick={() => request('search', (signal) => getParcel(item.id, signal))}
+        <button type="button" onClick={() => choose(item)}
           className={'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-[background-color,scale] duration-150 ease-out '
             + 'hover:bg-black/[0.035] active:scale-[0.99] motion-reduce:active:scale-100'}>
           <span className="min-w-0 flex-1">
@@ -297,7 +309,7 @@ export function AddFieldForm({ initial, onCancel, onReport }) {
     <div className="flex gap-2 lg:ml-auto">
       {onCancel && <Button variant="secondary" size="lg" className="px-4" onClick={onCancel}>Anuluj</Button>}
       <Button type="submit" size="lg" iconRight={<ArrowRight/>} className="flex-1 px-4 sm:px-5 lg:flex-none"
-        disabled={Boolean(busy) || !(parcel || point || test) || !crop}>Sprawdź wodę na polu</Button>
+        disabled={Boolean(busy) || searching || !(isReady(selection) || test) || !crop}>Sprawdź wodę na polu</Button>
     </div>
   </div>;
 
