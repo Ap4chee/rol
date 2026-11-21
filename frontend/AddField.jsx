@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Grid, Group, Loader, Paper, SegmentedControl, Select, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { IconArrowRight, IconCalendar, IconCircleCheck, IconMapPin, IconSearch } from '@tabler/icons-react';
 import { ParcelMap } from './ParcelMap.jsx';
-import { api, Button, generateReport, Icon } from './ui.jsx';
+import { api, generateReport } from './ui.jsx';
 import { fieldFromReport, FULL_ID, number, oldestDate, today } from './model.js';
 
 function describe(parcel) {
   return [parcel.region, parcel.commune && 'gm. ' + parcel.commune, parcel.voivodeship].filter(Boolean).join(', ');
 }
 
-export function AddField({ initial, onClose, onReport }) {
-  const dialog = useRef(null);
+/** Formularz działki, uprawy i daty. `split`: mapa zawsze obok formularza (ekran startowy), inaczej zakładki. */
+export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
   const active = useRef(null);
   const [tab, setTab] = useState('number');
   const [query, setQuery] = useState(initial?.report.request.parcel_id ?? initial?.report.parcel?.id ?? '');
   const [parcel, setParcel] = useState(initial?.report.parcel ?? null);
   const [point, setPoint] = useState(initial?.report.parcel ? null : initial?.report.request.point ?? null);
   const [name, setName] = useState(initial?.name ?? '');
-  const [crop, setCrop] = useState(initial?.report.crop.key ?? '');
+  const [crop, setCrop] = useState(initial?.report.crop.key ?? null);
   const [date, setDate] = useState(initial?.report.analysis_date ?? today());
   const [crops, setCrops] = useState(null);
   const [cropsError, setCropsError] = useState('');
@@ -25,7 +27,6 @@ export function AddField({ initial, onClose, onReport }) {
   const [busy, setBusy] = useState('');
 
   useEffect(() => {
-    dialog.current.showModal();
     const controller = new AbortController();
     api('/api/crops', { signal: controller.signal })
       .then(setCrops)
@@ -104,58 +105,62 @@ export function AddField({ initial, onClose, onReport }) {
     });
   }
 
-  return <dialog ref={dialog} className="field-dialog" onCancel={(event) => { event.preventDefault(); onClose(); }} aria-labelledby="dialog-title">
-    <header className="dialog-head">
-      <h2 id="dialog-title">{initial ? 'Przelicz raport' : 'Dodaj pole'}</h2>
-      <button type="button" className="quiet-button close-button" aria-label="Zamknij" onClick={onClose}><Icon name="close"/></button>
-    </header>
-    <form onSubmit={submit}>
-      <fieldset disabled={busy === 'report'}>
-        <legend className="sr-only">Dane do raportu</legend>
-        <div role="group" aria-label="Sposób wyboru działki" className="segments choose-mode">
-          <button type="button" aria-pressed={tab === 'number'} onClick={() => setTab('number')}>Numer działki</button>
-          <button type="button" aria-pressed={tab === 'map'} onClick={() => setTab('map')}>Wskaż na mapie</button>
-        </div>
-        {tab === 'number' ? <>
-          <label htmlFor="parcel-query">Numer działki lub obręb</label>
-          <div className="input-row">
-            <input id="parcel-query" autoFocus value={query} maxLength={80} autoComplete="off" enterKeyHint="search"
-              placeholder="np. Niedrzwica Kościelna 580/2"
-              onChange={(event) => { active.current?.abort(); setQuery(event.target.value); setParcel(null); setPoint(null); setCandidates([]); setError(''); setMessage(''); }}
-              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); search(); } }}/>
-            <Button icon="search" onClick={search} disabled={Boolean(busy)}>Szukaj</Button>
-          </div>
-          {candidates.length > 0 && <ul className="candidates">{candidates.map((item) => <li key={item.id}>
-            <button type="button" onClick={() => request('search', (signal) => getParcel(item.id, signal))}>
-              <strong>{item.number || item.id}</strong><small>{describe(item)} · {item.id}</small>
-            </button>
-          </li>)}</ul>}
-        </> : <ParcelMap parcel={parcel} point={point} onPick={pick}/>}
-        {parcel && <p className="selection"><Icon name="check" size={18}/> Działka {parcel.number || parcel.id}
-          {describe(parcel) ? ' · ' + describe(parcel) : ''} · {number(parcel.area_ha, 2)} ha</p>}
-        {point && <p className="selection"><Icon name="pin" size={18}/> Punkt · {number(point.lat, 4)}° N, {number(point.lon, 4)}° E</p>}
-        {message && <p className="subtle" role="status">{message}</p>}
-        <label htmlFor="field-name">Nazwa pola <small>(opcjonalnie)</small></label>
-        <input id="field-name" value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="np. Pod lasem"/>
-        <div className="form-grid">
-          <div className="form-control"><label htmlFor="crop">Uprawa</label>
-            <select id="crop" required value={crop} onChange={(event) => setCrop(event.target.value)} disabled={!crops}>
-              <option value="">{crops ? 'Wybierz uprawę' : 'Ładowanie upraw…'}</option>
-              {crops?.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
-            </select>
-          </div>
-          <div className="form-control"><label htmlFor="analysis-date">Data analizy</label>
-            <input id="analysis-date" required type="date" value={date} min={oldestDate()} max={today()} onChange={(event) => setDate(event.target.value)}/>
-          </div>
-        </div>
-      </fieldset>
-      {cropsError && <p className="note error" role="alert">Nie udało się pobrać upraw. {cropsError}</p>}
-      {error && <p className="note error" role="alert">{error}</p>}
-      {busy && <p className="note" role="status">{busy === 'report' ? 'Pobieram dane działki i liczę bilans wodny…' : 'Sprawdzam działkę…'}</p>}
-      <div className="dialog-actions">
-        <Button onClick={onClose}>Anuluj</Button>
-        <Button className="primary" icon="arrow" type="submit" disabled={Boolean(busy) || !(parcel || point) || !crop}>Przygotuj raport</Button>
-      </div>
-    </form>
-  </dialog>;
+  const disabled = busy === 'report';
+  const finder = <Stack gap="xs">
+    <Group align="flex-end" gap="xs" wrap="nowrap">
+      <TextInput flex={1} label="Numer działki lub obręb" placeholder="np. Niedrzwica Kościelna 580/2" value={query}
+        maxLength={80} autoComplete="off" enterKeyHint="search" disabled={disabled} data-autofocus
+        description="Pełny identyfikator, np. 060910_2.0011.580/2, albo nazwa obrębu i numer"
+        onChange={(event) => { active.current?.abort(); setQuery(event.target.value); setParcel(null); setPoint(null); setCandidates([]); setError(''); setMessage(''); }}
+        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); search(); } }}/>
+      <Button variant="default" leftSection={<IconSearch size={16}/>} onClick={search} disabled={Boolean(busy)}>Szukaj</Button>
+    </Group>
+    {candidates.length > 0 && <Paper p={4}>{candidates.map((item) =>
+      <UnstyledButton key={item.id} className="candidate" onClick={() => request('search', (signal) => getParcel(item.id, signal))}>
+        <Text fw={600}>{item.number || item.id}</Text><Text size="xs" c="dimmed">{describe(item)} · {item.id}</Text>
+      </UnstyledButton>)}</Paper>}
+  </Stack>;
+  const map = <ParcelMap parcel={parcel} point={point} onPick={pick}/>;
+
+  const details = <Stack gap="sm">
+    {parcel && <Alert color="forest" variant="light" icon={<IconCircleCheck size={18}/>} p="xs">
+      Działka <b>{parcel.number || parcel.id}</b>{describe(parcel) ? ' · ' + describe(parcel) : ''} · {number(parcel.area_ha, 2)} ha</Alert>}
+    {point && <Alert color="blue" variant="light" icon={<IconMapPin size={18}/>} p="xs">
+      Punkt · {number(point.lat, 4)}° N, {number(point.lon, 4)}° E</Alert>}
+    {message && <Text size="sm" c="dimmed" role="status">{message}</Text>}
+    <Group grow align="flex-start">
+      <Select label="Uprawa" placeholder={crops ? 'Wybierz uprawę' : 'Ładowanie upraw…'} required disabled={!crops || disabled}
+        data={crops?.map((item) => ({ value: item.key, label: item.name })) ?? []} value={crop} onChange={setCrop} allowDeselect={false}/>
+      <TextInput label="Data analizy" type="date" required value={date} min={oldestDate()} max={today()} disabled={disabled}
+        leftSection={<IconCalendar size={16}/>} onChange={(event) => setDate(event.target.value)}/>
+    </Group>
+    {!split && <TextInput label="Nazwa pola" description="opcjonalnie" value={name} maxLength={80} disabled={disabled}
+      onChange={(event) => setName(event.target.value)} placeholder="np. Pod lasem"/>}
+    {cropsError && <Alert color="red" variant="light">Nie udało się pobrać upraw. {cropsError}</Alert>}
+    {error && <Alert color="red" variant="light" role="alert">{error}</Alert>}
+    {busy && <Group gap="xs" role="status"><Loader size="xs"/><Text size="sm">
+      {busy === 'report' ? 'Pobieram dane działki i liczę bilans wodny (do 30 s)…' : 'Sprawdzam działkę…'}</Text></Group>}
+    <Group justify="flex-end" mt="xs">
+      {onCancel && <Button variant="default" onClick={onCancel}>Anuluj</Button>}
+      <Button type="submit" size={split ? 'md' : 'sm'} rightSection={<IconArrowRight size={18}/>}
+        disabled={Boolean(busy) || !(parcel || point) || !crop} fullWidth={split}>Sprawdź wodę na polu</Button>
+    </Group>
+  </Stack>;
+
+  if (split) {
+    return <form onSubmit={submit}>
+      <Grid gutter="lg">
+        <Grid.Col span={{ base: 12, md: 5 }}><Stack gap="md">{finder}{details}</Stack></Grid.Col>
+        <Grid.Col span={{ base: 12, md: 7 }}>{map}</Grid.Col>
+      </Grid>
+    </form>;
+  }
+  return <form onSubmit={submit}>
+    <Stack gap="md">
+      <SegmentedControl value={tab} onChange={setTab} disabled={disabled}
+        data={[{ value: 'number', label: 'Numer działki' }, { value: 'map', label: 'Wskaż na mapie' }]}/>
+      {tab === 'number' ? finder : map}
+      {details}
+    </Stack>
+  </form>;
 }

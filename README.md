@@ -54,7 +54,7 @@ Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip ins
 
 ## Architektura
 
-Jeden proces FastAPI serwuje API oraz skompilowany frontend React z OpenLayers. Lokalne raporty są przechowywane w pamięci przeglądarki.
+Jeden proces FastAPI serwuje API oraz skompilowany frontend React (komponenty Mantine) z OpenLayers. Lokalne raporty są przechowywane w pamięci przeglądarki.
 
 ```
 app/
@@ -166,6 +166,8 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 | OpenLayers 10.11.0 | mapa w przeglądarce | BSD-2-Clause (`static/vendor/OL_LICENSE.md`) |
 | React i React DOM 19.3.1 | komponenty i renderowanie UI | MIT ([React](https://github.com/react/react/blob/main/LICENSE), `static/vendor/REACT_LICENSE.txt`) |
 | esbuild 0.28.2 | budowanie frontendu | MIT ([esbuild](https://github.com/evanw/esbuild/blob/main/LICENSE.md)) |
+| Mantine 9.8.2 (`@mantine/core`, `@mantine/hooks`) | komponenty interfejsu: formularze, karty, tabele, wykresy postępu | MIT ([Mantine](https://github.com/mantinedev/mantine/blob/master/LICENSE)) |
+| Tabler Icons for React 3.52.0 | ikony interfejsu | MIT ([Tabler Icons](https://github.com/tabler/tabler-icons/blob/main/LICENSE)) |
 | Bricolage Grotesque, Inter, JetBrains Mono | samodzielnie serwowane fonty interfejsu | SIL Open Font License 1.1 (`static/design/fonts/*-OFL.txt`) |
 
 Żadna zależność nie ma licencji GPL ani AGPL. Analizę spływu napisaliśmy sami w NumPy, żeby nie używać `pysheds` (GPL) ani GRASS (GPL).

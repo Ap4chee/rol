@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Icon } from './ui.jsx';
+import { Alert, Button, Group, SegmentedControl, Switch, Text } from '@mantine/core';
 
 function terrainStyle(ol, feature) {
   if (feature.getGeometry().getType() === 'Point') {
@@ -90,28 +90,24 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     }
   }, [terrain, ol]);
 
-  if (!ol) return <p className="note">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</p>;
+  if (!ol) return <Alert color="gray">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</Alert>;
   return <div className="parcel-map">
-    <div className="map-controls no-print">
-      <div role="group" aria-label="Podkład mapy" className="segments">
-        <button type="button" aria-pressed={base === 'orto'} onClick={() => setBase('orto')}>Zdjęcie lotnicze</button>
-        <button type="button" aria-pressed={base === 'osm'} onClick={() => setBase('osm')}>Mapa</button>
-      </div>
-      <button type="button" className="quiet-button" aria-pressed={boundaries} onClick={() => setBoundaries(!boundaries)}>
-        <Icon name="layers" size={17}/> Granice działek
-      </button>
-    </div>
+    <Group justify="space-between" gap="xs" mb="xs" className="no-print">
+      <SegmentedControl size="xs" value={base} onChange={setBase} aria-label="Podkład mapy"
+        data={[{ value: 'orto', label: 'Zdjęcie lotnicze' }, { value: 'osm', label: 'Mapa' }]}/>
+      <Switch size="sm" label="Granice działek" checked={boundaries} onChange={(event) => setBoundaries(event.currentTarget.checked)}/>
+    </Group>
     <div className="map-canvas" ref={target} tabIndex={0} aria-label={onPick ? 'Mapa wyboru działki' : 'Mapa działki'}/>
-    {onPick && <div className="map-hint">
-      Przybliż mapę i wybierz pole.
-      <button className="quiet-button" type="button" onClick={() => {
+    {onPick && <Group justify="space-between" gap="xs" mt={6}>
+      <Text size="xs" c="dimmed">Przybliż mapę i kliknij swoje pole.</Text>
+      <Button size="compact-xs" variant="subtle" onClick={() => {
         const center = instance.current?.map.getView().getCenter();
         if (center) {
           const [lon, lat] = ol.proj.toLonLat(center);
           onPick({ lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) });
         }
-      }}>Sprawdź środek mapy</button>
-    </div>}
-    {terrain?.status === 'ok' && <p className="map-hint">Niebieskie linie: drogi spływu. Koło: dopływ. Pomarańczowy romb: odpływ.</p>}
+      }}>Sprawdź środek mapy</Button>
+    </Group>}
+    {terrain?.status === 'ok' && <Text size="xs" c="dimmed" mt={6}>Niebieskie linie: drogi spływu. Koło: dopływ. Pomarańczowy romb: odpływ.</Text>}
   </div>;
 }
