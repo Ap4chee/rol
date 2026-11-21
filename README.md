@@ -45,13 +45,13 @@ Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip ins
 
 ## Funkcje
 
-- **Moje gospodarstwo**: tabela pól i karty na telefonie. Raporty i własne nazwy działek zapisują się w tej przeglądarce. Każdy wpis pokazuje datę analizy, stan wody, dostępne obserwacje zieloności i odnośnik do raportu.
-- **Prognoza i działania**: pogoda na 7 dni dla wybranego pola, a obok najważniejsze zalecenia z zapisanych analiz.
-- **Raport działki**: warstwy 3D pokazują rzeczywisty obrys z ULDK z poglądowymi teksturami. Widok z góry pokazuje podkłady Geoportalu lub OpenStreetMap oraz dostępne drogi spływu.
+- **Pulpit**: liczba pól w każdym stanie wody, pola ułożone od najpilniejszego, najbliższe działania z zapisanych analiz i pogoda na 7 dni dla wybranego pola. Pola, ich nazwy i raporty zapisują się w tej przeglądarce.
+- **Dodaj pole**: jedno okno z formularzem i mapą obok. To samo okno służy do ponownego przeliczenia raportu.
+- **Widok pola** w zakładkach: Podsumowanie, Rekomendacje, Gleba, Pogoda, Teren i woda, Historia, Źródła. Model 3D pokazuje rzeczywisty obrys działki, warstwy gleby z SoilGrids i uprawę w fazie z dnia analizy (tekstury są poglądowe). Widok z góry pokazuje podkłady Geoportalu lub OpenStreetMap oraz drogi spływu.
 
-- **Wskazanie działki**: nazwa obrębu i numer (przy wielu trafieniach lista do wyboru), pełny identyfikator albo kliknięcie pola na mapie. Mapa ma podkłady „Zdjęcie lotnicze” i „Mapa” oraz nakładkę „Granice działek”.
+- **Wskazanie działki**: nazwa obrębu i numer (przy wielu trafieniach lista do wyboru), pełny identyfikator albo kliknięcie pola na mapie. Mapa ma podkłady „Zdjęcie lotnicze” i „Mapa” oraz nakładkę „Granice działek”. Gdy usługa ULDK nie odpowiada, granica przychodzi z zapasowej usługi GUGiK (zbiorczy WFS ewidencji); działa wtedy pełny identyfikator i kliknięcie na mapie, a wyszukiwanie po nazwie obrębu nie.
 - **Uprawy**: pszenica ozima, jęczmień jary, rzepak ozimy, kukurydza, ziemniak, burak cukrowy, użytki zielone.
-- **Data**: dziś albo dowolny dzień z ostatnich 10 lat. Dla daty historycznej do obliczeń nie wchodzi nic późniejszego niż ta data, a porównania z 10 latami sięgają wstecz od niej.
+- **Data**: dziś albo dowolny dzień z ostatnich 10 lat. Dla daty historycznej do obliczeń nie wchodzi nic późniejszego niż ta data, a porównania z 10 latami sięgają wstecz od niej. Formularz nie pozwala wybrać dnia starszego niż 10 lat ani z przyszłości.
 - **Raport w narzuconej kolejności**:
   1. Sytuacja wodna: ubytek wody w strefie korzeni względem RAW i TAW w czterech klasach słownych, przedział niepewności gleby, klimatyczny bilans wodny z 60 dni, wykres, zdjęcia satelitarne (czy potwierdzają bilans), podatność w ostatnich 10 sezonach, podsumowanie minionego sezonu.
   2. Przyczyny: opad i ET0 z 30, 60 i 90 dni względem mediany z 10 lat, pojemność wodna gleby, faza uprawy, niedobór przeniesiony z poprzedniego sezonu, spadek terenu i skoncentrowany spływ, stan rzeki na najbliższym wodowskazie IMGW na tle tych samych dni w poprzednich latach (czy susza dotyczy też wód w okolicy).
@@ -60,7 +60,8 @@ Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip ins
   - Profil gleby, założenia o uprawie, źródła z datami i statusem, ograniczenia.
 - **Data poza okresem wzrostu**: raport mówi to wprost, pokazuje stan zapasu wody w glebie i miniony sezon.
 - **Awaria źródła**: raport powstaje, brak jest nazwany w tabeli źródeł razem z wpływem na wniosek. Bez pogody raport mówi, że oceny niedoboru nie da się policzyć.
-- **Druk**: przyciski „Drukuj” i „Pobierz PDF” otwierają systemowe okno drukowania. Aby pobrać plik, wybierz w nim „Zapisz jako PDF”.
+- **Druk i PDF**: przycisk „PDF” w widoku pola otwiera systemowe okno drukowania; aby pobrać plik, wybierz w nim „Zapisz jako PDF”. Wydruk składa wszystkie zakładki w jeden dokument w kolejności: ocena, historia, pogoda, gleba, teren i woda, rekomendacje, źródła.
+- **Tryb testowy** (`?test` w adresie): w formularzu pojawia się przełącznik, który podmienia w widoku obrys działki na umowny kształt i dodaje obszar zasiewu. Analiza i tak liczy się na żywo dla wskazanego punktu. Służy do sprawdzania modelu 3D, nie jest częścią zwykłej ścieżki rolnika.
 - **Odnośnik do raportu**: `http://127.0.0.1:8000/?parcel=060910_2.0011.580/2&crop=winter_wheat&date=2026-11-21` (raport i tak liczy się od nowa).
 
 ## Architektura
@@ -119,9 +120,11 @@ Zmierzone 21.11.2026 na pustej pamięci podręcznej, działka `060910_2.0011.580
 | Satelita: szukanie scen, maski SCL 26 scen, pasma 3 scen | 10–14 s |
 | Obliczenia (bilans 11 lat w 3 wariantach gleby, historia, reguły) | 0,05 s |
 | **Raport razem** (źródła idą równolegle) | **11–15 s** |
-| Teren i spływ (osobno, po raporcie) | 15–125 s, z czego obliczenia 0,8 s |
+| Teren i spływ (osobno, po raporcie) | 15–125 s, z czego obliczenia 0,8 s; raz, dla działki 8,6 ha, serwer GUGiK z modelem terenu nie odpowiedział w 180 s i raport podał brak analizy spływu |
 
 Raport czeka na zdjęcia satelitarne najwyżej 14 s. Gdy łącze do archiwum zdjęć jest wolne, sekcja satelitarna dostaje status „liczę” i uzupełnia się sama (`GET /api/satellite`), tak samo jak teren. Przy ciepłej pamięci podręcznej raport powstaje w ok. 1 s.
+
+Na 24 działkach z całej Polski i datach 2016–2026 (pusta pamięć podręczna, `scripts/sweep_poland.py`, 21.11.2026) raport powstawał w 6,6–15,5 s, mediana 11,9 s. Granica działki z zapasowego WFS ewidencji przychodziła w 0,3–1,4 s.
 
 ## Dane: źródła, zakresy, licencje
 
@@ -263,7 +266,8 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 - **Historia 10 sezonów** zakłada tę samą uprawę co roku.
 - **Przedział niepewności gleby jest szeroki**, bo kwantyle SoilGrids opisują 90-procentowy przedział predykcji; na lekkich glebach wynik często obejmuje dwie klasy.
 - **Satelita**: wskaźniki liczone dla trzech scen z 45 dni; przy zachmurzeniu albo małej działce (mniej niż 6 pikseli 20 m) sekcja podaje brak danych. Łącze do archiwum scen (AWS us-west-2) bywało bardzo wolne, wtedy wynik dochodzi po raporcie.
-- **Teren**: wynik czysto topograficzny. Wysokości z WCS różniły się od arkusza NMT użytego we wzorcu o 0,3–0,5 m (inna wersja danych), a liczba punktów na granicy zależy od progu łączenia.
+- **Teren**: wynik czysto topograficzny. Wysokości z WCS różniły się od arkusza NMT użytego we wzorcu o 0,3–0,5 m (inna wersja danych), a liczba punktów na granicy zależy od progu łączenia. Model terenu pobieramy na żywo z WCS GUGiK, który przy większych działkach bywa bardzo wolny; po przekroczeniu limitu czasu raport zostaje bez dróg spływu i rekomendacji terenowych i mówi to wprost.
+- **Zakres dat pilnuje formularz, nie API.** `POST /api/report` odrzuca datę z przyszłości, ale przyjmuje dzień starszy niż 10 lat. Raport wtedy powstaje, a sekcja satelitarna podaje brak zdjęć (archiwum Sentinel-2 L2A zaczyna się w 2017 r.).
 - **Hydrologia**: stan rzeki pochodzi z najbliższego wodowskazu IMGW (do 40 km) i opisuje całą zlewnię powyżej niego, nie wodę na polu; zbiorniki i zrzuty mogą go zmieniać. Archiwum IMGW kończy się 31.10.2025, a bieżący pomiar dotyczy tylko dnia dzisiejszego, więc dla dat od 01.11.2025 do wczoraj raport podaje brak danych hydrologicznych. Bieżący pomiar to pojedynczy odczyt, porównywany ze średnimi z 7 dni. Brak danych o odległości od cieków i o wodzie gruntowej (patrz tabela źródeł).
 - **FAO-56**: tabele pochodzą z wydania z 1998 r. dostępnego na fao.org. Materiał KOWR cytuje wydanie poprawione z 2025 r.; nie porównaliśmy tabel między wydaniami.
 - **Progi reguł** rekomendacji i zgodności satelity z bilansem są założeniami roboczymi zapisanymi jako stałe w kodzie, nie wartościami z publikacji.

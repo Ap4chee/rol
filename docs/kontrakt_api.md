@@ -76,6 +76,8 @@ Raport czeka na zdjęcia Sentinel-2 najwyżej kilkanaście sekund. Gdy łącze d
 
 Wyszukiwanie działki po nazwie obrębu i numerze (może zwrócić wiele trafień do wyboru), po punkcie na mapie albo po pełnym identyfikatorze. Dwa ostatnie zwracają też geometrię działki (`parcel`).
 
+Granica pochodzi z ULDK, a gdy ULDK nie odpowiada, z zapasowej usługi GUGiK (zbiorczy WFS ewidencji gruntów i budynków). Rekord z usługi zapasowej ma `county: null` (usługa nie podaje nazwy powiatu), a nazwa gminy może mieć dopisek typu „- Obszar Wiejski”. W raporcie wpis źródła `uldk` ma wtedy nazwę i adres usługi zapasowej oraz wyjaśnienie w polu `reason` przy statusie `ok`. `search` nie ma zapasu: przy awarii ULDK zwraca `status: "error"` z powodem, więc frontend powinien wtedy podpowiedzieć pełny identyfikator albo kliknięcie na mapie.
+
 ## `GET /api/forecast?lon=...&lat=...`
 
 Bieżąca prognoza Open-Meteo dla współrzędnych pola, poza historycznym bilansem raportu. `ForecastResponse` zawiera status oraz dobową temperaturę maksymalną, opad, parowanie wskaźnikowe i kod pogody na siedem dni w strefie Europe/Warsaw. Pomiary niedostępne mają wartość `null`. `last_wet_day` wskazuje ostatni dzień z opadem powyżej 5 mm w dostępnych danych z poprzednich 30 dni. `past_days_complete` sygnalizuje, czy sprawdzono cały okres. Cache ma ważność godziny.
