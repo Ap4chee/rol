@@ -6,7 +6,7 @@ import { Alert, AppShell, Burger, Button, Container, createTheme, Group, Loader,
 import { useMediaQuery } from '@mantine/hooks';
 import { IconDroplet } from '@tabler/icons-react';
 import { AddFieldForm } from './AddField.jsx';
-import { AddPage, Dashboard } from './Dashboard.jsx';
+import { Dashboard } from './Dashboard.jsx';
 import { Report } from './Report.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { fieldFromReport, fieldHref, fieldTabHref, readFields, routeTab, STORAGE_KEY, upsertField } from './model.js';
@@ -52,7 +52,7 @@ function App() {
   const hash = useHash();
   const { id: current, tab } = routeTab(hash);
   const field = current === 'preview' ? preview : fields.find((entry) => entry.id === current);
-  const page = field ? 'field' : hash === '#dodaj' ? 'add' : 'dashboard';
+  const page = field ? 'field' : 'dashboard';
   const [mobileOpen, setMobileOpen] = useState(false);
   const [compactPref, setCompact] = useState(() => { try { return localStorage.getItem(COMPACT_KEY) === '1'; } catch { return false; } });
   const mobile = useMediaQuery('(max-width: 48em)');
@@ -109,6 +109,9 @@ function App() {
   }, []);
 
   useEffect(() => { window.scrollTo(0, 0); }, [page, field?.id]);
+  useEffect(() => {   // stary adres #dodaj otwiera modal dodawania
+    if (hash === '#dodaj') { setModal({}); window.history.replaceState(null, '', '#'); }
+  }, [hash]);
 
   function add(field) {
     const saved = persist(upsertField(currentFields.current, field));
@@ -133,8 +136,7 @@ function App() {
       </Group>
     </AppShell.Header>
     <AppShell.Navbar p="sm" className="app-navbar no-print">
-      <Sidebar fields={fields} currentId={current} page={page} compact={compact} onToggle={toggleCompact}
-        onNavigate={() => setMobileOpen(false)} preview={preview && !fields.some((entry) => entry.id === preview.id) ? preview : null}/>
+      <Sidebar page={page} compact={compact} onToggle={toggleCompact} onNavigate={() => setMobileOpen(false)} onAdd={() => setModal({})}/>
     </AppShell.Navbar>
     <AppShell.Main>
       <Container size="xl" px={{ base: 'md', md: 'xl' }} py="xl" id="main-content" tabIndex={-1} className="main">
@@ -144,12 +146,11 @@ function App() {
           {page === 'field' ? <Report key={field.id + field.report.generated_at} field={field} tab={tab}
             onTab={(next) => { window.location.hash = fieldTabHref(current, next); }} onEdit={() => setModal({ field })}
             onSave={add} onSatellite={onSatellite} saved={fields.some((entry) => entry.id === field.id)}/>
-            : page === 'add' ? <AddPage onReport={add}/>
-              : <>
-                {current && <Alert color="gray" mb="md">Nie znaleziono raportu w tej przeglądarce.
-                  <Button ml="sm" size="xs" variant="default" component="a" href="#dodaj">Dodaj pole</Button></Alert>}
-                <Dashboard fields={fields} onReport={add}/>
-              </>}
+            : <>
+              {current && <Alert color="gray" mb="md">Nie znaleziono raportu w tej przeglądarce.
+                <Button ml="sm" size="xs" variant="default" onClick={() => setModal({})}>Dodaj pole</Button></Alert>}
+              <Dashboard fields={fields} onAdd={() => setModal({})}/>
+            </>}
         </>}
         <footer className="footer no-print">
           <Text size="sm" fw={600}>Asystent wody</Text>
@@ -157,7 +158,7 @@ function App() {
         </footer>
       </Container>
     </AppShell.Main>
-    <Modal opened={Boolean(modal)} onClose={() => setModal(null)} size="xl" radius="lg"
+    <Modal opened={Boolean(modal)} onClose={() => setModal(null)} size="72rem" radius="lg"
       title={<Text fw={700} size="xl" ff="heading">{modal?.field ? 'Przelicz raport' : 'Dodaj pole'}</Text>}>
       {modal && <AddFieldForm initial={modal.field} onCancel={() => setModal(null)} onReport={add}/>}
     </Modal>

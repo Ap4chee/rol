@@ -6,10 +6,11 @@ body { background: var(--mantine-color-white); }
 .app-header { background: var(--mantine-color-white); border-bottom: 1px solid var(--mantine-color-gray-2); }
 .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--mantine-color-forest-9);
   font: 700 1.3rem/1 var(--mantine-font-family-headings); letter-spacing: -.01em; }
-.main { min-height: calc(100svh - 150px); }
+.main { min-height: calc(100svh - 56px); display: flex; flex-direction: column; }
+.main > .footer { margin-top: auto; }
 .main:focus { outline: none; }
 .footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-block: 20px 28px;
-  border-top: 1px solid var(--mantine-color-gray-2); margin-top: 40px; }
+  border-top: 1px solid var(--mantine-color-gray-2); margin-top: 64px; }
 
 /* raport: sekcje bez kart, oddzielone odstępem i linią */
 .report-section { scroll-margin-top: 16px; padding-top: 40px; border-top: 1px solid var(--mantine-color-gray-2); }
@@ -192,3 +193,6 @@ body { background: var(--mantine-color-white); }
   .print-part { break-before: page; }
   .print-part:first-child { break-before: auto; }
 }
+
+.cause-list .mantine-Accordion-control { padding-inline: 0; }
+.cause-list .mantine-Accordion-icon { color: var(--mantine-color-forest-8); }

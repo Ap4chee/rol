@@ -3,36 +3,26 @@ import { Anchor, Badge, Button, Card, Grid, Group, Image, Loader, Paper, Progres
 import {
   IconArrowRight, IconCloud, IconCloudFog, IconCloudRain, IconCloudStorm, IconPlus, IconSeeding, IconSnowflake, IconSun, IconSunHigh,
 } from '@tabler/icons-react';
-import { AddFieldForm } from './AddField.jsx';
 import { actionItems, byUrgency, dateText, fieldHref, fieldTabHref, number, waterPercent } from './model.js';
 import { api, Note, statusColor } from './ui.jsx';
 
 const cropImages = { maize: 'kukurydza', winter_wheat: 'pszenica', grassland: 'laka', potato: 'ziemniaki', sugar_beet: 'burak' };
 
-const steps = [
-  ['1', 'Ocena', 'zapas wody w glebie z bilansu FAO-56 i porównanie z 10 latami'],
-  ['2', 'Przyczyny', 'opad, parowanie, gleba, teren i stan rzek w okolicy'],
-  ['3', 'Działania', 'najpierw retencja i agrotechnika, na końcu nawadnianie'],
-];
-const sources = ['Działka: ULDK GUGiK', 'Pogoda: Open-Meteo, NASA POWER', 'Satelita: Sentinel-2',
-  'Gleba: SoilGrids', 'Teren: NMT GUGiK', 'Wody: IMGW-PIB'];
-
-/** Dodawanie pola: formularz z mapą (też jako pusty pulpit). */
-export function AddPage({ onReport }) {
-  return <Stack gap="xl">
-    <Stack gap={6} maw={760}>
-      <Title order={1}>Sprawdź, czy Twojemu polu brakuje wody</Title>
-      <Text size="lg" c="dimmed">Wpisz numer działki albo kliknij ją na mapie, wybierz uprawę i datę. Raport policzymy
-        na żywo z otwartych danych w kilkanaście sekund.</Text>
-    </Stack>
-    <Paper p={{ base: 'md', md: 'xl' }} shadow="xs"><AddFieldForm split onReport={onReport}/></Paper>
-    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-      {steps.map(([n, title, text]) => <Group key={n} gap="sm" align="flex-start" wrap="nowrap">
-        <ThemeIcon size={34} radius="xl" variant="light">{n}</ThemeIcon>
-        <div><Text fw={700}>{title}</Text><Text size="sm" c="dimmed">{text}</Text></div>
-      </Group>)}
-    </SimpleGrid>
-    <Group gap={6}>{sources.map((s) => <Badge key={s} variant="outline" color="gray" radius="sm" fw={500}>{s}</Badge>)}</Group>
+/** Pusty pulpit: jedno zdanie i przycisk; samo dodawanie pola jest w modalu. */
+function EmptyState({ onAdd }) {
+  return <Stack align="center" ta="center" gap="lg" py={80} maw={460} mx="auto">
+    <svg width="168" height="128" viewBox="0 0 168 128" aria-hidden="true" className="empty-art">
+      <ellipse cx="84" cy="112" rx="70" ry="10" fill="var(--mantine-color-gray-1)"/>
+      <path d="M18 98 L62 52 H150 L112 98 Z" fill="var(--mantine-color-forest-1)"/>
+      {[0, 1, 2, 3, 4, 5].map((i) => <path key={i} d={`M${30 + i * 15} 98 L${70 + i * 13} 52`} stroke="var(--mantine-color-forest-5)" strokeWidth="3" strokeLinecap="round"/>)}
+      <path d="M112 98 L150 52 V64 L112 110 Z" fill="var(--mantine-color-forest-3)"/>
+      <path d="M18 98 H112 V110 H18 Z" fill="#8a6a48"/>
+      <path d="M112 98 L150 52 V64 L112 110 Z" fill="#6d5238"/>
+      <path d="M100 8 C92 20 86 27 86 35 a14 14 0 0 0 28 0 C114 27 108 20 100 8 Z" fill="var(--mantine-color-blue-5)"/>
+    </svg>
+    <Title order={1} fz={28}>Dodaj pierwsze pole</Title>
+    <Text c="dimmed">Wpisz numer działki albo wskaż ją na mapie. Sprawdzimy, czy brakuje jej wody i co z tym zrobić.</Text>
+    <Button size="md" leftSection={<IconPlus size={18}/>} onClick={onAdd}>Dodaj pole</Button>
   </Stack>;
 }
 
@@ -155,8 +145,8 @@ function Weather({ fields }) {
   </Paper>;
 }
 
-export function Dashboard({ fields, onReport }) {
-  if (!fields.length) return <AddPage onReport={onReport}/>;
+export function Dashboard({ fields, onAdd }) {
+  if (!fields.length) return <EmptyState onAdd={onAdd}/>;
   const sorted = byUrgency(fields);
   const actions = actionItems(fields);
   const firstAction = new Map(actions.map(({ field, action }) => [field.id, action]));
@@ -166,7 +156,7 @@ export function Dashboard({ fields, onReport }) {
         <Text size="sm" c="dimmed">{new Intl.DateTimeFormat('pl-PL', { dateStyle: 'full', timeZone: 'Europe/Warsaw' }).format(new Date())}</Text>
         <Title order={1}>Pulpit</Title>
       </div>
-      <Button component="a" href="#dodaj" leftSection={<IconPlus size={18}/>}>Dodaj pole</Button>
+      <Button leftSection={<IconPlus size={18}/>} onClick={onAdd}>Dodaj pole</Button>
     </Group>
     <Overview fields={fields}/>
     <Grid gutter="xl">

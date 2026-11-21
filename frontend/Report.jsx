@@ -78,24 +78,21 @@ function Verdict({ report, limited, onTab }) {
   return <Stack gap="xl" justify="center" h="100%">
     <div>
       <Text className="verdict" c={cssColor(water)}>{water.headline ?? 'Brakuje danych do oceny'}</Text>
-      {result && <Text size="lg" mt="sm" maw={560}>
-        W zasięgu korzeni jest {number(result.available_mm)} z {number(result.taw_mm)} mm wody, którą ta gleba może zmieścić
-        {result.depletion_mm > 1 ? `; brakuje ${number(result.depletion_mm)} mm do pełnego zapasu.` : '.'}
-        {stressDay ? ` Przy prognozowanej pogodzie stres wodny od ${dateText(stressDay)}.`
-          : water.forecast?.length ? ' Prognoza na 7 dni nie przewiduje stresu.' : ''}
+      {result && <Text size="lg" mt="sm">
+        {result.depletion_mm > 1 ? `Brakuje ${number(result.depletion_mm)} mm wody do pełnego zapasu` : 'Zapas wody jest pełny'}
+        <Text span c="dimmed"> · {number(result.available_mm)} z {number(result.taw_mm)} mm</Text>
+        {stressDay && <Text span fw={700} c="red.8"><br/>Stres wodny od {dateText(stressDay)}</Text>}
       </Text>}
       <Note section={water}/>
     </div>
     {first && <Paper p="lg" className="next-step-card">
       <Text size="xs" tt="uppercase" fw={700} c="dimmed" lts={.6}>Najważniejsze teraz</Text>
       <Text fw={700} size="xl" lh={1.25} mt={4}>{first.title}</Text>
-      <Text size="sm" mt={6} lineClamp={2}>{first.what}</Text>
       <Button className="no-print" variant="subtle" px={0} mt="xs" rightSection={<IconArrowRight size={16}/>} onClick={() => onTab('rekomendacje')}>
         {all.length > 1 ? `Wszystkie działania (${all.length})` : 'Szczegóły działania'}</Button>
     </Paper>}
-    {limited && <div>
-      <Text size="sm" c="dimmed" lineClamp={2}>{water.uncertainty_text ?? 'Ograniczona pewność wyniku.'}</Text>
-      <Anchor size="sm" component="button" onClick={() => onTab('zrodla')}>Pewność wyniku i źródła</Anchor></div>}
+    {limited && <Anchor size="sm" c="dimmed" component="button" ta="left" onClick={() => onTab('zrodla')}>
+      Ograniczona pewność wyniku →</Anchor>}
   </Stack>;
 }
 
@@ -108,15 +105,16 @@ function causeIcon(key) {
   return IconDroplet;
 }
 
+/** Przyczyny jako tytuły z ikoną; pełny opis rozwija się po kliknięciu. */
 function CauseList({ causes, limit }) {
   const items = limit ? causes.slice(0, limit) : causes;
-  return <Stack gap="lg">{items.map((cause) => {
+  return <Accordion variant="default" multiple className="quiet-accordion cause-list">{items.map((cause) => {
     const Icon = causeIcon(cause.key);
-    return <Group key={cause.key} gap="md" wrap="nowrap" align="flex-start" className="cause">
-      <Icon size={24} stroke={1.6}/>
-      <div><Text fw={700}>{cause.title}</Text><Text size="sm" mt={2} maw={760}>{cause.text}</Text></div>
-    </Group>;
-  })}</Stack>;
+    return <Accordion.Item key={cause.key} value={cause.key}>
+      <Accordion.Control icon={<Icon size={22} stroke={1.6}/>}><Text fw={700}>{cause.title}</Text></Accordion.Control>
+      <Accordion.Panel><Text size="sm" maw={760}>{cause.text}</Text></Accordion.Panel>
+    </Accordion.Item>;
+  })}</Accordion>;
 }
 
 function Satellite({ satellite, failed, retry }) {
@@ -124,9 +122,8 @@ function Satellite({ satellite, failed, retry }) {
   const [index, setIndex] = useState(null);
   const observation = index == null ? measurements.at(-1) : measurements[index];
   return <div>
-    <Title order={2} mb="md">Rośliny z satelity</Title>
-    {satellite.status === 'ok' ? <Text size="sm">{satellite.text?.[0]}</Text>
-      : <Text size="sm" c="dimmed">{satellite.status === 'pending' ? 'Wczytuję zdjęcia Sentinel-2…' : satellite.reason ?? 'Brak obserwacji.'}</Text>}
+    <Title order={2} mb="md">Zieloność roślin</Title>
+    {satellite.status !== 'ok' && <Text size="sm" c="dimmed">{satellite.status === 'pending' ? 'Wczytuję zdjęcia Sentinel-2…' : satellite.reason ?? 'Brak obserwacji.'}</Text>}
     {failed && <Button mt="xs" size="xs" variant="default" leftSection={<IconRefresh size={14}/>} onClick={retry}>Ponów</Button>}
     {measurements.length > 1 && <Box c="forest.7" mt="sm">
       <Sparkline values={measurements.map((o) => o.ndvi)} min={0} max={1} height={48}
@@ -134,8 +131,8 @@ function Satellite({ satellite, failed, retry }) {
       <Slider className="no-print" mt={4} size="xs" min={0} max={measurements.length - 1} step={1} label={null}
         value={index ?? measurements.length - 1} onChange={setIndex}/>
     </Box>}
-    {observation && <Text size="xs" c="dimmed" mt={4}>{dateText(observation.date)} · zieloność (NDVI) {number(observation.ndvi, 2)}
-      {Number.isFinite(observation.ndmi) && ` · wilgotność roślin (NDMI) ${number(observation.ndmi, 2)}`}</Text>}
+    {observation && <Text size="xs" c="dimmed" mt={4}>{dateText(observation.date)} · NDVI {number(observation.ndvi, 2)}
+      {Number.isFinite(observation.ndmi) && ` · NDMI ${number(observation.ndmi, 2)}`} · Sentinel-2</Text>}
   </div>;
 }
 
@@ -159,8 +156,7 @@ function Summary({ report, terrain, satellite, sat, limited, onTab, printing }) 
           : <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>}
       </Grid.Col>
     </Grid>
-    <Section title="Zapas wody w glebie"
-      lead="Ile wody dostępnej dla roślin zostało w strefie korzeni każdego dnia. Szare pasmo to zakres z tych samych dni w ostatnich 10 latach.">
+    <Section title="Zapas wody w glebie">
       {water.series?.length > 1 ? <WaterChart series={water.series} forecast={water.forecast} color={cssColor(water)}/>
         : <Note section={water}/>}
       {water.forecast_reason && !water.forecast?.length && <Text size="xs" c="dimmed" mt={4}>{water.forecast_reason}</Text>}
@@ -227,11 +223,11 @@ function IrrigationNeed({ need, crop }) {
         <Fact label="typowy sezon" value={need.typical_mm != null ? `${number(need.typical_mm)} mm` : '—'}/>
         <Fact label="suchy rok" value={need.dry_mm != null ? `${number(need.dry_mm)} mm` : '—'}/>
       </SimpleGrid>
-      <Paragraphs lines={need.text} size="xs" c="dimmed"/>
+      <Text size="xs" c="dimmed">Ilość netto, dawki po 25 mm, gdy zapas spada poniżej progu stresu.</Text>
     </Grid.Col>
     <Grid.Col span={{ base: 12, md: 7 }}>
       {need.monthly.some((m) => m.mm > 0) && <>
-        <Text size="sm" c="dimmed" mb={6}>Typowa potrzeba nawadniania w miesiącach sezonu (mediana {need.seasons_compared} lat)</Text>
+        <Text size="sm" c="dimmed" mb={6}>Typowo w miesiącach (mm)</Text>
         <div className="month-need">{need.monthly.map((m) => <div key={m.month}>
           <Text size="xs" fw={700}>{m.mm >= 1 ? number(m.mm) : ''}</Text>
           <span style={{ height: `${Math.max(2, 100 * m.mm / max)}%` }}/>
@@ -248,7 +244,7 @@ function Recommendations({ report, terrainActions, satelliteChecks }) {
   const checks = [...new Map([
     ...(data.field_checks ?? []), ...satelliteChecks, ...terrainActions.filter((item) => item.category === 'field_check'),
   ].map((item) => [item.key, item])).values()];
-  return <Section title="Co robić?" lead="Najpierw zatrzymanie wody, potem zabiegi na polu, nawadnianie na końcu.">
+  return <Section title="Co robić?">
     <Note section={data}/>
     <Stack gap={40}>{groups.map(([category, title], i) => {
       const items = [...(data[category] ?? []), ...terrainActions.filter((item) => item.category === category)];
@@ -265,7 +261,7 @@ function Recommendations({ report, terrainActions, satelliteChecks }) {
     {checks.length > 0 && <Box mt={40}>
       <Title order={3} mb="sm">Co sprawdzić na polu</Title>
       <List spacing="sm">{checks.map((item) => <List.Item key={item.key}><Text fw={600} size="sm">{item.title}</Text>
-        <Text size="sm">{item.what}</Text><Text size="xs" c="dimmed">{item.why}</Text></List.Item>)}</List>
+        <Text size="sm" c="dimmed">{item.what}</Text></List.Item>)}</List>
     </Box>}
   </Section>;
 }
@@ -289,27 +285,24 @@ function SoilTab({ report, printing }) {
               <Table.Td>{l.top_cm}–{l.bottom_cm} cm</Table.Td><Table.Td>{l.texture_label}</Table.Td>
               <Table.Td>{number(l.available_water_mm)} mm</Table.Td><Table.Td>{number(l.field_capacity_vol_pct)}%</Table.Td></Table.Tr>)}</Table.Tbody>
           </Table>}
-          <Paragraphs lines={soil.text} size="sm"/>
-          <Text size="xs" c="dimmed" mt="sm">Bilans działki liczy warstwy do {number(rootCm)} cm razem jako jedną strefę korzeni.</Text>
+
         </Section>
       </Grid.Col>
       <Grid.Col span={{ base: 12, md: 5 }}>
         <Section title="Wilgotność w okolicy">
           {regional.length ? <>
-            <Text size="sm" c="dimmed" mb="md">Warstwy gleby w promieniu ok. 50 km na tle tych samych dni w 10 latach (NASA POWER).</Text>
+
             <Stack gap="md">{regional.map((layer) => {
               const dry = layer.class_key === 'low' || layer.class_key === 'very_low';
               return <div key={layer.key}>
-                <Group justify="space-between" gap={4}>
-                  <Text size="sm" fw={600}>{layer.label} <Text span size="xs" c="dimmed" fw={400}>{layer.bottom_cm == null ? 'cały profil' : `${layer.top_cm}–${layer.bottom_cm} cm`}</Text></Text>
-                  <Text size="xs" c={dry ? 'orange.8' : 'dimmed'} fw={dry ? 700 : 400}>{layer.class_label}</Text>
-                </Group>
+                <Text size="sm" fw={600}>{layer.label} <Text span size="xs" c="dimmed" fw={400}>{layer.bottom_cm == null ? 'cały profil' : `${layer.top_cm}–${layer.bottom_cm} cm`}</Text></Text>
                 <div className="moisture-bar"><i style={{ width: `${layer.current * 100}%`, background: dry ? 'var(--mantine-color-orange-6)' : 'var(--mantine-color-blue-6)' }}/>
                   <b style={{ left: `${layer.median * 100}%` }}/></div>
-                <Text size="xs" c="dimmed">wilgotniej było w {layer.years_higher} z {layer.years_compared} lat</Text>
+                <Text size="xs" c={dry ? 'orange.8' : 'dimmed'} fw={dry ? 700 : 400}>{layer.class_label}</Text>
+
               </div>;
             })}</Stack>
-            <Text size="xs" c="dimmed" mt="sm">Pasek: teraz. Kreska: mediana z poprzednich lat. {moisture.text?.at(-1)}</Text>
+            <Text size="xs" c="dimmed" mt="sm">Pasek: teraz · kreska: zwykle (10 lat) · NASA POWER, ok. 50 km</Text>
           </> : <Note section={moisture ?? { status: 'no_data' }} fallback="Brak danych o wilgotności warstw w okolicy."/>}
         </Section>
       </Grid.Col>
@@ -337,7 +330,7 @@ function WeatherWindows({ windows }) {
       <Grid.Col span={3}><Text size="sm" ta="right">{number(w.et0_mm)} mm <Text span size="xs" c="dimmed">/ {number(w.et0_median_mm)}</Text></Text></Grid.Col>
     </Grid>
   </div>)}
-  <Text size="xs" c="dimmed">Pasek: teraz. Kreska i liczba po ukośniku: mediana tych samych dni w 10 latach.</Text></Stack>;
+  <Text size="xs" c="dimmed">Kreska i liczba po ukośniku: zwykle (mediana 10 lat).</Text></Stack>;
 }
 
 function WeatherTab({ report }) {
@@ -346,10 +339,10 @@ function WeatherTab({ report }) {
   const isToday = report.analysis_date >= today();
   const causes = (report.causes.items ?? []).filter((c) => /rain|precip|carry|et0|heat|temp|demand/.test(c.key));
   const forecast = <Section key="forecast" title="Prognoza na 7 dni"
-    lead={isToday ? null : `Raport dotyczy ${dateText(report.analysis_date)}; prognoza poniżej jest od dziś i nie wchodzi do tej analizy.`}>
+    lead={isToday ? null : `Od dziś. Nie wchodzi do raportu na ${dateText(report.analysis_date)}.`}>
     <ForecastDays position={position} size="lg"/>
     {water.forecast?.length > 0 && <Table mt="lg" striped maw={620} captionSide="bottom">
-      <Table.Caption>Zapas wody w strefie korzeni policzony tym samym bilansem z prognozą Open-Meteo. Czerwony: poniżej progu stresu.</Table.Caption>
+      <Table.Caption>Czerwony: zapas poniżej progu stresu.</Table.Caption>
       <Table.Thead><Table.Tr><Table.Th>Dzień</Table.Th><Table.Th>Opad</Table.Th><Table.Th>Parowanie</Table.Th><Table.Th>Zapas wody</Table.Th></Table.Tr></Table.Thead>
       <Table.Tbody>{water.forecast.map((d) => <Table.Tr key={d.date} c={d.available_pct < d.stress_threshold_pct ? 'red.8' : undefined}>
         <Table.Td>{dateText(d.date)}</Table.Td><Table.Td>{number(d.rain_mm, 1)} mm</Table.Td><Table.Td>{number(d.et0_mm, 1)} mm</Table.Td>
@@ -362,8 +355,9 @@ function WeatherTab({ report }) {
     </Grid.Col>
     <Grid.Col span={{ base: 12, md: 5 }}>
       <Section title="Co z tego wynika">
-        {water.climatic_water_balance && <Text size="sm" mb="md">{water.climatic_water_balance.text}</Text>}
-        {causes.length ? <CauseList causes={causes}/> : <Text size="sm" c="dimmed">Pogoda nie jest główną przyczyną stanu wody na tym polu.</Text>}
+        {water.climatic_water_balance && <Box mb="lg" className="facts"><Fact label={`Opad minus parowanie, ${water.climatic_water_balance.days} dni`}
+          value={`${number(water.climatic_water_balance.balance_mm)} mm`}/></Box>}
+        {causes.length ? <CauseList causes={causes}/> : <Text size="sm" c="dimmed">Pogoda nie jest główną przyczyną.</Text>}
       </Section>
     </Grid.Col>
   </Grid>;
@@ -403,18 +397,28 @@ function TerrainTab({ report, terrain, failed, retry }) {
             <Fact label="Średni spadek" value={`${number(terrain.slope_mean_pct, 1)}%`}/>
             <Fact label="Najbardziej strome 10%" value={`> ${number(terrain.slope_p90_pct, 1)}%`}/>
           </SimpleGrid>}
-          <Paragraphs lines={terrain?.text} size="sm"/>
           {terrain?.causes?.length > 0 && <Box mt="md"><CauseList causes={terrain.causes}/></Box>}
+          {terrain?.text?.length > 0 && <Accordion variant="default" className="quiet-accordion" mt="sm">
+            <Accordion.Item value="t"><Accordion.Control><Text size="sm">Szczegóły spływu</Text></Accordion.Control>
+              <Accordion.Panel><Paragraphs lines={terrain.text} size="sm"/></Accordion.Panel></Accordion.Item></Accordion>}
           {failed && <Button mt="sm" size="xs" variant="default" onClick={retry}>Ponów pobieranie terenu</Button>}
         </Section>
       </Grid.Col>
     </Grid>
-    <Section title="Rzeki i wody w okolicy">
+    <Section title="Rzeki w okolicy">
       <Note section={hydro}/>
-      <Paragraphs lines={hydro.text} size="sm"/>
-      <HydrologyTable hydro={hydro}/>
+      {hydro.status === 'ok' && <>
+        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="lg" className="facts">
+          <Fact label="Wodowskaz" value={hydro.station_name} hint={`${hydro.river} · ${number(hydro.station_distance_km)} km`}/>
+          <Fact label={hydro.metric === 'flow' ? 'Przepływ teraz' : 'Stan wody teraz'} value={`${number(hydro.current_value, hydro.metric === 'flow' ? 2 : 0)} ${hydro.unit}`}
+            hint={`zwykle ${number(hydro.median_value, hydro.metric === 'flow' ? 2 : 0)} ${hydro.unit}`}/>
+          <Fact label="Na tle 10 lat" value={hydro.class_label} hint={`więcej wody było w ${hydro.years_higher} z ${hydro.years_compared} lat`}/>
+        </SimpleGrid>
+        <Accordion variant="default" className="quiet-accordion" mt="md">
+          <Accordion.Item value="h"><Accordion.Control><Text size="sm">Pomiary z 10 lat</Text></Accordion.Control>
+            <Accordion.Panel><HydrologyTable hydro={hydro}/></Accordion.Panel></Accordion.Item></Accordion>
+      </>}
     </Section>
-    {terrain?.limitations?.length > 0 && <Paragraphs lines={terrain.limitations} size="xs" c="dimmed"/>}
   </Stack>;
 }
 
@@ -422,12 +426,12 @@ function TerrainTab({ report, terrain, failed, retry }) {
 
 function HistoryTab({ report }) {
   const history = report.history;
+  const last = report.water_status.last_season;
   const critical = seasonMonths(report.crop);
   const seasons = history.seasons ?? [];
   const max = Math.max(1, ...seasons.map((s) => s.stress_days_critical));
   return <Stack gap={56}>
-    <Section title="Czy niedobór się powtarza?"
-      lead={`Dni niedoboru wody w okresie, w którym ${report.crop.name.toLowerCase()} najbardziej jej potrzebuje, w każdym z ostatnich sezonów.`}>
+    <Section title="Czy niedobór się powtarza?" lead="Dni niedoboru w okresie krytycznym uprawy, sezon po sezonie.">
       <Note section={history}/>
       <div className="season-bars">{seasons.map((s) => <div key={s.season} className={s.stressed ? 'stressed' : ''}>
         <Text size="xs" fw={700}>{s.stress_days_critical}</Text>
@@ -440,13 +444,14 @@ function HistoryTab({ report }) {
         {MONTHS.map((m, i) => <span key={m} className={critical.includes(i) ? 'month critical' : 'month'}>{m}</span>)}
       </Group>}
     </Section>
-    <Grid gutter={48}>
-      <Grid.Col span={{ base: 12, md: 7 }}><Paragraphs lines={history.text} size="sm"/></Grid.Col>
-      <Grid.Col span={{ base: 12, md: 5 }}>
-        {report.water_status.last_season?.text && <><Text fw={700} mb={4}>Miniony sezon</Text>
-          <Text size="sm">{report.water_status.last_season.text}</Text></>}
-      </Grid.Col>
-    </Grid>
+    {last && <Section title={`Miniony sezon ${last.season}`}>
+      <SimpleGrid cols={{ base: 2, md: 4 }} spacing="lg" className="facts">
+        <Fact label="Opad" value={`${number(last.rain_mm)} mm`}/>
+        <Fact label="Zużycie wody przez uprawę" value={`${number(last.etc_mm)} mm`}/>
+        <Fact label="Dni niedoboru w okresie krytycznym" value={last.stress_days_critical}/>
+        <Fact label="Największe wyczerpanie zapasu" value={`${number(last.max_depletion_pct_taw)}%`}/>
+      </SimpleGrid>
+    </Section>}
   </Stack>;
 }
 
@@ -467,23 +472,20 @@ function SourcesTab({ report, satelliteSource, terrain }) {
         <Table.Tbody>{sources.map((source, i) => {
           const [label, color] = sourceState[source.status] ?? [source.status, 'gray'];
           return <Table.Tr key={source.key + i}>
-            <Table.Td><Text size="sm" fw={600}>{source.name}</Text><Text size="xs" c="dimmed">{source.resolution}</Text>
-              {(source.reason || source.impact) && <Text size="xs" mt={2}>{[source.reason, source.impact].filter(Boolean).join(' ')}</Text>}
-              {source.notes?.length > 0 && <Text size="xs" c="dimmed" mt={2}>{source.notes.join(' ')}</Text>}</Table.Td>
+            <Table.Td><Text size="sm" fw={600}>{source.name}</Text>
+              {source.status !== 'ok' && (source.reason || source.impact) && <Text size="xs" c="dimmed" mt={2}>{[source.reason, source.impact].filter(Boolean).join(' ')}</Text>}</Table.Td>
             <Table.Td><Badge variant="light" color={color}>{label}</Badge></Table.Td>
             <Table.Td><Text size="xs">{source.data_date ?? (source.data_from ? `${dateText(source.data_from)} – ${dateText(source.data_to)}` : 'brak daty')}</Text></Table.Td>
           </Table.Tr>;
         })}</Table.Tbody>
       </Table></Table.ScrollContainer>
     </Section>
-    <Grid gutter={48}>
-      <Grid.Col span={{ base: 12, md: 6 }}>
-        <Section title="Czego nie wiemy">
-          <List size="sm" spacing={6}>{report.limitations?.map((s) => <List.Item key={s}>{s}</List.Item>)}</List>
-        </Section>
-      </Grid.Col>
-      <Grid.Col span={{ base: 12, md: 6 }}>
-        <Section title="Jak to policzono">
+    <Accordion variant="default" multiple className="quiet-accordion">
+      <Accordion.Item value="limits"><Accordion.Control><Text fw={700}>Czego nie wiemy ({report.limitations?.length ?? 0})</Text></Accordion.Control>
+        <Accordion.Panel><List size="sm" spacing={6}>{report.limitations?.map((s) => <List.Item key={s}>{s}</List.Item>)}</List></Accordion.Panel>
+      </Accordion.Item>
+      <Accordion.Item value="method"><Accordion.Control><Text fw={700}>Jak to policzono</Text></Accordion.Control>
+        <Accordion.Panel>
           <Paragraphs lines={water.text} size="sm"/>
           {water.variants?.length > 1 && <Table mt="md" striped>
             <Table.Thead><Table.Tr><Table.Th>Wariant gleby</Table.Th><Table.Th>Zapas</Table.Th><Table.Th>Ocena</Table.Th></Table.Tr></Table.Thead>
@@ -492,9 +494,9 @@ function SourcesTab({ report, satelliteSource, terrain }) {
           </Table>}
           {report.crop.assumptions?.length > 0 && <><Title order={4} mt="lg" mb="xs">Założenia o uprawie</Title>
             <Paragraphs lines={report.crop.assumptions} size="sm"/></>}
-        </Section>
-      </Grid.Col>
-    </Grid>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   </Stack>;
 }
 

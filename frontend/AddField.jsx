@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Grid, Group, Loader, Paper, SegmentedControl, Select, Stack, Switch, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { Alert, Button, Grid, Group, Loader, Paper, Select, Stack, Switch, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { IconArrowRight, IconCalendar, IconCircleCheck, IconMapPin, IconSearch } from '@tabler/icons-react';
 import { ParcelMap } from './ParcelMap.jsx';
 import { api, generateReport } from './ui.jsx';
@@ -13,10 +13,9 @@ function describe(parcel) {
   return [parcel.region, parcel.commune && 'gm. ' + parcel.commune, parcel.voivodeship].filter(Boolean).join(', ');
 }
 
-/** Formularz działki, uprawy i daty. `split`: mapa zawsze obok formularza (ekran startowy), inaczej zakładki. */
-export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
+/** Formularz działki, uprawy i daty z mapą obok (w modalu dodawania i przeliczania pola). */
+export function AddFieldForm({ initial, onCancel, onReport }) {
   const active = useRef(null);
-  const [tab, setTab] = useState('number');
   const [query, setQuery] = useState(initial?.report.request.parcel_id ?? initial?.report.parcel?.id ?? '');
   const [parcel, setParcel] = useState(initial?.report.parcel ?? null);
   const [point, setPoint] = useState(initial?.report.parcel ? null : initial?.report.request.point ?? null);
@@ -122,7 +121,6 @@ export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
     <Group align="flex-end" gap="xs" wrap="nowrap">
       <TextInput flex={1} label="Numer działki lub obręb" placeholder="np. Niedrzwica Kościelna 580/2" value={query}
         maxLength={80} autoComplete="off" enterKeyHint="search" disabled={disabled} data-autofocus
-        description="Pełny identyfikator, np. 060910_2.0011.580/2, albo nazwa obrębu i numer"
         onChange={(event) => { active.current?.abort(); setQuery(event.target.value); setParcel(null); setPoint(null); setCandidates([]); setError(''); setMessage(''); }}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); search(); } }}/>
       <Button variant="default" leftSection={<IconSearch size={16}/>} onClick={search} disabled={Boolean(busy)}>Szukaj</Button>
@@ -146,35 +144,25 @@ export function AddFieldForm({ initial, onCancel, onReport, split = false }) {
       <TextInput label="Data analizy" type="date" required value={date} min={oldestDate()} max={today()} disabled={disabled}
         leftSection={<IconCalendar size={16}/>} onChange={(event) => setDate(event.target.value)}/>
     </Group>
-    {!split && <TextInput label="Nazwa pola" description="opcjonalnie" value={name} maxLength={80} disabled={disabled}
-      onChange={(event) => setName(event.target.value)} placeholder="np. Pod lasem"/>}
+    <TextInput label="Nazwa pola (opcjonalnie)" value={name} maxLength={80} disabled={disabled}
+      onChange={(event) => setName(event.target.value)} placeholder="np. Pod lasem"/>
     {TEST_AVAILABLE && <Switch color="red" checked={test} onChange={(event) => setTest(event.currentTarget.checked)} disabled={disabled}
-      label="Tryb testowy" description="Obrys działki testowej w wybranym miejscu (albo w środku Polski). Pogoda, gleba i bilans liczą się na żywo dla tego punktu."/>}
+      label="Tryb testowy (obrys testowy, dane na żywo)"/>}
     {cropsError && <Alert color="red" variant="light">Nie udało się pobrać upraw. {cropsError}</Alert>}
     {error && <Alert color="red" variant="light" role="alert">{error}</Alert>}
     {busy && <Group gap="xs" role="status"><Loader size="xs"/><Text size="sm">
       {busy === 'report' ? 'Pobieram dane działki i liczę bilans wodny (do 30 s)…' : 'Sprawdzam działkę…'}</Text></Group>}
     <Group justify="flex-end" mt="xs">
       {onCancel && <Button variant="default" onClick={onCancel}>Anuluj</Button>}
-      <Button type="submit" size={split ? 'md' : 'sm'} rightSection={<IconArrowRight size={18}/>}
-        disabled={Boolean(busy) || !(parcel || point || test) || !crop} fullWidth={split}>Sprawdź wodę na polu</Button>
+      <Button type="submit" rightSection={<IconArrowRight size={18}/>}
+        disabled={Boolean(busy) || !(parcel || point || test) || !crop}>Sprawdź wodę na polu</Button>
     </Group>
   </Stack>;
 
-  if (split) {
-    return <form onSubmit={submit}>
-      <Grid gutter="lg">
-        <Grid.Col span={{ base: 12, md: 5 }}><Stack gap="md">{finder}{details}</Stack></Grid.Col>
-        <Grid.Col span={{ base: 12, md: 7 }}>{map}</Grid.Col>
-      </Grid>
-    </form>;
-  }
   return <form onSubmit={submit}>
-    <Stack gap="md">
-      <SegmentedControl value={tab} onChange={setTab} disabled={disabled}
-        data={[{ value: 'number', label: 'Numer działki' }, { value: 'map', label: 'Wskaż na mapie' }]}/>
-      {tab === 'number' ? finder : map}
-      {details}
-    </Stack>
+    <Grid gutter="xl">
+      <Grid.Col span={{ base: 12, md: 5 }}><Stack gap="md">{finder}{details}</Stack></Grid.Col>
+      <Grid.Col span={{ base: 12, md: 7 }}>{map}</Grid.Col>
+    </Grid>
   </form>;
 }
