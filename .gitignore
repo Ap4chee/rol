@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# pamięć podręczna odpowiedzi zewnętrznych usług (tworzona przy pierwszym uruchomieniu)
+cache/
+.env

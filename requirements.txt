@@ -1,0 +1,9 @@
+fastapi==0.165.0
+uvicorn==0.54.0
+httpx==0.28.1
+rasterio==1.5.2
+pystac-client==0.9.1
+shapely==2.2.0
+pyproj==3.8.0
+numpy==2.5.5
+pytest==9.2.0
