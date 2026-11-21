@@ -219,6 +219,24 @@ def build(f: Facts) -> Result:
             "niska", "Stan rzeki pochodzi z najbliższego wodowskazu i opisuje całą zlewnię; nie wiemy, czy przy tym polu są "
             "rowy z zastawkami."))
 
+    # Retencja ma pierwszeństwo zawsze (zadanie KOWR, „zatrzymaj wodę tam, gdzie spadła”): gdy żadna reguła wyżej
+    # nie zadziałała, bo teraz nie ma niedoboru, działka nie jest często przesuszona i gleba nie jest lekka,
+    # raport podaje działanie zapobiegawcze z liczbami tej działki zamiast pustej listy.
+    if not out.retention:
+        why = [f"Według bilansu w strefie korzeni brakuje teraz {fmt(f.depletion_mm)} mm wody z {fmt(f.taw_mm)} mm, "
+               f"które ta gleba może utrzymać, więc zapas jest wystarczający."]
+        if f.seasons_total:
+            why.append(f"W {f.seasons_with_stress} z {f.seasons_total} ostatnich sezonów bilans pokazał w okresie "
+                       "krytycznym co najmniej jeden dzień stresu wodnego.")
+        why.append("Woda zatrzymana w glebie w okresie z wystarczającym zapasem zmniejsza ryzyko niedoboru w okresie suchym.")
+        what = ("Nie zostawiaj gleby odkrytej: po zbiorze zostaw resztki pożniwne albo wysiej międzyplon. "
+                "Ogranicz uprawki, które odsłaniają wilgotną glebę.") if not f.perennial else (
+                "Utrzymuj zwartą darń i nie przesuszaj jej zbyt niskim koszeniem w okresach bez opadu.")
+        out.retention.append(Rec(
+            "keep_water_preventive", "retention", "Zatrzymuj wodę w glebie zapobiegawczo", what, whole_field,
+            " ".join(why), "średnia",
+            "Działanie zapobiegawcze: bilans nie pokazuje teraz niedoboru, a historia działki nie wskazuje częstych susz."))
+
     # ---------- AGROTECHNIKA ----------
     if not f.perennial and (_is_vulnerable(f) or _soil_is_light(f)):
         why = []

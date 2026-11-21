@@ -68,9 +68,16 @@ def test_good_soil_without_stress_history_gets_no_soil_retention_advice():
                     variants=[(10.0, 80.0)], awc_mm_per_m=150.0, soc_0_30_g_kg=20.0,
                     seasons_with_stress=1, seasons_with_long_stress=0, bare_rain_mm=300.0, bare_evaporation_mm=90.0)
     result = build(facts)
-    assert result.retention == []
+    # Bez porad glebowych, ale retencja nie jest pusta: zostaje działanie zapobiegawcze z liczbami działki.
+    assert keys(result.retention) == ["keep_water_preventive"]
+    assert "10 mm" in result.retention[0].why and "150 mm" in result.retention[0].why
+    assert "1 z 10" in result.retention[0].why
     assert result.agrotechnical == []
     assert result.field_checks == []
+
+
+def test_preventive_retention_only_when_no_other_retention_rule_fires():
+    assert "keep_water_preventive" not in keys(build(BASE).retention)
 
 
 def test_late_harvest_or_short_gap_gives_residue_instead_of_catch_crop():
