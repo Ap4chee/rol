@@ -7,6 +7,15 @@ ULDK (usługa stoi na innym serwerze niż uldk.gugik.gov.pl i odpowiadała w ok.
 - filtr po `ID_DZIALKI` działa; filtr łączący nazwę obrębu z numerem działki zwraca HTTP 500, więc
   wyszukiwania po nazwie obrębu ta usługa nie zastępuje;
 - rekord nie zawiera nazwy powiatu ani województwa (województwo wynika z dwóch pierwszych cyfr TERYT).
+
+Wyszukiwanie „nazwa obrębu numer” bez ULDK idzie dwoma krokami: nazwa obrębu → kod obrębu z usługi WFS
+granic administracyjnych PRG GUGiK (warstwa obrębów ewidencyjnych), potem pełny identyfikator
+`kod_obrębu.numer` → działka z WFS EGiB. Sprawdzone 21.11.2026:
+- filtr równości po nazwie obrębu z polską literą (np. „KOŚCIELNA”) nic nie zwraca, a `PropertyIsLike`
+  z polską literą zamienioną na `*` działa (0,5–1 s); dokładne dopasowanie nazwy robimy u siebie;
+- nazwy obrębów w PRG są wielkimi literami;
+- `PropertyIsLike` po `ID_DZIALKI` w WFS EGiB wisi ponad 30 s, więc działek w arkuszach (`AR_n`)
+  tą drogą nie znajdziemy.
 """
 from __future__ import annotations
 
@@ -24,6 +33,9 @@ from app.config import check_forced_failure
 from app.sources import NoData, SourceError
 
 WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/PZGIK/EGIB/WFS/UslugaZbiorcza"
+PRG_WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries"
+PRG_DISTRICT_LAYER = "ms:A06_Granice_obrebow_ewidencyjnych"
+MAX_DISTRICTS = 20  # tyle obrębów o tej samej nazwie sprawdzamy w WFS EGiB (równolegle)
 SOURCE_NAME = "Ewidencja gruntów i budynków GUGiK, zbiorcza usługa WFS (zapas przy awarii ULDK)"
 TIMEOUT_EGIB_WFS_S = 10.0
 POINT_HALF_BOX_M = 1.0  # połowa boku okna wokół punktu [m]; właściwą działkę wybiera test zawierania punktu
@@ -142,3 +154,45 @@ async def fetch_parcel_by_id(client: httpx.AsyncClient, parcel_id: str) -> dict:
         if record["id"] == parcel_id:
             return _finish(record)
     raise NoData(f"Ewidencja gruntów (WFS GUGiK) nie zna działki o identyfikatorze {parcel_id}.")
+
+
+def district_name_pattern(name: str) -> str:
+    """Wzorzec `PropertyIsLike` dla nazwy obrębu: wielkie litery, każdy znak spoza ASCII zamieniony na `*`."""
+    return "".join(ch if ch.isascii() else "*" for ch in " ".join(name.split()).upper())
+
+
+def parse_districts(xml_text: str) -> list[tuple[str, str]]:
+    """Pary (kod obrębu, nazwa obrębu) z odpowiedzi GetFeature warstwy obrębów PRG."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise SourceError("WFS PRG zwrócił odpowiedź, która nie jest poprawnym XML") from exc
+    if root.tag.endswith("ExceptionReport"):
+        raise SourceError("WFS PRG odrzucił zapytanie")
+    out = []
+    for member in root.iter(f"{_MS}{PRG_DISTRICT_LAYER.split(':')[1]}"):
+        code, name = member.find(f"{_MS}JPT_KOD_JE"), member.find(f"{_MS}JPT_NAZWA_")
+        if code is not None and code.text and name is not None and name.text:
+            out.append((code.text.strip(), name.text.strip()))
+    return out
+
+
+async def find_districts(client: httpx.AsyncClient, name: str) -> list[tuple[str, str]]:
+    """Obręby ewidencyjne o dokładnie tej nazwie (bez względu na wielkość liter): lista (kod, nazwa)."""
+    check_forced_failure("egib_wfs")
+    xml_filter = ('<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0">'
+                  '<fes:PropertyIsLike wildCard="*" singleChar="?" escapeChar="!" matchCase="false">'
+                  "<fes:ValueReference>JPT_NAZWA_</fes:ValueReference>"
+                  f"<fes:Literal>{escape(district_name_pattern(name))}</fes:Literal>"
+                  "</fes:PropertyIsLike></fes:Filter>")
+    params = {"SERVICE": "WFS", "VERSION": "2.0.0", "REQUEST": "GetFeature", "TYPENAMES": PRG_DISTRICT_LAYER,
+              "PROPERTYNAME": "JPT_KOD_JE,JPT_NAZWA_", "COUNT": "200", "FILTER": xml_filter}
+    try:
+        response = await client.get(PRG_WFS_URL, params=params, timeout=TIMEOUT_EGIB_WFS_S, follow_redirects=False)
+    except httpx.HTTPError as exc:
+        raise SourceError(f"WFS PRG: błąd połączenia ({type(exc).__name__})") from exc
+    if response.status_code != 200:
+        raise SourceError(f"WFS PRG: HTTP {response.status_code}")
+    wanted = " ".join(name.split()).casefold()
+    return [(code, n) for code, n in parse_districts(response.content.decode("utf-8", errors="replace"))
+            if " ".join(n.split()).casefold() == wanted]

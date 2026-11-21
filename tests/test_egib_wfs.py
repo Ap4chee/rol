@@ -54,3 +54,26 @@ def test_exception_report_and_garbage_raise_source_error():
 
 def test_empty_collection_gives_no_records():
     assert egib_wfs.parse_parcels('<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"/>') == []
+
+
+PRG_SAMPLE = """<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+ xmlns:ms="http://mapserver.gis.umn.edu/mapserver"><wfs:member><ms:A06_Granice_obrebow_ewidencyjnych>
+<ms:JPT_KOD_JE>060910_2.0011</ms:JPT_KOD_JE><ms:JPT_NAZWA_>NIEDRZWICA KOŚCIELNA</ms:JPT_NAZWA_>
+</ms:A06_Granice_obrebow_ewidencyjnych></wfs:member></wfs:FeatureCollection>"""
+
+
+def test_district_name_pattern_replaces_polish_letters():
+    assert egib_wfs.district_name_pattern("Niedrzwica  Kościelna") == "NIEDRZWICA KO*CIELNA"
+    assert egib_wfs.district_name_pattern("Łasków") == "*ASK*W"
+
+
+def test_parse_districts():
+    assert egib_wfs.parse_districts(PRG_SAMPLE) == [("060910_2.0011", "NIEDRZWICA KOŚCIELNA")]
+
+
+def test_split_district_and_number():
+    from app.sources import uldk
+    assert uldk.split_district_and_number("Niedrzwica Kościelna 580/2") == ("Niedrzwica Kościelna", "580/2")
+    assert uldk.split_district_and_number("Niedrzwica Kościelna, 580/2") == ("Niedrzwica Kościelna", "580/2")
+    assert uldk.split_district_and_number("Niedrzwica") is None
+    assert uldk.split_district_and_number("Niedrzwica Kościelna") is None

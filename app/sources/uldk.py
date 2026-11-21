@@ -8,6 +8,7 @@ Sprawdzone prawdziwymi wywołaniami 21.11.2026:
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 
@@ -198,9 +199,54 @@ async def search_parcels(client: httpx.AsyncClient, query: str) -> tuple[list[di
     query = " ".join(query.split())
     if not QUERY_RE.match(query):
         raise NoData("Wpisz nazwę obrębu i numer działki, np. „Niedrzwica Kościelna 580/2”, albo pełny identyfikator.")
-    lines = await _request(client, {"request": "GetParcelByIdOrNr", "id": query, "result": RESULT_FIELDS})
+    try:
+        lines = await _request(client, {"request": "GetParcelByIdOrNr", "id": query, "result": RESULT_FIELDS})
+    except (SourceError, RuntimeError) as exc:
+        return await _search_without_uldk(client, query, exc)
     if lines[0].startswith("-1"):
         return [], False
     candidates = [_parse_fields(line) for line in lines[1:] if "|" in line]
     candidates = [c for c in candidates if c["id"]]
     return candidates[:MAX_CANDIDATES], len(candidates) > MAX_CANDIDATES
+
+
+def split_district_and_number(query: str) -> tuple[str, str] | None:
+    """„Niedrzwica Kościelna 580/2” → („Niedrzwica Kościelna”, „580/2”). None, gdy brak numeru na końcu."""
+    parts = query.replace(",", " ").split()
+    if len(parts) < 2 or not parts[-1][0].isdigit():
+        return None
+    return " ".join(parts[:-1]), parts[-1]
+
+
+async def _search_without_uldk(client: httpx.AsyncClient, query: str,
+                               uldk_error: Exception) -> tuple[list[dict[str, str | None]], bool]:
+    """Wyszukiwanie przy awarii ULDK: pełny identyfikator albo nazwa obrębu (PRG) + numer → WFS EGiB."""
+    if is_full_id(query):
+        parcel, _ = await get_parcel_by_id(client, query)  # sam przechodzi na WFS EGiB
+        return [_candidate(parcel)], False
+    split = split_district_and_number(query)
+    if split is None:
+        raise SourceError(f"{uldk_error}. Wpisz nazwę obrębu i numer działki, pełny identyfikator "
+                          "albo kliknij działkę na mapie.")
+    name, number = split
+    try:
+        districts = await egib_wfs.find_districts(client, name)
+    except (SourceError, RuntimeError) as exc:
+        raise SourceError(f"{uldk_error}; zapasowe wyszukiwanie obrębu w PRG GUGiK też zawiodło ({exc})") from exc
+    if not districts:
+        raise NoData(f"Nie znaleziono obrębu „{name}” (wyszukiwanie zapasowe przy awarii ULDK). "
+                     "Sprawdź nazwę obrębu albo kliknij działkę na mapie.")
+    ids = [f"{code}.{number}" for code, _ in districts[:egib_wfs.MAX_DISTRICTS]]
+    results = await asyncio.gather(*(get_parcel_by_id(client, pid) for pid in ids), return_exceptions=True)
+    candidates = [_candidate(r[0]) for r in results if isinstance(r, tuple)]
+    if not candidates:
+        errors = [r for r in results if isinstance(r, SourceError)]
+        if errors:
+            raise errors[0]
+        return [], False
+    return candidates, len(districts) > egib_wfs.MAX_DISTRICTS
+
+
+def _candidate(p: Parcel) -> dict[str, str | None]:
+    return {"id": p.id, "voivodeship": p.voivodeship, "county": p.county, "commune": p.commune,
+            "region": p.region, "number": p.number}
