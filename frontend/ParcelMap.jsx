@@ -1,5 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Group, SegmentedControl, Switch, Text } from '@mantine/core';
+import { Crosshair } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Segmented } from '@/components/ui/segmented';
+import { Switch } from '@/components/ui/switch';
+
+const BASE_LAYERS = [{ value: 'orto', label: 'Zdjęcie lotnicze' }, { value: 'osm', label: 'Mapa' }];
+
+// Legenda terenu w kolorach i kształtach z terrainStyle: linia spływu, koło dopływu i znak odpływu.
+// Znak odpływu to kwadrat, nie romb: RegularShape (4 wierzchołki, angle π/4) stawia wierzchołki na przekątnych.
+const TERRAIN_LEGEND = [
+  { label: 'Drogi spływu', shape: 'niebieska linia',
+    glyph: <path d="M1.5 10C4 5 6.5 5 8 7.5s4 2.5 6.5-2.5" fill="none" stroke="#41bbed" strokeWidth="2.5" strokeLinecap="round"/> },
+  { label: 'Dopływ', shape: 'koło', glyph: <circle cx="8" cy="7.5" r="4.75" fill="#146b8c"/> },
+  { label: 'Odpływ', shape: 'pomarańczowy kwadrat', glyph: <rect x="3.5" y="3" width="9" height="9" rx="1.25" fill="#bb581f"/> },
+];
 
 function terrainStyle(ol, feature) {
   if (feature.getGeometry().getType() === 'Point') {
@@ -110,24 +125,37 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     }
   }, [terrain, ol]);
 
-  if (!ol) return <Alert color="gray">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</Alert>;
-  return <div className="parcel-map">
-    <Group justify="space-between" gap="xs" mb="xs" className="no-print" display={focus ? 'none' : undefined}>
-      <SegmentedControl size="xs" value={base} onChange={setBase} aria-label="Podkład mapy"
-        data={[{ value: 'orto', label: 'Zdjęcie lotnicze' }, { value: 'osm', label: 'Mapa' }]}/>
-      <Switch size="sm" label="Granice działek" checked={boundaries} onChange={(event) => setBoundaries(event.currentTarget.checked)}/>
-    </Group>
-    <div className="map-canvas" ref={target} tabIndex={0} aria-label={onPick ? 'Mapa wyboru działki' : 'Mapa działki'}/>
-    {onPick && <Group justify="space-between" gap="xs" mt={6}>
-      <Text size="xs" c="dimmed">Przybliż mapę i kliknij swoje pole.</Text>
-      <Button size="compact-xs" variant="subtle" onClick={() => {
+  if (!ol) return <Callout tone="neutral">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</Callout>;
+  // @container: pasek przełączników i wiersz podpowiedzi układają się według szerokości mapy, nie ekranu
+  return <div className="parcel-map @container">
+    <div className="relative">
+      {/* Szklany pasek nad mapą (podkład, granice). W widoku jednej działki (raport) ukryty jak wcześniej.
+          Na wąskiej mapie dwa rzędy przy prawej krawędzi, żeby nie wejść na przyciski powiększania. */}
+      {!focus && <div className={'no-print absolute right-2.5 top-2.5 z-10 flex flex-col items-end gap-0.5 rounded-xl bg-white/90 p-1 '
+        + 'shadow-raised ring-1 ring-black/[0.05] backdrop-blur-md @min-[30rem]:flex-row @min-[30rem]:items-center @min-[30rem]:gap-1'}>
+        <Segmented options={BASE_LAYERS} value={base} onChange={setBase} label="Podkład mapy" className="[&>button]:px-2.5"/>
+        <Switch label="Granice działek" checked={boundaries} onCheckedChange={setBoundaries} className="px-2 py-1"/>
+      </div>}
+      <div className="map-canvas" ref={target} tabIndex={0} aria-label={onPick ? 'Mapa wyboru działki' : 'Mapa działki'}/>
+    </div>
+    {/* Na wąskiej mapie podpowiedź i przycisk jeden pod drugim. Ujemny margines wyrównuje tekst przycisku do krawędzi
+        mapy (lewej albo prawej), ::after powiększa pole dotyku do 40 px. */}
+    {onPick && <div className="no-print mt-2 flex flex-col items-start gap-1 @min-[26rem]:flex-row @min-[26rem]:items-center @min-[26rem]:justify-between @min-[26rem]:gap-3">
+      <p className="text-[13px] text-neutral-500">Przybliż mapę i kliknij swoje pole.</p>
+      <Button variant="ghost" size="xs" icon={<Crosshair/>}
+        className="-ml-2.5 after:absolute after:-inset-y-1.5 after:inset-x-0 @min-[26rem]:ml-0 @min-[26rem]:-mr-2.5" onClick={() => {
         const center = instance.current?.map.getView().getCenter();
         if (center) {
           const [lon, lat] = ol.proj.toLonLat(center);
           onPick({ lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) });
         }
       }}>Sprawdź środek mapy</Button>
-    </Group>}
-    {terrain?.status === 'ok' && <Text size="xs" c="dimmed" mt={6}>Niebieskie linie: drogi spływu. Koło: dopływ. Pomarańczowy romb: odpływ.</Text>}
+    </div>}
+    {terrain?.status === 'ok' && <ul aria-label="Legenda mapy" className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px] text-neutral-600">
+      {TERRAIN_LEGEND.map((item) => <li key={item.label} className="inline-flex items-center gap-1.5">
+        <svg viewBox="0 0 16 15" className="h-[15px] w-4 shrink-0" role="img" aria-label={item.shape}>{item.glyph}</svg>
+        {item.label}
+      </li>)}
+    </ul>}
   </div>;
 }

@@ -22,7 +22,7 @@ Potem otwórz `http://127.0.0.1:8000`. Odpowiedzi zewnętrznych usług zapisują
 
 ### Praca nad interfejsem
 
-Interfejs React jest w `frontend/`. Gotowy build `static/ui.js` i `static/ui.css` jest w repozytorium, więc zwykłe uruchomienie przez FastAPI działa bez Node.js. Po edycji frontendu użyj:
+Interfejs React jest w `frontend/`: komponenty Spectrum UI skopiowane do `frontend/components/spectrumui/`, własne podstawowe komponenty w `frontend/components/ui/`, style Tailwind CSS v4 i tokeny wyglądu (kolory, fonty, krzywe ruchu) w `frontend/app.css`. Gotowy build `static/ui.js` i `static/ui.css` jest w repozytorium, więc zwykłe uruchomienie przez FastAPI działa bez Node.js. `npm run build` buduje JavaScript (esbuild) i CSS (Tailwind CLI). Po edycji frontendu użyj:
 
 ```sh
 npm ci
@@ -66,7 +66,7 @@ Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip ins
 
 ## Architektura
 
-Jeden proces FastAPI serwuje API oraz skompilowany frontend React (komponenty Mantine) z OpenLayers. Lokalne raporty są przechowywane w pamięci przeglądarki.
+Jeden proces FastAPI serwuje API oraz skompilowany frontend React (komponenty Spectrum UI, Tailwind CSS) z OpenLayers. Lokalne raporty są przechowywane w pamięci przeglądarki.
 
 ```
 app/
@@ -97,7 +97,10 @@ app/
     flow.py            Priority-Flood, D8, powierzchnia zasilająca
     recommendations.py, terrain_rules.py   reguły rekomendacji
   data/soilgrids_tiles_pl.json   indeks kafli SoilGrids dla Polski (tryb awaryjny)
-frontend/              komponenty React, style i testy prezentacji
+frontend/              komponenty React, style (app.css, Tailwind) i testy prezentacji
+  components/spectrumui/  komponenty Spectrum UI (Apache-2.0, plik LICENSE), dostosowane do aplikacji
+  components/ui/       podstawowe komponenty: przycisk, pola, zakładki, okno, tabela, plakietki stanu
+  report/              zakładki widoku pola
 static/                gotowy build React, OpenLayers i zasoby graficzne
 tests/                 testy obliczeń bez sieci
 scripts/               sprawdzenia na prawdziwych danych
@@ -189,9 +192,15 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 | OpenLayers 10.11.0 | mapa w przeglądarce | BSD-2-Clause (`static/vendor/OL_LICENSE.md`) |
 | React i React DOM 19.3.1 | komponenty i renderowanie UI | MIT ([React](https://github.com/react/react/blob/main/LICENSE), `static/vendor/REACT_LICENSE.txt`) |
 | esbuild 0.28.2 | budowanie frontendu | MIT ([esbuild](https://github.com/evanw/esbuild/blob/main/LICENSE.md)) |
-| Mantine 9.8.2 (`@mantine/core`, `@mantine/hooks`) | komponenty interfejsu: formularze, karty, tabele, wykresy postępu | MIT ([Mantine](https://github.com/mantinedev/mantine/blob/master/LICENSE)) |
+| Spectrum UI (komponenty z rejestru `spectrumhq.in`, kod skopiowany do `frontend/components/spectrumui/` 21.11.2026) | komponenty interfejsu: sekcje rozwijane, okno/arkusz, przełączniki, suwak, paski, karty liczb, powiadomienia, stany ładowania | Apache-2.0 ([Spectrum UI](https://github.com/arihantcodes/spectrum-ui/blob/main/LICENSE), `frontend/components/spectrumui/LICENSE`; pliki oznaczone jako zmodyfikowane) |
+| Tailwind CSS 4.3.5 (`tailwindcss`, `@tailwindcss/cli`) | style interfejsu, budowanie `static/ui.css` | MIT ([Tailwind CSS](https://github.com/tailwindlabs/tailwindcss/blob/main/LICENSE)) |
+| tw-animate-css 1.4.0 | klasy animacji wejścia i wyjścia (okno, dymki) | MIT ([tw-animate-css](https://github.com/Wombosvideo/tw-animate-css/blob/main/LICENSE)) |
+| Radix UI 1.x (`@radix-ui/react-accordion`, `-dialog`, `-progress`, `-slider`, `-slot`, `-tabs`, `-tooltip`) | dostępne podstawy komponentów: klawiatura, fokus, role ARIA | MIT ([Radix Primitives](https://github.com/radix-ui/primitives/blob/main/LICENSE)) |
+| Motion 14.14.0 (`motion`, w tym `framer-motion`) | animacje sprężynowe w komponentach Spectrum (przełącznik, powiadomienia, liczniki) | MIT ([Motion](https://github.com/motiondivision/motion/blob/main/LICENSE.md)) |
+| Lucide React 1.77.0 | ikony interfejsu | ISC ([Lucide](https://github.com/lucide-icons/lucide/blob/main/LICENSE)) |
+| clsx 2.1.1, tailwind-merge 3.7.1 | łączenie klas CSS | MIT |
+| class-variance-authority 0.7.1 | warianty komponentów (przycisk, okno) | Apache-2.0 |
 | three.js 0.187.0 | model 3D działki: kształt z ULDK, warstwy gleby z SoilGrids, uprawa w fazie z dnia analizy (stylizacja) | MIT ([three.js](https://github.com/mrdoob/three.js/blob/dev/LICENSE)) |
-| Tabler Icons for React 3.52.0 | ikony interfejsu | MIT ([Tabler Icons](https://github.com/tabler/tabler-icons/blob/main/LICENSE)) |
 | Bricolage Grotesque, Inter, JetBrains Mono | samodzielnie serwowane fonty interfejsu | SIL Open Font License 1.1 (`static/design/fonts/*-OFL.txt`) |
 
 Żadna zależność nie ma licencji GPL ani AGPL. Analizę spływu napisaliśmy sami w NumPy, żeby nie używać `pysheds` (GPL) ani GRASS (GPL).
