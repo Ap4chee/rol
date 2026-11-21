@@ -246,6 +246,38 @@ caption { color: var(--muted); padding: 8px 0; text-align: left; font-size: .87r
 .soil-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 7px; margin: 12px 0; }
 .soil-grid div { display: flex; flex-direction: column; padding: 8px; border: 1px solid var(--line); border-radius: 7px; }
 .soil-grid img { height: 65px; width: 100%; object-fit: cover; margin-bottom: 6px; border-radius: 5px; }
+.soil-profile { margin-top: 12px; padding: 16px; }
+.profile-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+.profile-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; }
+.profile-column { list-style: none; padding: 0; display: grid; min-height: 420px; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line); }
+.profile-column li { position: relative; display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  background: #8a6a48; border-top: 1px solid rgba(255, 255, 255, .35); color: #fff; }
+.profile-column li.sand { background: #b98f57; }
+.profile-column li.sandy_loam { background: #9d7445; }
+.profile-column li.loam { background: #7f5c3b; }
+.profile-column li.silt_loam { background: #6f5a3e; }
+.profile-column li.clay { background: #6a3f2a; }
+.profile-column li:not(.in-root) { filter: saturate(.55) brightness(.82); }
+.profile-column li span, .profile-column li small { display: block; }
+.profile-column li small { color: #f1ece2; font-size: .8rem; }
+.root-line { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--lime); font-style: normal; }
+.root-line b { position: absolute; right: 8px; top: 2px; font-size: .74rem; font-weight: 650; color: var(--lime); }
+.profile-side { display: grid; gap: 18px; align-content: start; }
+.profile-side h4 { margin-bottom: 8px; }
+.fill-bar { height: 120px; width: 56px; border: 2px solid var(--water); border-radius: 8px; display: flex; align-items: flex-end;
+  overflow: hidden; background: var(--paper); margin-bottom: 6px; float: left; margin-right: 14px; }
+.fill-bar i { display: block; width: 100%; background: var(--water); }
+.profile-fill { overflow: hidden; }
+.profile-regional ul { list-style: none; padding: 0; display: grid; gap: 12px; }
+.profile-regional li > span { font-weight: 620; }
+.moisture-bar { position: relative; height: 12px; border-radius: 6px; background: var(--water-bg); margin: 5px 0 3px; }
+.moisture-bar i { display: block; height: 100%; border-radius: 6px; background: var(--water); }
+.moisture-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+.profile-regional li.low .moisture-bar i, .profile-regional li.very_low .moisture-bar i { background: var(--orange); }
+.profile-regional li.very_low small:last-child { color: var(--clay); font-weight: 620; }
+.profile-regional .legend { display: block; margin-top: 10px; }
+.soil-profile .disclosure { padding: 0; margin-top: 8px; }
 .action-group { margin: 21px 0; }
 .group-heading { margin-bottom: 11px; font-size: 1.5rem; }
 .group-heading span { color: var(--action); }
@@ -300,6 +332,8 @@ caption { color: var(--muted); padding: 8px 0; text-align: left; font-size: .87r
   .dashboard-sidebar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
 }
 @media (max-width: 710px) {
+  .profile-body { grid-template-columns: 1fr; }
+  .profile-column { min-height: 360px; }
   :root { font-size: 16px; }
   .header-inner { min-height: 55px; }
   main.layout { padding-top: 20px; }

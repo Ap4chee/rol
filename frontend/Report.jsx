@@ -23,6 +23,55 @@ function Section({ title, children, id }) {
   return <section className="report-section" id={id}><h2>{title}</h2>{children}</section>;
 }
 
+function SoilProfile({ soil, moisture, water, crop }) {
+  if (!soil.layers?.length) return null;
+  const rootCm = (soil.root_depth_m ?? crop.root_depth_m ?? 0) * 100;
+  const fill = waterPercent(water.result);
+  const rootLayers = soil.layers.filter((layer) => layer.top_cm < rootCm);
+  const regional = moisture?.status === 'ok' ? moisture.layers : [];
+  return <div className="panel soil-profile">
+    <div className="profile-head"><h3>Woda w warstwach gleby</h3>
+      <small>Gleba: SoilGrids 250 m · zapas: bilans działki · okolica: NASA POWER ok. 50 km</small></div>
+    <div className="profile-body">
+      <ol className="profile-column" aria-label="Przekrój gleby od powierzchni w głąb"
+        style={{ gridTemplateRows: soil.layers.map((l) => `minmax(44px, ${l.bottom_cm - l.top_cm}fr)`).join(' ') }}>
+        {soil.layers.map((layer) => {
+          const root = rootCm > layer.top_cm && rootCm < layer.bottom_cm
+            ? 100 * (rootCm - layer.top_cm) / (layer.bottom_cm - layer.top_cm) : null;
+          return <li key={layer.top_cm} className={`${layer.texture_key} ${layer.top_cm < rootCm ? 'in-root' : ''}`}>
+            <div><span><strong>{layer.top_cm}–{layer.bottom_cm} cm</strong> {layer.texture_label}</span>
+              <small>{number(layer.available_water_mm)} mm wody dostępnej · pojemność polowa {number(layer.field_capacity_vol_pct)}%</small></div>
+            {root != null && <i className="root-line" style={{ top: `${root}%` }}><b>korzenie do {number(rootCm)} cm</b></i>}
+          </li>;
+        })}
+      </ol>
+      <div className="profile-side">
+        <div className="profile-fill">
+          <h4>Strefa korzeni na działce</h4>
+          {fill == null ? <p className="subtle">Brak bilansu wodnego.</p> : <>
+            <div className="fill-bar" role="img" aria-label={`Zapas wody ${number(fill)}% pojemności`}>
+              <i style={{ height: `${fill}%` }}/></div>
+            <p><strong>{number(fill)}%</strong> zapasu · {number(water.result.available_mm)} z {number(water.result.taw_mm)} mm</p>
+            <small>Warstwy {rootLayers[0]?.top_cm}–{number(rootCm)} cm liczone razem (bilans FAO-56)</small>
+          </>}
+        </div>
+        <div className="profile-regional">
+          <h4>Okolica na tle 10 lat</h4>
+          {regional.length ? <ul>{regional.map((layer) => <li key={layer.key} className={layer.class_key}>
+            <span>{layer.label} <small>{layer.bottom_cm == null ? 'cały profil' : `${layer.top_cm}–${layer.bottom_cm} cm`}</small></span>
+            <div className="moisture-bar" role="img" aria-label={`Wilgotność ${number(layer.current * 100)}%, mediana ${number(layer.median * 100)}%`}>
+              <i style={{ width: `${layer.current * 100}%` }}/><b style={{ left: `${layer.median * 100}%` }}/></div>
+            <small>{layer.class_label} · wilgotniej w {layer.years_higher} z {layer.years_compared} lat</small>
+          </li>)}</ul> : <p className="subtle">{moisture?.reason ?? 'Brak danych o wilgotności warstw w okolicy.'}</p>}
+          {regional.length > 0 && <small className="legend">Pasek: wilgotność teraz (7 dni do {dateText(regional[0].current_to)}) · kreska: mediana z poprzednich lat</small>}
+        </div>
+      </div>
+    </div>
+    {moisture?.text?.length > 0 && <details className="disclosure"><summary>Jak czytać te dane <Icon name="chevron" size={17}/></summary>
+      <Paragraphs lines={moisture.text}/></details>}
+  </div>;
+}
+
 function Assessment({ report }) {
   const water = report.water_status;
   const value = waterPercent(water.result);
@@ -52,6 +101,7 @@ function Assessment({ report }) {
         {water.uncertainty_text && <p className="subtle">{water.uncertainty_text}</p>}
       </div>
     </div>
+    <SoilProfile soil={report.soil} moisture={report.soil_moisture} water={water} crop={report.crop}/>
     {water.status === 'ok' && <details className="panel disclosure"><summary>Dane bilansu wodnego <Icon name="chevron" size={17}/></summary>
       <Paragraphs lines={water.text}/>
       {climat && <p>{climat.text}</p>}

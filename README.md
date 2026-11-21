@@ -70,6 +70,7 @@ app/
     sentinel.py        Sentinel-2 L2A z Earth Search STAC: maska SCL, NDVI, NDMI
     terrain.py         NMT GUGiK 1 m z WCS, drogi spływu
     imgw_hydro.py      wodowskazy IMGW-PIB: bieżące pomiary i archiwum dobowe przepływów
+    soil_moisture.py   NASA POWER: wilgotność gleby w 3 warstwach (MERRA-2), 11 lat
   core/                obliczenia bez sieci (dane wchodzą jako argumenty)
     et0.py             ET0 FAO-56 Penmana-Monteitha
     ptf.py             pojemność polowa i punkt więdnięcia (Saxton i Rawls 2006), klasy uziarnienia USDA
@@ -79,6 +80,7 @@ app/
     analysis.py        okna 30/60/90 dni, klimatyczny bilans wodny, historia 10 sezonów
     satellite_logic.py zgodność wskaźników z bilansem
     hydrology.py       przepływ z 7 dni na tle tych samych dni w poprzednich latach, zgodność z bilansem
+    soil_moisture.py   wilgotność warstw w okolicy na tle tych samych dni w poprzednich latach
     flow.py            Priority-Flood, D8, powierzchnia zasilająca
     recommendations.py, terrain_rules.py   reguły rekomendacji
   data/soilgrids_tiles_pl.json   indeks kafli SoilGrids dla Polski (tryb awaryjny)
@@ -119,6 +121,7 @@ Wszystkie dane są bezpłatne. Żadne źródło nie wymaga klucza ani konta. War
 | Mapa | Ortofotomapa GUGiK (WMS), granice działek KIEG (WMS), OpenStreetMap | na żywo, w przeglądarce | GUGiK: brak opłat, zakaz masowego pobierania obrazów. OSM: © OpenStreetMap contributors (ODbL), kafle z `tile.openstreetmap.org` zgodnie z polityką użycia (atrybucja, bez pobierania hurtowego, bez gwarancji dostępności) |
 | Pogoda (archiwum) | Open-Meteo Archive (ERA5, ERA5-Land, ECMWF IFS): opad, ET0, Tmin, Tmax dziennie, siatka ok. 9–25 km | na żywo, 11 lat przed datą jednym zapytaniem | Dane CC BY 4.0. **Darmowe API tylko do użytku niekomercyjnego**, limit 10 000 zapytań na dobę z jednego IP |
 | Pogoda (archiwum, drugi dostawca) | NASA POWER: opad, temperatura, promieniowanie, wiatr, wilgotność dziennie; siatka 0,5° × 0,625° (MERRA-2), promieniowanie 1° × 1° (CERES) | na żywo, gdy Open-Meteo odmówi (429), zawiedzie albo nie odpowie | Bez ograniczeń użycia; NASA prosi o cytowanie: dane z projektu NASA Langley Research Center POWER, finansowanego przez NASA Earth Science Division |
+| Wilgotność gleby w warstwach (okolica) | NASA POWER: `GWETTOP` (0–5 cm), `GWETROOT` (0–100 cm), `GWETPROF` (cały profil), wilgotność względna 0–1 z modelu MERRA-2, dziennie, siatka 0,5° × 0,625°; w raporcie średnia z 7 dni na tle tych samych dni w 10 poprzednich latach | na żywo, 11 lat przed datą jednym zapytaniem, równolegle z pogodą | jak NASA POWER wyżej |
 | Pogoda (ostatnie dni i prognoza) | Open-Meteo Forecast: uzupełnianie ostatnich dni bilansu oraz 7-dniowa prognoza dla wybranego pola | na żywo. Prognoza ma pamięć podręczną na godzinę | jak Open-Meteo wyżej |
 | Gleba | ISRIC SoilGrids 250 m v2.0: piasek, pył, ił, węgiel organiczny, gęstość w 6 warstwach do 200 cm, średnia i kwantyle 5% i 95% | na żywo przez WCS `maps.isric.org`; zapas: REST, potem kafle GeoTIFF | CC BY 4.0. REST: limit 5 zapytań/min, usługa oznaczona przez ISRIC jako wstrzymana (21.11.2026 odpowiadała) |
 | Satelita | Sentinel-2 L2A z Earth Search STAC (Element 84), kolekcje `sentinel-2-c1-l2a` i `sentinel-2-l2a`: pasma B04, B8A, B11 i maska SCL, okno 45 dni przed datą, archiwum od 2017 r. | na żywo; czytane są tylko bloki rastra pod działką | Dane Copernicus Sentinel: dostęp bezpłatny, pełny i otwarty. Raport zawiera zmodyfikowane dane Copernicus Sentinel. Earth Search: bezpłatny katalog bez opublikowanych limitów |

@@ -402,6 +402,28 @@ class SoilSection(BaseModel):
     text: list[str] = []
 
 
+class SoilMoistureLayer(BaseModel):
+    key: str = Field(description="surface | root_zone | profile")
+    label: str
+    top_cm: int
+    bottom_cm: int | None = Field(default=None, description="None = do skały macierzystej (cały profil modelu)")
+    current: float = Field(description="wilgotność względna 0–1, średnia z 7 dni do `current_to`")
+    current_to: Date
+    median: float = Field(description="mediana z tych samych 7 dni w poprzednich latach")
+    years_higher: int = Field(description="w ilu latach wilgotność była wyższa niż teraz")
+    years_compared: int
+    class_key: str = Field(description="very_low | low | normal | high")
+    class_label: str
+
+
+class SoilMoistureSection(BaseModel):
+    """Wilgotność w warstwach z modelu regionalnego (okolica działki, nie sama działka)."""
+    status: Status
+    reason: str | None = None
+    layers: list[SoilMoistureLayer] = []
+    text: list[str] = []
+
+
 # ---------- rekomendacje ----------
 
 class Recommendations(BaseModel):
@@ -433,6 +455,7 @@ class ReportResponse(BaseModel):
     history: HistorySection
     causes: CausesSection
     soil: SoilSection
+    soil_moisture: SoilMoistureSection | None = None
     terrain: TerrainRef
     hydrology: HydrologySection
     recommendations: Recommendations

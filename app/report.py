@@ -21,6 +21,7 @@ from shapely.geometry import Point as ShapelyPoint
 from app.config import HISTORY_YEARS, SATELLITE_INLINE_BUDGET_S, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
 from app.core import analysis, satellite_logic
 from app.core import hydrology as hydro_calc
+from app.core import soil_moisture as moisture_calc
 from app.core import recommendations as rules
 from app.core.crops import (
     CROPS,
@@ -68,6 +69,8 @@ from app.schemas import (
     SeasonStress,
     SeasonSummary,
     SoilLayer,
+    SoilMoistureLayer,
+    SoilMoistureSection,
     SoilSection,
     SourceInfo,
     Status,
@@ -77,6 +80,7 @@ from app.schemas import (
 )
 from app import terrain_service
 from app.sources import NoData, SourceError, imgw_hydro, sentinel, soilgrids, uldk, weather
+from app.sources import soil_moisture as moisture_source
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -235,7 +239,7 @@ def soil_section(data: soilgrids.SoilData | None, info: SourceInfo, crop: Crop) 
             bulk_density_g_cm3=round(layer.bulk_density_g_cm3, 2) if layer.bulk_density_g_cm3 is not None else None,
             sand_pct_range=[round(layer.sand_q05_pct), round(layer.sand_q95_pct)] if has_range else None,
             clay_pct_range=[round(layer.clay_q05_pct), round(layer.clay_q95_pct)] if has_range else None,
-            texture_key=image_key, texture_usda=usda, texture_label=label, image=f"/soil-assets/{image_key}.webp",
+            texture_key=image_key, texture_usda=usda, texture_label=label, image=f"/soil-assets/{image_key.replace('_', '-')}.webp",
             field_capacity_vol_pct=round(water.field_capacity * 100, 1),
             wilting_point_vol_pct=round(water.wilting_point * 100, 1),
             available_water_mm=round(water.available * layer.thickness_cm * 10.0)))
@@ -723,6 +727,58 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
     return section, field_check
 
 
+# ---------- wilgotność gleby w warstwach (okolica) ----------
+
+MOISTURE_NO_IMPACT = ("Bilans wodny działki nie zależy od tych danych: brakuje tylko niezależnego porównania wilgotności "
+                      "warstw gleby w okolicy z poprzednimi latami.")
+
+
+async def fetch_moisture_safe(client: httpx.AsyncClient, lat: float, lon: float, start: date, end: date
+                              ) -> tuple[dict | None, SourceInfo]:
+    """Serie wilgotności warstw z NASA POWER z limitem czasu. Błąd nie przerywa raportu."""
+    t0 = time.perf_counter()
+    info = SourceInfo(key="soil_moisture", name=moisture_source.SOURCE_NAME, status=Status.ok,
+                      resolution=moisture_source.RESOLUTION, license=moisture_source.LICENSE, url=moisture_source.URL)
+    series = None
+    try:
+        series, info.from_cache = await moisture_source.fetch(client, lat, lon, start, end)
+        days = [d for values in series.values() for d in values]
+        info.data_from, info.data_to = min(days), max(days)
+    except NoData as exc:
+        info.status, info.reason, info.impact = Status.no_data, str(exc), MOISTURE_NO_IMPACT
+    except (SourceError, RuntimeError) as exc:
+        info.status, info.reason, info.impact = Status.error, str(exc), MOISTURE_NO_IMPACT
+    info.elapsed_s = round(time.perf_counter() - t0, 2)
+    return series, info
+
+
+def soil_moisture_section(series: dict | None, info: SourceInfo, end: date, balance_class: str | None
+                          ) -> SoilMoistureSection:
+    if series is None:
+        return SoilMoistureSection(status=info.status, reason=info.reason, text=[MOISTURE_NO_IMPACT])
+    layers = moisture_calc.compare_layers(series, end, HISTORY_YEARS)
+    if not layers:
+        reason = "Za mało lat z danymi o wilgotności warstw, żeby porównać je z poprzednimi latami."
+        return SoilMoistureSection(status=Status.no_data, reason=reason, text=[MOISTURE_NO_IMPACT])
+    out = [SoilMoistureLayer(
+        key=layer.key, label=layer.label, top_cm=layer.top_cm, bottom_cm=layer.bottom_cm,
+        current=round(layer.comparison.current, 3), current_to=layer.current_to,
+        median=round(layer.comparison.median, 3), years_higher=layer.comparison.years_higher,
+        years_compared=layer.comparison.years_compared, class_key=layer.comparison.class_key,
+        class_label=moisture_calc.CLASS_LABELS[layer.comparison.class_key]) for layer in layers]
+    text = [f"{layer.label.capitalize()}: {layer.class_label} (wilgotniej było w {layer.years_higher} z "
+            f"{layer.years_compared} poprzednich lat)." for layer in out]
+    agreement = moisture_calc.agreement_with_balance(layers, balance_class)
+    if agreement:
+        text.append(agreement)
+    last = max(layer.current_to for layer in out)
+    if last < end:
+        text.append(f"Dane modelu kończą się {fmt_date(last)}, {plural_days((end - last).days)} przed ostatnim dniem analizy.")
+    text.append("To model regionalny w siatce ok. 50 km: opisuje okolicę, a nie samą działkę. Wilgotność na działce "
+                "liczy bilans wodny powyżej.")
+    return SoilMoistureSection(status=Status.ok, layers=out, text=text)
+
+
 # ---------- hydrologia ----------
 
 HYDRO_SOURCE_NAME = "IMGW-PIB: wodowskazy (API danych publicznych i archiwum danych dobowych)"
@@ -955,10 +1011,11 @@ async def build_report(request: ReportRequest, today: date | None = None,
             return result
 
         t0 = time.perf_counter()
-        weather_result, (soil_data, soil_info), (hydro_result, hydro_info) = await asyncio.gather(
+        weather_result, (soil_data, soil_info), (hydro_result, hydro_info), (moisture, moisture_info) = await asyncio.gather(
             timed("weather", weather.fetch_weather(client, lat, lon, start, end, today)),
             timed("soil", fetch_soil_safe(client, geometry)),
-            timed("hydrology", fetch_hydrology_safe(client, lon, lat, request.date, today)))
+            timed("hydrology", fetch_hydrology_safe(client, lon, lat, request.date, today)),
+            timed("soil_moisture", fetch_moisture_safe(client, lat, lon, start, end)))
         timings["sources_parallel"] = round(time.perf_counter() - t0, 2)
 
     sources = [uldk_info, *weather_sources(weather_result), soil_info]
@@ -967,6 +1024,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
         _satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
         sources.append(satellite_info)
         sources.append(hydro_info)
+        sources.append(moisture_info)
         return _no_weather_report(request, parcel, sources, started, timings, soil,
                                   hydrology_section(hydro_result, hydro_info, None, False))
 
@@ -1001,6 +1059,8 @@ async def build_report(request: ReportRequest, today: date | None = None,
 
     hydrology = hydrology_section(hydro_result, hydro_info, status.class_key, computed.in_season)
     sources.append(hydro_info)
+    soil_moisture = soil_moisture_section(moisture, moisture_info, end, status.class_key)
+    sources.append(moisture_info)
     sources.append(SourceInfo(
         key="watercourses", name="Mapa Podziału Hydrograficznego Polski MPHP10k (Wody Polskie, ISOK)", status=Status.no_data,
         reason="Dane wektorowe cieków (WFS) wymagają logowania, a publiczna usługa WMS daje sam obraz, więc odległości "
@@ -1035,5 +1095,5 @@ async def build_report(request: ReportRequest, today: date | None = None,
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
         crop=crop_info(computed, request.date), summary=summary,
         water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,
-        terrain=terrain_ref, hydrology=hydrology, recommendations=recommendations,
+        soil_moisture=soil_moisture, terrain=terrain_ref, hydrology=hydrology, recommendations=recommendations,
         limitations=limitations, sources=sources, timings_s=timings)

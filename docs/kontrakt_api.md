@@ -36,6 +36,7 @@ Wyjście (`ReportResponse`), pola najwyższego poziomu:
 | `history` | ten sam bilans dla 10 poprzednich sezonów |
 | `causes` | przyczyny wynikające z danych: opad i ET0 względem mediany 10 lat, gleba, faza uprawy |
 | `soil` | warstwy gleby z SoilGrids i wyliczona pojemność wodna |
+| `soil_moisture` | wilgotność 3 warstw w okolicy (NASA POWER, ok. 50 km) na tle tych samych dni w 10 latach, albo jawny brak danych |
 | `terrain` | `pending` i adres, pod którym frontend dociąga teren i spływ |
 | `hydrology` | odległość do najbliższego cieku albo jawny brak danych |
 | `recommendations` | `retention`, `agrotechnical`, `irrigation`, `field_checks`; każda pozycja: co, gdzie, dlaczego, pewność |
