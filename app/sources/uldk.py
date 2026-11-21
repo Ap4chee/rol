@@ -24,6 +24,10 @@ from app.sources import NoData, SourceError
 ULDK_URL = "https://uldk.gugik.gov.pl/"
 RESULT_FIELDS = "teryt,voivodeship,county,commune,region,parcel"
 MAX_CANDIDATES = 50
+# 21.11.2026 wieczorem ULDK (i inne usługi integracja.gugik.gov.pl) odpowiadały na każde zapytanie, z różnych
+# adresów IP, przekierowaniem 302 na integracja01.gugik.gov.pl/resp/uldk.php: strona zastępcza na czas awarii.
+UNAVAILABLE_MESSAGE = ("Usługa działek GUGiK (ULDK) jest chwilowo niedostępna – serwer GUGiK przekierowuje wszystkie "
+                       "zapytania na stronę zastępczą (awaria po stronie GUGiK)")
 
 # Pełny identyfikator: WWPPGG_R.OOOO[.AR_n].numer, np. 060910_2.0011.580/2
 FULL_ID_RE = re.compile(r"^\d{6}_\d\.\d{4}\.(AR_\d+\.)?[0-9A-Za-z/._-]+$")
@@ -69,10 +73,13 @@ async def _request(client: httpx.AsyncClient, params: dict[str, str]) -> list[st
     last_error = "brak odpowiedzi"
     for _attempt in range(2):
         try:
-            response = await client.get(ULDK_URL, params=params, timeout=TIMEOUT_ULDK_S)
+            # Bez podążania za przekierowaniem: strona zastępcza GUGiK odpowiada udawanym „0” i nieczytelną treścią.
+            response = await client.get(ULDK_URL, params=params, timeout=TIMEOUT_ULDK_S, follow_redirects=False)
         except httpx.HTTPError as exc:
             last_error = f"błąd połączenia: {type(exc).__name__}"
             continue
+        if response.is_redirect and "/resp/" in response.headers.get("location", ""):
+            raise SourceError(UNAVAILABLE_MESSAGE)
         if response.status_code != 200:
             last_error = f"HTTP {response.status_code}"
             continue
