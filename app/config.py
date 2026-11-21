@@ -23,7 +23,7 @@ TIMEOUT_SOIL_TOTAL_S = 22.0
 SATELLITE_INLINE_BUDGET_S = 14.0
 SATELLITE_DEFERRED_BUDGET_S = 100.0
 TIMEOUT_HYDRO_S = 8.0
-TIMEOUT_TERRAIN_S = 45.0
+TIMEOUT_TERRAIN_S = 180.0  # WCS z NMT odpowiadał w 13-120 s (pomiary 21.11.2026)
 
 # Ile lat wstecz od daty analizy: 10 sezonów do porównań + 12 miesięcy rozbiegu bilansu.
 HISTORY_YEARS = 10

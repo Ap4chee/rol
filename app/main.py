@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import SATELLITE_DEFERRED_BUDGET_S, SOIL_ASSETS_DIR, STATIC_DIR, USER_AGENT
 from app.core.crops import CROPS
+from app import terrain_service
 from app.report import _parcel_info, build_report
 from app.schemas import (
     CropKey,
@@ -19,6 +20,7 @@ from app.schemas import (
     ReportResponse,
     SatelliteResponse,
     Status,
+    TerrainResponse,
 )
 from app.sources import NoData, SourceError, uldk
 
@@ -101,6 +103,22 @@ async def satellite(parcel_id: str = Query(min_length=5, max_length=80), crop: C
     source = next((s for s in full.sources if s.key == "satellite"), None)
     checks = [r for r in full.recommendations.field_checks if r.key == "satellite_divergence"]
     return SatelliteResponse(satellite=full.satellite, source=source, field_checks=checks)
+
+
+@app.get("/api/terrain", response_model=TerrainResponse)
+async def terrain(parcel_id: str = Query(min_length=5, max_length=80)) -> TerrainResponse:
+    """Teren i spływ wody dla działki: spadek, drogi spływu, punkty dopływu i odpływu, wnioski.
+
+    Liczone osobno, bo wycinek numerycznego modelu terenu z WCS GUGiK trwa kilkanaście do kilkudziesięciu sekund.
+    """
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
+        try:
+            parcel, _ = await uldk.get_parcel_by_id(client, parcel_id)
+        except (NoData, SourceError) as exc:
+            return TerrainResponse(status=Status.error, reason=f"Nie udało się pobrać granic działki: {exc}",
+                                   parcel_id=parcel_id,
+                                   source=terrain_service._source(Status.error, str(exc)))
+    return await terrain_service.get(parcel)
 
 
 # Ilustracje warstw gleby (umowne, dobierane po klasie uziarnienia; opis w outputs/assety_gleby/README.md).

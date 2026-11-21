@@ -845,6 +845,13 @@
       const empty = $('sec-retention-empty');
       if (empty) empty.remove();
     }
+    const agroList = $('sec-agro-list');
+    const agro = recs.filter((r) => r.category === 'agrotechnical');
+    if (agroList && agro.length) {
+      add(agroList, agro.map(recNode));
+      const emptyAgro = $('sec-agro-empty');
+      if (emptyAgro) emptyAgro.remove();
+    }
     appendFieldChecks(recs.filter((r) => r.category === 'field_check'));
     if ($('limits-list')) add($('limits-list'), (terrain.limitations || []).map((t) => el('li', { text: t })));
   }

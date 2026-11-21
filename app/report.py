@@ -73,13 +73,21 @@ from app.schemas import (
     WaterStatus,
     WeatherWindow,
 )
+from app import terrain_service
 from app.sources import NoData, SourceError, sentinel, soilgrids, uldk, weather
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 MIN_ANALYSIS_DATE = date(2005, 1, 1)
 SERIES_DAYS_FOR_CHART = 180
-NOT_CONNECTED = "Ta część analizy nie jest jeszcze podłączona."
+NOT_CONNECTED = "Ta część analizy wymaga bilansu wodnego, a ten nie powstał."
+HYDROLOGY_NO_DATA = ("Brak danych hydrologicznych. Mapa cieków MPHP10k (Wody Polskie) udostępnia dane wektorowe przez WFS "
+                     "tylko po zalogowaniu, a publiczna usługa WMS daje sam obraz, więc odległości do najbliższego cieku "
+                     "nie policzono.")
+HYDROLOGY_CHECK = ("Sprawdź na mapie i w terenie, czy przy działce jest ciek, rów albo oczko wodne. Jeśli tak, zostaw "
+                   "wzdłuż brzegu pas trwałej roślinności.")
+HYDROLOGY_IMPACT = ("Raport nie ocenia sąsiedztwa cieków, rowów ani poziomu wody gruntowej: brak danych hydrologicznych "
+                    "w postaci, którą da się policzyć dla działki.")
 
 MODEL_LIMITATIONS = [
     "Bilans nie uwzględnia spływu powierzchniowego: cały opad jest liczony jako woda, która wsiąka. "
@@ -835,6 +843,9 @@ async def build_report(request: ReportRequest, today: date | None = None,
             satellite_task = asyncio.create_task(asyncio.to_thread(
                 sentinel.observe, parcel.id, parcel.geometry, request.date, today, satellite_budget_s))
 
+        if parcel is not None:
+            terrain_service.start(parcel)   # NMT liczy się w tle; frontend dociąga wynik osobnym zapytaniem
+
         async def timed(name: str, coro):
             started_at = time.perf_counter()
             result = await coro
@@ -883,7 +894,17 @@ async def build_report(request: ReportRequest, today: date | None = None,
     if soil_assumed:
         limitations.insert(0, "Brak danych o glebie: bilans policzono dla gleby umownej, wynik jest orientacyjny.")
 
-    hydrology = HydrologySection(status=Status.no_data, reason=NOT_CONNECTED)
+    hydrology = HydrologySection(status=Status.no_data, reason=HYDROLOGY_NO_DATA, text=[HYDROLOGY_CHECK])
+    sources.append(SourceInfo(
+        key="hydrology", name="Mapa Podziału Hydrograficznego Polski MPHP10k (Wody Polskie, ISOK)", status=Status.no_data,
+        reason=HYDROLOGY_NO_DATA, impact=HYDROLOGY_IMPACT, resolution="skala 1:10 000",
+        url="https://isok.gov.pl/inspire.html", license="CC BY 4.0 (dane.gov.pl); pobieranie wektorów wymaga logowania"))
+    terrain_ref = (TerrainRef(status=Status.pending, endpoint="/api/terrain?" + urlencode({"parcel_id": parcel.id}),
+                              reason="Spadek i drogi spływu liczą się osobno z modelu terenu (zwykle 15–60 s).")
+                   if parcel is not None else
+                   TerrainRef(status=Status.no_data, reason="Brak granicy działki (raport dla punktu), więc nie ma "
+                                                            "dla czego policzyć spływu."))
+    limitations.append(HYDROLOGY_IMPACT)
     recommendations = recommendations_section(recommendation_facts(
         computed, status, history, soil_data, soil, satellite, satellite_field_check, hydrology))
 
@@ -901,6 +922,5 @@ async def build_report(request: ReportRequest, today: date | None = None,
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
         crop=crop_info(computed, request.date), summary=summary,
         water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,
-        terrain=TerrainRef(status=Status.no_data, reason=NOT_CONNECTED),
-        hydrology=hydrology, recommendations=recommendations,
+        terrain=terrain_ref, hydrology=hydrology, recommendations=recommendations,
         limitations=limitations, sources=sources, timings_s=timings)
