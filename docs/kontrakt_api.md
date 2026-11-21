@@ -4,7 +4,7 @@
 
 Zasady:
 
-- Frontend tylko rysuje to, co dostał. Żadnych obliczeń ani tekstów wniosków po stronie przeglądarki.
+- Oceny i zalecenia liczy serwer. Frontend formatuje i prezentuje wyniki.
 - Każda sekcja ma `status` (`ok`, `no_data`, `error`, dla terenu także `pending`) i `reason`.
 - Każde źródło danych ma wpis w `sources`: status, powód, nazwa, rozdzielczość, daty danych, licencja, czas pobrania.
 - Jednostki są w nazwach pól (`_mm`, `_pct`, `_ha`, `_m`). Współrzędne w odpowiedzi: EPSG:4326, kolejność lon, lat.
@@ -56,3 +56,7 @@ Raport czeka na zdjęcia Sentinel-2 najwyżej kilkanaście sekund. Gdy łącze d
 ## `GET /api/parcels/search?q=...`, `GET /api/parcels/by-point?lon=..&lat=..`, `GET /api/parcels/by-id?id=...`
 
 Wyszukiwanie działki po nazwie obrębu i numerze (może zwrócić wiele trafień do wyboru), po punkcie na mapie albo po pełnym identyfikatorze. Dwa ostatnie zwracają też geometrię działki (`parcel`).
+
+## `GET /api/forecast?lon=...&lat=...`
+
+Bieżąca prognoza Open-Meteo dla współrzędnych pola, poza historycznym bilansem raportu. `ForecastResponse` zawiera status oraz dobową temperaturę maksymalną, opad, parowanie wskaźnikowe i kod pogody na siedem dni w strefie Europe/Warsaw. Pomiary niedostępne mają wartość `null`. `last_wet_day` wskazuje ostatni dzień z opadem powyżej 5 mm w dostępnych danych z poprzednich 30 dni. `past_days_complete` sygnalizuje, czy sprawdzono cały okres. Cache ma ważność godziny.

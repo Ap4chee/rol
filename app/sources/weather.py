@@ -30,6 +30,7 @@ from app.config import (
     check_forced_failure,
 )
 from app.core.et0 import actual_vapour_pressure_from_rh_mean_kpa, et0_fao56_mm_day
+from app.schemas import ForecastDay, ForecastResponse, Status
 from app.sources import NoData, SourceError
 
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -249,6 +250,67 @@ async def fetch_open_meteo_recent(client: httpx.AsyncClient, lat: float, lon: fl
     series = parse_open_meteo_daily(payload, "open_meteo_forecast")
     cache.put("weather", key, {"daily": payload.get("daily")})
     return series, False
+
+
+# ---------- prognoza na pulpit ----------
+
+def parse_dashboard_forecast(payload: dict, today: date) -> ForecastResponse:
+    daily = payload.get("daily") if isinstance(payload, dict) else None
+    if not isinstance(daily, dict) or not isinstance(daily.get("time"), list):
+        raise NoData("Prognoza nie zawiera danych dziennych.")
+
+    def read(field: str, i: int) -> float | None:
+        values = daily.get(field)
+        if isinstance(values, list) and i < len(values):
+            value = values[i]
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and np.isfinite(value):
+                return value
+        return None
+
+    rows = {}
+    past = {}
+    for i, iso_date in enumerate(daily["time"]):
+        try:
+            day = date.fromisoformat(iso_date)
+        except (ValueError, TypeError):
+            continue
+        precip = read("precipitation_sum", i)
+        ahead = (day - today).days
+        if -30 <= ahead < 0:
+            past[day] = precip
+        if 0 <= ahead < 7:
+            code = read("weather_code", i)
+            rows[day] = ForecastDay(
+                date=day, temperature_max_c=read("temperature_2m_max", i),
+                precipitation_mm=precip, et0_mm=read("et0_fao_evapotranspiration", i),
+                weather_code=int(code) if code is not None else None,
+            )
+    if not rows or not any(row.temperature_max_c is not None or row.precipitation_mm is not None
+                           for row in rows.values()):
+        raise NoData("Dla tej lokalizacji brakuje wartości prognozy.")
+    last_wet_day = max((day for day, rain in past.items() if rain is not None and rain > 5), default=None)
+    return ForecastResponse(
+        status=Status.ok,
+        days=[rows.get(day) or ForecastDay(date=day) for day in (today + timedelta(days=i) for i in range(7))],
+        last_wet_day=last_wet_day,
+        past_days_complete=len(past) == 30 and all(rain is not None for rain in past.values()),
+    )
+
+
+async def fetch_dashboard_forecast(client: httpx.AsyncClient, lat: float, lon: float,
+                                   today: date) -> ForecastResponse:
+    lat, lon = snap(lat), snap(lon)
+    key = f"om_forecast:{lat:.2f},{lon:.2f}:{today}"
+    cached = cache.get("weather", key, max_age_s=RECENT_CACHE_MAX_AGE_S)
+    if cached is not None:
+        return ForecastResponse.model_validate(cached)
+    payload = await _get_json(client, OPEN_METEO_FORECAST_URL, {
+        "latitude": lat, "longitude": lon, "past_days": 30, "forecast_days": 7,
+        "daily": OPEN_METEO_DAILY + ",weather_code", "timezone": "Europe/Warsaw",
+    }, TIMEOUT_WEATHER_RECENT_S, "Open-Meteo Forecast")
+    forecast = parse_dashboard_forecast(payload, today)
+    cache.put("weather", key, forecast.model_dump(mode="json"))
+    return forecast
 
 
 # ---------- składanie serii ----------

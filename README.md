@@ -20,7 +20,23 @@ py -3.12 -m venv .venv
 
 Potem otwórz `http://127.0.0.1:8000`. Odpowiedzi zewnętrznych usług zapisują się w folderze `cache/`; usunięcie go wymusza pobranie wszystkiego od nowa.
 
+### Praca nad interfejsem
+
+Interfejs React jest w `frontend/`. Gotowy build `static/ui.js` i `static/ui.css` jest w repozytorium, więc zwykłe uruchomienie przez FastAPI działa bez Node.js. Po edycji frontendu użyj:
+
+```sh
+npm ci
+npm run build
+npm test
+```
+
+Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip install -r requirements.txt` i `.venv/bin/python -m uvicorn app.main:app`.
+
 ## Funkcje
+
+- **Moje gospodarstwo**: tabela pól i karty na telefonie. Raporty i własne nazwy działek zapisują się w tej przeglądarce. Każdy wpis pokazuje datę analizy, stan wody, dostępne obserwacje zieloności i odnośnik do raportu.
+- **Prognoza i działania**: pogoda na 7 dni dla wybranego pola, a obok najważniejsze zalecenia z zapisanych analiz.
+- **Raport działki**: warstwy 3D pokazują rzeczywisty obrys z ULDK z poglądowymi teksturami. Widok z góry pokazuje podkłady Geoportalu lub OpenStreetMap oraz dostępne drogi spływu.
 
 - **Wskazanie działki**: nazwa obrębu i numer (przy wielu trafieniach lista do wyboru), pełny identyfikator albo kliknięcie pola na mapie. Mapa ma podkłady „Zdjęcie lotnicze” i „Mapa” oraz nakładkę „Granice działek”.
 - **Uprawy**: pszenica ozima, jęczmień jary, rzepak ozimy, kukurydza, ziemniak, burak cukrowy, użytki zielone.
@@ -33,12 +49,12 @@ Potem otwórz `http://127.0.0.1:8000`. Odpowiedzi zewnętrznych usług zapisują
   - Profil gleby, założenia o uprawie, źródła z datami i statusem, ograniczenia.
 - **Data poza okresem wzrostu**: raport mówi to wprost, pokazuje stan zapasu wody w glebie i miniony sezon.
 - **Awaria źródła**: raport powstaje, brak jest nazwany w tabeli źródeł razem z wpływem na wniosek. Bez pogody raport mówi, że oceny niedoboru nie da się policzyć.
-- **Druk**: przycisk „Drukuj lub zapisz jako PDF” (w oknie drukowania wybiera się „Zapisz jako PDF”).
+- **Druk**: przyciski „Drukuj” i „Pobierz PDF” otwierają systemowe okno drukowania. Aby pobrać plik, wybierz w nim „Zapisz jako PDF”.
 - **Odnośnik do raportu**: `http://127.0.0.1:8000/?parcel=060910_2.0011.580/2&crop=winter_wheat&date=2026-11-21` (raport i tak liczy się od nowa).
 
 ## Architektura
 
-Jeden proces: FastAPI serwuje API i statyczny frontend (HTML, CSS, JS, OpenLayers; bez kroku budowania).
+Jeden proces FastAPI serwuje API oraz skompilowany frontend React z OpenLayers. Lokalne raporty są przechowywane w pamięci przeglądarki.
 
 ```
 app/
@@ -66,14 +82,15 @@ app/
     flow.py            Priority-Flood, D8, powierzchnia zasilająca
     recommendations.py, terrain_rules.py   reguły rekomendacji
   data/soilgrids_tiles_pl.json   indeks kafli SoilGrids dla Polski (tryb awaryjny)
-static/                frontend
+frontend/              komponenty React, style i testy prezentacji
+static/                gotowy build React, OpenLayers i zasoby graficzne
 tests/                 testy obliczeń bez sieci
 scripts/               sprawdzenia na prawdziwych danych
 ```
 
-Endpointy: `POST /api/report` (raport), `GET /api/satellite` i `GET /api/terrain` (części dociągane po raporcie), `GET /api/parcels/search|by-id|by-point`, `GET /api/crops`. Opis w [docs/kontrakt_api.md](docs/kontrakt_api.md), schemat w [app/schemas.py](app/schemas.py), po uruchomieniu także pod `/docs`.
+Endpointy: `POST /api/report` (raport), `GET /api/satellite` i `GET /api/terrain` (części dociągane po raporcie), `GET /api/parcels/search|by-id|by-point`, `GET /api/crops` i `GET /api/forecast` (bieżąca prognoza dla współrzędnych pola). Opis w [docs/kontrakt_api.md](docs/kontrakt_api.md), schemat w [app/schemas.py](app/schemas.py), po uruchomieniu także pod `/docs`.
 
-Frontend niczego nie liczy i nie formułuje wniosków: rysuje to, co zwróciło API.
+Frontend formatuje odpowiedzi API, przelicza udział dostępnego zapasu na procent i porządkuje dane w pulpicie. Bilans, klasy i zalecenia oblicza serwer. Historia w raporcie korzysta z podsumowań sezonów, a odtwarzanie pokazuje dostępne obserwacje zieloności z datami.
 
 ### Czas odpowiedzi
 
@@ -102,7 +119,7 @@ Wszystkie dane są bezpłatne. Żadne źródło nie wymaga klucza ani konta. War
 | Mapa | Ortofotomapa GUGiK (WMS), granice działek KIEG (WMS), OpenStreetMap | na żywo, w przeglądarce | GUGiK: brak opłat, zakaz masowego pobierania obrazów. OSM: © OpenStreetMap contributors (ODbL), kafle z `tile.openstreetmap.org` zgodnie z polityką użycia (atrybucja, bez pobierania hurtowego, bez gwarancji dostępności) |
 | Pogoda (archiwum) | Open-Meteo Archive (ERA5, ERA5-Land, ECMWF IFS): opad, ET0, Tmin, Tmax dziennie, siatka ok. 9–25 km | na żywo, 11 lat przed datą jednym zapytaniem | Dane CC BY 4.0. **Darmowe API tylko do użytku niekomercyjnego**, limit 10 000 zapytań na dobę z jednego IP |
 | Pogoda (archiwum, drugi dostawca) | NASA POWER: opad, temperatura, promieniowanie, wiatr, wilgotność dziennie; siatka 0,5° × 0,625° (MERRA-2), promieniowanie 1° × 1° (CERES) | na żywo, gdy Open-Meteo odmówi (429), zawiedzie albo nie odpowie | Bez ograniczeń użycia; NASA prosi o cytowanie: dane z projektu NASA Langley Research Center POWER, finansowanego przez NASA Earth Science Division |
-| Pogoda (ostatnie dni) | Open-Meteo Forecast z `past_days`: dni, których archiwum jeszcze nie ma | na żywo, tylko dla dat bieżących | jak Open-Meteo wyżej |
+| Pogoda (ostatnie dni i prognoza) | Open-Meteo Forecast: uzupełnianie ostatnich dni bilansu oraz 7-dniowa prognoza dla wybranego pola | na żywo. Prognoza ma pamięć podręczną na godzinę | jak Open-Meteo wyżej |
 | Gleba | ISRIC SoilGrids 250 m v2.0: piasek, pył, ił, węgiel organiczny, gęstość w 6 warstwach do 200 cm, średnia i kwantyle 5% i 95% | na żywo przez WCS `maps.isric.org`; zapas: REST, potem kafle GeoTIFF | CC BY 4.0. REST: limit 5 zapytań/min, usługa oznaczona przez ISRIC jako wstrzymana (21.11.2026 odpowiadała) |
 | Satelita | Sentinel-2 L2A z Earth Search STAC (Element 84), kolekcje `sentinel-2-c1-l2a` i `sentinel-2-l2a`: pasma B04, B8A, B11 i maska SCL, okno 45 dni przed datą, archiwum od 2017 r. | na żywo; czytane są tylko bloki rastra pod działką | Dane Copernicus Sentinel: dostęp bezpłatny, pełny i otwarty. Raport zawiera zmodyfikowane dane Copernicus Sentinel. Earth Search: bezpłatny katalog bez opublikowanych limitów |
 | Teren | NMT GUGiK 1 m przez WCS (`DTM_PL-KRON86-NH_TIFF`), wycinek z buforem 200 m wokół działki | na żywo, osobny endpoint | Brak opłat, dowolne wykorzystanie |
@@ -144,13 +161,15 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 | pytest 9.2.0 | testy | MIT |
 | certifi (zależność httpx) | certyfikaty | MPL-2.0 |
 | OpenLayers 10.11.0 | mapa w przeglądarce | BSD-2-Clause (`static/vendor/OL_LICENSE.md`) |
-| Lexend, Source Sans 3 | czcionki interfejsu | SIL Open Font License 1.1 (`static/vendor/fonts/LICENSE.txt`) |
+| React i React DOM 19.3.1 | komponenty i renderowanie UI | MIT ([React](https://github.com/react/react/blob/main/LICENSE), `static/vendor/REACT_LICENSE.txt`) |
+| esbuild 0.28.2 | budowanie frontendu | MIT ([esbuild](https://github.com/evanw/esbuild/blob/main/LICENSE.md)) |
+| Bricolage Grotesque, Inter, JetBrains Mono | samodzielnie serwowane fonty interfejsu | SIL Open Font License 1.1 (`static/design/fonts/*-OFL.txt`) |
 
 Żadna zależność nie ma licencji GPL ani AGPL. Analizę spływu napisaliśmy sami w NumPy, żeby nie używać `pysheds` (GPL) ani GRASS (GPL).
 
 **Usługi płatne.** Aplikacja nie korzysta z żadnej płatnej usługi. Jedyne ograniczenie to Open-Meteo: darmowe API jest tylko do użytku niekomercyjnego. Przy wdrożeniu komercyjnym trzeba albo wykupić plan (archiwum pogody wymaga planu „API Professional”, 99 EUR miesięcznie; „API Standard” za 29 EUR go nie obejmuje), albo zostać przy NASA POWER, które jest bezpłatne bez ograniczeń i już działa jako drugi dostawca.
 
-**AI.** W działającej aplikacji nie ma modelu AI ani uczenia maszynowego: liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). Model prognozy NDMI opisany w `outputs/specyfikacja_treningu_ml_kowr.md` nie jest częścią tego prototypu. AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `outputs/assety_gleby/` wygenerowało narzędzie ImageGen (opis w `outputs/assety_gleby/README.md`). Ilustracje są umowne i tak są podpisane w raporcie.
+**AI.** W działającej aplikacji nie ma modelu AI ani uczenia maszynowego: liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). Model prognozy NDMI opisany w `outputs/specyfikacja_treningu_ml_kowr.md` nie jest częścią tego prototypu. AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `outputs/assety_gleby/` wygenerowało narzędzie ImageGen (opis w `outputs/assety_gleby/README.md`). Ilustracje są umowne i tak są podpisane w raporcie. Zasoby z projektu Penpot w `static/design/` również powstały przy użyciu ImageGen. Pełnią funkcję ilustracyjną.
 
 ## Jak liczony jest wynik
 
@@ -165,13 +184,15 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 
 ## Weryfikacja wyników
 
-Testy bez sieci (`.venv\Scripts\python.exe -m pytest -q`, 87 testów):
+Testy bez sieci (`.venv\Scripts\python.exe -m pytest -q`):
 
 - ET0: przykład 18 z FAO-56 (Uccle, 6 lipca): 3,88 mm na dobę, razem z wynikami pośrednimi.
 - Bilans: przykład 37 z FAO-56 (przebieg ubytku przez 10 dni), domknięcie bilansu, ograniczenie parowania z odkrytej gleby.
 - Funkcja pedotransferowa: wszystkie 12 wierszy tabeli 3 Saxtona i Rawlsa (2006), np. glina 40% piasku i 20% iłu: 28% i 14% objętości.
 - SoilGrids: wagi komórek i wartości dla działki 580/2 zgodne z `outputs/soilgrids_niedrzwica_koscielna_580_2.json` (0–5 cm: piasek 33,7%, pył 48,2%, ił 18,1%).
 - Spływ: sztuczne powierzchnie (płaszczyzna, dolina, zagłębienie), reguły rekomendacji, zgodność satelity z bilansem.
+- Prognoza: siedem dni od daty w Polsce, zachowanie braków danych i rzeczywistego opadu 0 mm.
+- Pulpit (`npm test`): zapis pól, obsługa dat, zapas wody, obserwacje satelitarne i kolejność działań.
 - Hydrologia: miesiące roku hydrologicznego zgodne z nazwami plików IMGW, porównanie tylko z latami przed datą analizy, odczyt wierszy archiwum we wszystkich trzech formatach używanych przez IMGW (do 2022, 2023, od 2024).
 
 Sprawdzenia na prawdziwych danych (wymagają sieci):

@@ -2,128 +2,19 @@
 <html lang="pl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#14532D">
-  <title>Zatrzymaj wodę, chroń plony – raport wodny dla działki</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2314532D'/%3E%3Cpath d='M16 6c0 0-7 7.6-7 12.6a7 7 0 0 0 14 0C23 13.600 16 6 16 6z' fill='%23BBF7D0'/%3E%3C/svg%3E">
-  <link rel="preload" href="vendor/fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="vendor/fonts/source-sans-3-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="vendor/ol.css">
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#ffffff">
+  <title>Asystent wody — KOWR</title>
+  <meta name="description" content="Zapas wody, pogoda i rekomendacje dla Twoich pól.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2c-3 4-5 6-5 9a5 5 0 0 0 10 0c0-3-2-5-5-9ZM3 19q4.5-3 9 0t9 0' fill='none' stroke='%23205338' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/design/fonts/fonts.css">
+  <link rel="stylesheet" href="/vendor/ol.css">
+  <link rel="stylesheet" href="/ui.css">
+  <script defer src="/vendor/ol.js"></script>
+  <script defer src="/ui.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#form">Przejdź do formularza</a>
-
-  <header class="hero no-print">
-    <div class="hero-inner">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-          <rect width="48" height="48" rx="14" fill="#DCFCE7"/>
-          <path d="M24 8c0 0-11 11.600-11 19.500a11 11 0 0 0 22 0C35 19.600 24 8 24 8z" fill="#15803D"/>
-          <path d="M24 36V24m0 5c0-3.600-2.600-5.600-6-5.600 0 3.600 2.600 5.600 6 5.600zm0-3.500c0-3.200 2.300-5 5.400-5 0 3.200-2.300 5-5.400 5z" fill="none" stroke="#F0FDF4" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div>
-          <p class="eyebrow">Raport wodny dla działki rolnej</p>
-          <h1>Zatrzymaj wodę, chroń plony</h1>
-        </div>
-      </div>
-      <p class="lead">Wskaż działkę, wybierz uprawę i datę. W około pół minuty policzymy z otwartych danych, czy uprawie brakuje wody, skąd bierze się niedobór i co możesz zrobić, żeby zatrzymać wodę na polu.</p>
-      <ul class="hero-facts">
-        <li>
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 17.500h10a4 4 0 0 0 .600-7.960A5.500 5.500 0 0 0 7 8.500a4.500 4.500 0 0 0 0 9z"/><path d="M9 20.500l.800-1.600M13 20.500l.800-1.600"/></svg>
-          Pogoda z ostatnich 10 lat
-        </li>
-        <li>
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.500l9 5 9-5M3 17l9 5 9-5"/></svg>
-          Gleba, satelita i ukształtowanie terenu
-        </li>
-        <li>
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg>
-          Raport do druku lub zapisania jako PDF
-        </li>
-      </ul>
-    </div>
-    <svg class="hero-wave" viewBox="0 0 1440 56" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M0 30c180-26 360-26 540-8s360 30 540 12 240-22 360-14v36H0z"/>
-    </svg>
-  </header>
-
-  <p class="print-header print-only">Zatrzymaj wodę, chroń plony · raport wodny dla działki rolnej</p>
-
-  <main id="main">
-    <div class="workspace">
-      <section class="card form-card no-print" aria-labelledby="form-title">
-        <h2 id="form-title">Dane do raportu</h2>
-        <form id="form" autocomplete="off">
-          <div class="step">
-            <label for="parcel-query"><span class="step-num" aria-hidden="true">1</span>Działka</label>
-            <div class="row">
-              <input id="parcel-query" type="text" maxlength="80" inputmode="text" enterkeyhint="search"
-                     aria-describedby="parcel-hint"
-                     placeholder="Obręb i numer działki">
-              <button type="button" id="parcel-search" class="btn btn-secondary">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.500" cy="10.500" r="6"/><path d="M15 15l5 5"/></svg>
-                Szukaj
-              </button>
-            </div>
-            <p class="hint" id="parcel-hint">Na przykład: Niedrzwica Kościelna 580/2 albo pełny identyfikator 060910_2.0011.580/2. Możesz też kliknąć swoje pole na mapie.</p>
-            <p id="parcel-message" class="message" role="status"></p>
-            <div id="parcel-candidates" class="candidates" hidden></div>
-            <p id="parcel-selected" class="selected" hidden></p>
-          </div>
-
-          <div class="step">
-            <label for="crop"><span class="step-num" aria-hidden="true">2</span>Uprawa</label>
-            <select id="crop" required></select>
-          </div>
-
-          <div class="step">
-            <label for="date"><span class="step-num" aria-hidden="true">3</span>Data analizy</label>
-            <input id="date" type="date" required aria-describedby="date-hint">
-            <p class="hint" id="date-hint">Dzisiaj albo dowolny dzień z ostatnich 10 lat.</p>
-          </div>
-
-          <button type="submit" id="submit" class="btn btn-primary btn-block" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.500c0 0-6.500 7-6.500 11.500a6.500 6.500 0 0 0 13 0C18.500 10.500 12 3.500 12 3.500z"/></svg>
-            Przygotuj raport
-          </button>
-          <div id="progress-panel" class="progress">
-            <div class="progress-bar" aria-hidden="true"><span></span></div>
-            <p id="progress" class="message" role="status"></p>
-            <p id="progress-timer" class="message timer" aria-hidden="true"></p>
-          </div>
-        </form>
-      </section>
-
-      <section class="card map-card" aria-labelledby="map-title">
-        <div class="map-head no-print">
-          <h2 id="map-title">Mapa</h2>
-          <div class="layer-switch">
-            <div class="segmented" role="group" aria-label="Podkład mapy">
-              <button type="button" data-base="orto" class="active" aria-pressed="true">Zdjęcie lotnicze</button>
-              <button type="button" data-base="osm" aria-pressed="false">Mapa</button>
-            </div>
-            <button type="button" id="toggle-parcels" class="toggle active" aria-pressed="true">
-              <span class="toggle-box" aria-hidden="true"></span>Granice działek
-            </button>
-          </div>
-        </div>
-        <div class="map-frame">
-          <div id="map" aria-label="Mapa: kliknij pole, aby wybrać działkę"></div>
-          <p id="map-hint" class="map-hint no-print">Przybliż mapę i kliknij swoje pole, aby wybrać działkę</p>
-        </div>
-        <div id="map-legend" class="legend" hidden></div>
-      </section>
-    </div>
-
-    <article id="report" aria-label="Raport wodny" hidden></article>
-  </main>
-
-  <footer class="site-footer no-print">
-    <p>Prototyp konkursowy (HackNation 2026, zadanie KOWR). Wyniki są szacunkiem z modeli i otwartych danych, a nie pomiarem na polu.</p>
-  </footer>
-
-  <script src="vendor/ol.js"></script>
-  <script src="app.js"></script>
+  <div id="root"></div>
+  <noscript>Włącz JavaScript, aby wyszukać działkę i przygotować raport.</noscript>
 </body>
 </html>

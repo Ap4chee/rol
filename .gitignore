@@ -7,3 +7,5 @@ cache/
 .env
 # lokalne katalogi robocze narzędzi AI
 .claude/
+
+node_modules/

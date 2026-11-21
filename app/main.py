@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import mimetypes
-from datetime import date as Date
+from datetime import date as Date, datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, Query
@@ -15,6 +16,7 @@ from app.report import _parcel_info, build_report
 from app.schemas import (
     CropKey,
     CropOption,
+    ForecastResponse,
     ParcelCandidate,
     ParcelSearchResponse,
     ReportRequest,
@@ -24,6 +26,7 @@ from app.schemas import (
     TerrainResponse,
 )
 from app.sources import NoData, SourceError, uldk
+from app.sources.weather import fetch_dashboard_forecast
 
 # Windows bierze typy plików z rejestru i często nie zna tych rozszerzeń.
 mimetypes.add_type("image/webp", ".webp")
@@ -94,6 +97,19 @@ async def parcels_by_id(id: str = Query(min_length=5, max_length=80)) -> ParcelS
 async def report(request: ReportRequest) -> ReportResponse:
     """Raport dla działki (identyfikator albo punkt), uprawy i daty. Liczony na żywo."""
     return await build_report(request)
+
+
+@app.get("/api/forecast", response_model=ForecastResponse)
+async def forecast(lon: float = Query(ge=14.0, le=24.3), lat: float = Query(ge=48.9, le=55.0)) -> ForecastResponse:
+    """Lokalna prognoza na pulpit, poza historycznym bilansem raportu."""
+    today = datetime.now(ZoneInfo("Europe/Warsaw")).date()
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
+        try:
+            return await fetch_dashboard_forecast(client, lat, lon, today)
+        except NoData as exc:
+            return ForecastResponse(status=Status.no_data, reason=str(exc))
+        except SourceError as exc:
+            return ForecastResponse(status=Status.error, reason=str(exc))
 
 
 @app.get("/api/satellite", response_model=SatelliteResponse)

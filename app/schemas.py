@@ -444,3 +444,19 @@ class ReportResponse(BaseModel):
 class CropOption(BaseModel):
     key: CropKey
     name: str
+
+
+class ForecastDay(BaseModel):
+    date: Date
+    temperature_max_c: float | None = None
+    precipitation_mm: float | None = None
+    et0_mm: float | None = None
+    weather_code: int | None = None
+
+
+class ForecastResponse(BaseModel):
+    status: Status
+    reason: str | None = None
+    days: list[ForecastDay] = []
+    last_wet_day: Date | None = None
+    past_days_complete: bool = False
