@@ -155,4 +155,3 @@ export function ModelSelector({
   );
 }
 
-export default ModelSelector;

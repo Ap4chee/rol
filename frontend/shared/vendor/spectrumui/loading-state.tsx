@@ -109,4 +109,3 @@ export function LoadingState({
   );
 }
 
-export default LoadingState;
