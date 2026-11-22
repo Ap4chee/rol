@@ -10,11 +10,12 @@ import math
 
 import numpy as np
 import pandas as pd
+import shapely
 from pyproj import Transformer
 from shapely.geometry import box, mapping
 from shapely.ops import transform as shp_transform
 
-from . import config as C
+from kowr_ml.pipeline import config as C
 
 TO_2180 = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
 TO_4326 = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)
@@ -40,9 +41,7 @@ def candidate_squares(lat: float, lon: float) -> list:
 
 
 def cropland_fraction(squares: list, lat: float, lon: float) -> np.ndarray:
-
-    minx = min(s.bounds[0] for s in squares); miny = min(s.bounds[1] for s in squares)
-    maxx = max(s.bounds[2] for s in squares); maxy = max(s.bounds[3] for s in squares)
+    minx, miny, maxx, maxy = (float(v) for v in shapely.total_bounds(squares))
     tiles = {worldcover_tile(miny, minx), worldcover_tile(maxy, maxx)}
     if len(tiles) > 1:  # skupisko na granicy kafli: liczymy pola z każdego kafla osobno
         frac = np.zeros(len(squares))
@@ -57,8 +56,7 @@ def _fraction_from_tile(squares: list, tile: str) -> np.ndarray:
     from rasterio.features import rasterize
     from rasterio.windows import from_bounds
 
-    minx = min(s.bounds[0] for s in squares); miny = min(s.bounds[1] for s in squares)
-    maxx = max(s.bounds[2] for s in squares); maxy = max(s.bounds[3] for s in squares)
+    minx, miny, maxx, maxy = (float(v) for v in shapely.total_bounds(squares))
     with rasterio.open(C.WORLDCOVER_URL.format(tile=tile)) as ds:
         win = from_bounds(minx, miny, maxx, maxy, ds.transform).round_offsets().round_lengths()
         lc = ds.read(1, window=win, boundless=True, fill_value=0)
@@ -94,7 +92,8 @@ def main() -> None:
     C.DATA_DIR.mkdir(parents=True, exist_ok=True)
     out = C.DATA_DIR / "fields.parquet"
     if out.exists():
-        print(f"{out} już jest"); return
+        print(f"{out} już jest")
+        return
     df = build_fields()
     df.to_parquet(out, index=False)
     print(f"zapisano {len(df)} pól -> {out}")

@@ -1,8 +1,8 @@
 """Archiwalne prognozy ECMWF IFS (open data na AWS, s3://ecmwf-forecasts) dla skupisk -> ifs_forecast.parquet.
 
-Do modelu wilgotności v2 (sm2_dataset.py) potrzebna jest prognoza wydana w dniu t, a nie faktyczna pogoda.
+Do modelu wilgotności (dataset.py) potrzebna jest prognoza wydana w dniu t, a nie faktyczna pogoda.
 Bierzemy przebieg 00 UTC z dnia t (w aplikacji dostępny rano tego dnia) i z każdego pliku kroku tylko potrzebne
-pola, zapytaniem o zakres bajtów według pliku .index. Dni prognozy t jak w sm_dataset (co ISSUE_STEP_DAYS od 1.01.2019).
+pola, zapytaniem o zakres bajtów według pliku .index. Dni prognozy t jak w dataset.py (co ISSUE_STEP_DAYS od 1.01.2019).
 
 Archiwum: od 18.01.2023 siatka 0,4° (`0p4-beta`) z opadem i temperaturą; od 02.2024 siatka 0,25° (`ifs/0p25`),
 dodatkowo wilgotność gleby warstw 1–3 (0–7, 7–28, 28–100 cm, jak w ERA5-Land): `swvl1…3`, później `vsw` poziomy 1–3.
@@ -26,8 +26,8 @@ from datetime import date, timedelta
 import httpx
 import numpy as np
 
-from . import config as C
-from .sm_dataset import HORIZON_DAYS, ISSUE_STEP_DAYS, SM_SEASONS
+from kowr_ml.pipeline import config as C
+from kowr_ml.pipeline.soil_moisture.dataset import HORIZON_DAYS, ISSUE_STEP_DAYS, SM_SEASONS
 
 BASE = "https://ecmwf-forecasts.s3.amazonaws.com"
 FIRST_DAY = date(2023, 1, 18)
@@ -156,6 +156,12 @@ def cached_extension(t: date) -> str:
     return f"{t} {'dociągnięte' if base else 'brak przebiegu'}"
 
 
+def root_zone_moisture(values: dict, missing: np.ndarray, step: int) -> np.ndarray:
+    """Wilgotność 0–100 cm z warstw 1–3 ważona ich grubością, w węzłach skupisk dla kroku `step`."""
+    layers = [values.get(f"swvl{i}@{step}", missing) for i in (1, 2, 3)]
+    return sum(x * cm for x, cm in zip(layers, LAYER_CM)) / 100.0
+
+
 def table():
     import pandas as pd
 
@@ -168,11 +174,6 @@ def table():
         ext = json.loads(ext_path.read_text()) if ext_path.exists() else {"values": {}, "cf_steps": []}
         v = {k: np.array(x) for k, x in {**run["values"], **ext["values"]}.items()}
         nan = np.full(len(C.CLUSTERS_FIRST), np.nan)
-
-        def sm(step):
-            layers = [v.get(f"swvl{i}@{step}", nan) for i in (1, 2, 3)]
-            return sum(x * cm for x, cm in zip(layers, LAYER_CM)) / 100.0
-
         for k in HORIZON_DAYS:
             end, start = 24 * k + 24, 24 * k
             # koniec doby z ensemble, a początek z HRES: początek też z ensemble (suma od startu tego samego przebiegu)
@@ -183,7 +184,8 @@ def table():
                 rows.append({"cluster": name, "issue_date": t.isoformat(), "lead": k, "grid": run["grid"],
                              "rain_mm": max(float(rain[c]), 0.0) if np.isfinite(rain[c]) else np.nan,
                              "t2m_c": float(v.get(f"2t@{24 * k + 12}", nan)[c]) - 273.15,
-                             "sm_0_100cm": float(sm(24 * k + 12)[c]), "sm_analysis": float(sm(0)[c])})
+                             "sm_0_100cm": float(root_zone_moisture(v, nan, 24 * k + 12)[c]),
+                             "sm_analysis": float(root_zone_moisture(v, nan, 0)[c])})
     return pd.DataFrame(rows)
 
 

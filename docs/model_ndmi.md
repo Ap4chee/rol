@@ -9,8 +9,8 @@ co sprawdzono po drodze, czego nie wdrożono i jak to odtworzyć. Skrót jest w 
 
 - Model prognozuje zmianę wskaźnika NDMI pola między ostatnim czystym zdjęciem Sentinel-2 a zdjęciem z dni
   +7…+14 od daty analizy. Jest dodatkiem do bilansu wodnego: raport powstaje także bez niego.
-- W aplikacji działa model `kowr_ml/model/20261122_0005_e1c565` (gradient boosting ze scikit-learn, 47 cech,
-  plik 3,7 MB). Poprzedni model `20261121_2014_0502bf` został w repozytorium do porównań.
+- W aplikacji działa model `kowr_ml/models/ndmi/20261122_0005_e1c565` (gradient boosting ze scikit-learn, 47 cech,
+  plik 3,7 MB), przypięty w `kowr_ml/models/CURRENT.json`. Poprzedni model `20261121_2014_0502bf` jest w historii gita.
 - Uczony na 682 428 wierszach z 15 782 pól w 161 obszarach całej Polski, sezony 2017–2026.
 - Średni błąd bezwzględny (MAE) dla nowych obszarów: **0,0541** wobec 0,0929 dla prognozy „bez zmiany”.
   Osobno, na 141 obszarach niewidzianych przez poprzedni model, MAE spadł z 0,0652 do 0,0543.
@@ -60,7 +60,7 @@ w sekcji 7 pochodzą z modelu wdrożonego i służą sprawdzeniu działania rapo
 ## 4. Cechy (47)
 
 Wszystkie pochodzą sprzed daty analizy i z danych, które raport i tak pobiera. Kod jest wspólny dla treningu
-i aplikacji (`kowr_ml/features.py`).
+i aplikacji (`kowr_ml/runtime/features.py`).
 
 | Grupa | Cechy | Skąd w aplikacji |
 |---|---|---|
@@ -98,7 +98,7 @@ Model nie zna gleby ani uprawy, bo w danych treningowych ich nie ma.
 
 ## 6. Wyniki
 
-MAE zmiany NDMI, mniej = lepiej. Pełne liczby: `kowr_ml/model/20261122_0005_e1c565/metrics.json`.
+MAE zmiany NDMI, mniej = lepiej. Pełne liczby: `kowr_ml/models/ndmi/20261122_0005_e1c565/metrics.json`.
 
 ### 6.1. Główne testy
 
@@ -246,7 +246,7 @@ ustawienie (learning rate 0,1, 700 iteracji) odpowiada ok. 1400 iteracjom przy 0
 - Flaga `earthsearch:boa_offset_applied` tego nie rozstrzyga: z 1570 scen z 2022 r. nad 70 obszarami 92 miały
   `false`, a ich piksele też były po korekcie (wpisy katalogu utworzone 3.11.2022).
 - Reguła po poprawce: dla kolekcji `sentinel-2-l2a` offset = 0 zawsze; dla `sentinel-2-c1-l2a` offset
-  z metadanych. Ta sama reguła jest w `kowr_ml/s2.py`.
+  z metadanych. Ta sama reguła jest w `kowr_ml/pipeline/ndmi/s2.py` (nazwa kolekcji z `app/sources/sentinel.py`).
 - Dowody: ta sama scena z 3.06.2023 w obu kolekcjach (B8A 5108 i 4108 DN), dwa kafle jednego przelotu
   z 10.05.2022 (B11 1911 DN z flagą `false`, 1908 DN z flagą `true`).
 - Skutek: działka 580/2, 10.07.2022: NDMI 0,88, 0,86, 0,67 bez NDVI → 0,63, 0,58, 0,49 z NDVI 0,85, 0,79, 0,71.
@@ -258,7 +258,7 @@ ustawienie (learning rate 0,1, 700 iteracji) odpowiada ok. 1400 iteracjom przy 0
 
 ## 11. Czego nie wdrożono
 
-- **Sieć GRU** (PyTorch, przebieg pogody z 60 dni i te same 47 cech, zespół 5 sieci, `kowr_ml/train_gru.py`).
+- **Sieć GRU** (PyTorch, przebieg pogody z 60 dni i te same 47 cech, zespół 5 sieci, `kowr_ml/experiments/train_gru.py`).
   Na podziale pierwszego modelu: 0,0512 na 4 odłożonych obszarach (model drzewiasty 0,0545) i 0,0559
   na odłożonych obszarach w sezonie 2025 (0,0583), czyli o 4–6% lepiej. To jeden podział; porównania
   w 5 podziałach nie dokończono. Wariant 120-dniowy przekroczył pamięć GPU podczas oceny; próbę porównania
@@ -290,25 +290,30 @@ ustawienie (learning rate 0,1, 700 iteracji) odpowiada ok. 1400 iteracjom przy 0
 
 ## 13. Odtworzenie
 
-Katalog danych: `KOWR_ML_DATA` (domyślnie `kowr_ml/data`, poza gitem), wyniki: `KOWR_ML_RUNS`.
-Do treningu potrzebne są dodatkowo `pandas` i `pyarrow` (nie ma ich w `requirements.txt` aplikacji).
+Katalog danych: `KOWR_ML_DATA` (domyślnie `kowr_ml/data`, poza gitem), wyniki: `KOWR_ML_RUNS` (domyślnie `kowr_ml/runs`).
+Do treningu potrzebne są dodatkowe pakiety z `requirements-ml.txt` (`pandas`, `pyarrow`; aplikacja ich nie używa).
 
 ```sh
-python -m kowr_ml.fields          # pola z WorldCover -> fields.parquet
-python -m kowr_ml.s2 12           # sceny, 12 procesów -> obs/<obszar>_<rok>.parquet
-python -m kowr_ml.weather         # pogoda -> weather_raw/, weather.parquet (ogranicza limit Open-Meteo)
-python -m kowr_ml.dataset 12      # tabela -> training.parquet, dataset_stats.json
-python -m kowr_ml.train           # ocena i model -> runs/<data>_<hash>/
+pip install -r requirements-ml.txt
+python -m kowr_ml.pipeline.ndmi.fields       # pola z WorldCover -> fields.parquet
+python -m kowr_ml.pipeline.ndmi.s2 12        # sceny, 12 procesów -> obs/<obszar>_<rok>.parquet
+python -m kowr_ml.pipeline.ndmi.weather      # pogoda -> weather_raw/, weather.parquet (ogranicza limit Open-Meteo)
+python -m kowr_ml.pipeline.ndmi.dataset 12   # tabela -> training.parquet, dataset_stats.json
+python -m kowr_ml.pipeline.ndmi.train        # ocena i model -> runs/<data>_<hash>/
+python -m kowr_ml.experiments.train_gru      # porównawcza sieć GRU (PyTorch) -> metrics_gru.json
 ```
+
+Nowy przebieg trafia do aplikacji dopiero po skopiowaniu katalogu z `runs/` do `kowr_ml/models/ndmi/`
+i wpisaniu go w `kowr_ml/models/CURRENT.json`.
 
 Czasy na serwerze z 31 rdzeniami: sceny 43 minuty (1610 zadań obszar × sezon), tabela 1 minuta, trening
 z oceną 33 minuty, samo dopasowanie końcowego modelu 2 minuty. Sieć GRU: 13 minut na RTX 3090.
 
 Porównanie z poprzednim modelem włącza zmienna `KOWR_ML_PREVIOUS_MODEL` (katalog poprzedniego modelu).
-Aplikacja bierze najnowszy katalog z `kowr_ml/model/`; `KOWR_ML_MODEL_DIR` pozwala wskazać inny.
+Aplikacja bierze przebieg przypięty w `kowr_ml/models/CURRENT.json`; `KOWR_ML_MODEL_DIR` pozwala wskazać inny.
 
 Uwaga do pogody: wdrożony model powstał z serii o różnej długości (45 obszarów od 10.2016, 26 od 10.2017,
-93 od 10.2024). Pełne `kowr_ml.weather` pobierze dla wszystkich serię od 10.2016, więc odtworzona tabela
+93 od 10.2024). Pełne `kowr_ml.pipeline.ndmi.weather` pobierze dla wszystkich serię od 10.2016, więc odtworzona tabela
 może być większa niż użyta. Kroki odtwarzają potok, ale ponowne pobranie danych nie gwarantuje identycznej
 wersji tabeli ani modelu.
 
@@ -318,13 +323,15 @@ W repozytorium:
 
 | Ścieżka | Zawartość |
 |---|---|
-| `kowr_ml/model/20261122_0005_e1c565/` | model w aplikacji: `model.joblib`, `model_card.json`, `metrics.json`, `metrics_gru.json`, `dataset_stats.json` |
-| `kowr_ml/model/20261121_2014_0502bf/` | poprzedni model |
-| `kowr_ml/config.py` | obszary, sezony, progi, okna |
-| `kowr_ml/features.py` | cechy wspólne dla treningu i aplikacji |
-| `kowr_ml/s2.py`, `weather.py`, `fields.py`, `dataset.py`, `train.py` | potok danych i trening |
-| `kowr_ml/predict.py` | predykcja z obserwacji aplikacji |
-| `kowr_ml/train_gru.py` | porównawcza sieć GRU |
+| `kowr_ml/models/ndmi/20261122_0005_e1c565/` | model w aplikacji: `model.joblib`, `model_card.json`, `metrics.json`, `metrics_gru.json`, `dataset_stats.json` |
+| `kowr_ml/models/CURRENT.json` | które przebiegi obsługują aplikację |
+| `kowr_ml/runtime/config.py` | okna cech i etykiety (wspólne dla treningu i predykcji) |
+| `kowr_ml/runtime/features.py` | cechy wspólne dla treningu i aplikacji |
+| `kowr_ml/runtime/ndmi.py` | predykcja z obserwacji aplikacji (`NdmiForecaster`) |
+| `kowr_ml/runtime/registry.py` | wybór i wczytanie przypiętego modelu |
+| `kowr_ml/pipeline/config.py` | obszary, sezony, podziały oceny, źródła danych |
+| `kowr_ml/pipeline/ndmi/` | potok danych i trening: `fields.py`, `s2.py`, `weather.py`, `labels.py`, `dataset.py`, `train.py` |
+| `kowr_ml/experiments/train_gru.py` | porównawcza sieć GRU |
 | `tests/test_ml_features.py`, `tests/test_sentinel_offset.py` | testy cech, predykcji i offsetu |
 | `scripts/checks/check_sentinel_offset.py` | sprawdzenie offsetu na żywo |
 

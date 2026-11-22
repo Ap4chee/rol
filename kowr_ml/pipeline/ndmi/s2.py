@@ -1,8 +1,9 @@
 """Obserwacje pól z Sentinel-2 L2A (Earth Search), zgodnie ze specyfikacją, sekcja 3, i tak jak liczy aplikacja.
 
 Sceny z obu kolekcji (`sentinel-2-c1-l2a` ma pierwszeństwo, `sentinel-2-l2a` uzupełnia lata 2017, 2018 i 2022),
-łączone po satelicie, dniu i kaflu jak w app/sources/sentinel.py. Reflektancja = DN · scale + offset z `raster:bands`;
-gdy scena ma `earthsearch:boa_offset_applied = true`, przesunięcie jest już odjęte w pikselach i offset = 0.
+łączone po satelicie, dniu i kaflu jak w app/sources/sentinel.py. Reflektancja = DN · scale + offset z `raster:bands`,
+z tą samą regułą offsetu co aplikacja (opis i pomiary w app/sources/sentinel.py): w `sentinel-2-l2a` przesunięcie
+jest już odjęte w pikselach i offset = 0 niezależnie od flagi `earthsearch:boa_offset_applied`.
 
 Pętla po scenach, nie po polach: dla każdej sceny czytamy jedno okno obejmujące całe skupisko,
 najpierw SCL, a pasma B8A (nir08), B11 (swir16) i B04 (red) tylko gdy choć jedno pole przeszło próg.
@@ -15,7 +16,7 @@ field_id, scene_id, collection, platform, date (doba Europe/Warsaw), total_px, v
 (n_veg, n_bare, n_cloud, n_water, n_snow, n_nodata), ndmi (NaN = obserwacja odrzucona), ndmi_iqr, ndvi,
 mediany reflektancji nir_med, swir_med, red_med.
 
-Użycie: python -m kowr_ml.s2 [procesy] [sezon,sezon,...] [skupisko,skupisko,...]
+Użycie: python -m kowr_ml.pipeline.ndmi.s2 [procesy] [sezon,sezon,...] [skupisko,skupisko,...]
 """
 from __future__ import annotations
 
@@ -26,12 +27,13 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+import shapely
 from pyproj import Transformer
 from shapely import wkt as shp_wkt
 from shapely.geometry import box, mapping
 from shapely.ops import transform as shp_transform
 
-from . import config as C
+from kowr_ml.pipeline import config as C
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 GDAL_OPTIONS = {
@@ -45,6 +47,7 @@ GDAL_OPTIONS = {
 }
 WORKERS = 48        # wątki na skupisko i sezon (odczyty zakresowe z S3)
 PROCESSES = 10      # skupiska i sezony liczone równolegle
+WINDOW_PAD_M = 40   # zapas okna rastra wokół pól skupiska (dwa piksele 20 m)
 SCL_GROUPS = {"n_veg": (C.SCL_VEGETATION,), "n_bare": (C.SCL_BARE_SOIL,), "n_cloud": C.SCL_CLOUDY, "n_water": (6,),
               "n_snow": (11,), "n_nodata": (0,)}
 VALUE_COLUMNS = ("ndmi", "ndmi_iqr", "ndvi", "nir_med", "swir_med", "red_med")
@@ -71,9 +74,8 @@ def scene_items(cluster_bbox_4326: tuple, season: int) -> list[dict]:
                 search = client.search(collections=[collection], intersects=mapping(box(*cluster_bbox_4326)),
                                        datetime=f"{season}-{C.S2_MONTHS[0]}/{season}-{C.S2_MONTHS[1]}", limit=200)
                 for item in search.items():
-                    # W `sentinel-2-l2a` przesunięcie reflektancji jest już odjęte w pikselach, także gdy flaga
-                    # `earthsearch:boa_offset_applied` mówi inaczej (opis w app/sources/sentinel.py).
-                    offset_applied = (collection == "sentinel-2-l2a"
+                    # Ta sama reguła co app/sources/sentinel.py (_scene_from_item); tam opis i pomiary.
+                    offset_applied = (collection == C.OFFSET_APPLIED_COLLECTION
                                       or bool(item.properties.get("earthsearch:boa_offset_applied")))
                     assets, ok = {}, True
                     for key, name in (("scl", "scl"), ("nir", "nir08"), ("swir", "swir16"), ("red", "red")):
@@ -104,9 +106,7 @@ class ClusterGeometry:
     def __init__(self, fields: pd.DataFrame):
         self.field_ids = fields["field_id"].tolist()
         self.polys = [shp_wkt.loads(w) for w in fields["wkt"]]
-        minx = min(p.bounds[0] for p in self.polys); miny = min(p.bounds[1] for p in self.polys)
-        maxx = max(p.bounds[2] for p in self.polys); maxy = max(p.bounds[3] for p in self.polys)
-        self.bbox = (minx, miny, maxx, maxy)
+        self.bbox = tuple(float(v) for v in shapely.total_bounds(self.polys))
         self._cache: dict = {}
 
     def labels(self, ds):
@@ -118,9 +118,8 @@ class ClusterGeometry:
         if key not in self._cache:
             tr = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
             polys = [shp_transform(tr.transform, p) for p in self.polys]
-            minx = min(p.bounds[0] for p in polys) - 40; miny = min(p.bounds[1] for p in polys) - 40
-            maxx = max(p.bounds[2] for p in polys) + 40; maxy = max(p.bounds[3] for p in polys) + 40
-            win = from_bounds(minx, miny, maxx, maxy, ds.transform).round_offsets().round_lengths()
+            bounds = shapely.total_bounds(polys) + np.array([-1, -1, 1, 1]) * WINDOW_PAD_M
+            win = from_bounds(*bounds, ds.transform).round_offsets().round_lengths()
             wt = ds.window_transform(win)
             lab = rasterize([(mapping(p), i + 1) for i, p in enumerate(polys)],
                             out_shape=(int(win.height), int(win.width)), transform=wt, fill=0,
