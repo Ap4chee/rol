@@ -9,7 +9,7 @@ from app.config import HISTORY_YEARS
 from app.core import analysis
 from app.core.balance_run import Computed
 from app.core.crops import STAGE_NAMES_PL, last_completed_season
-from app.presentation.textfmt import fmt, fmt_date
+from app.core.textfmt import fmt, fmt_date
 from app.schemas import Cause, CausesSection, HydrologySection, Status, WaterStatus, WeatherWindow
 
 RAIN_DEFICIT_PCT = 75.0     # opad poniżej tego odsetka mediany z 10 lat uznajemy za przyczynę

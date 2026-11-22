@@ -88,7 +88,6 @@ app/
   persistence/
     field_repository.py FieldRepository: pola i ostatnie raporty w SQLite (data/fields.sqlite3)
   presentation/        wyniki obliczeń → schematy API i polskie zdania raportu
-    textfmt.py         liczby i daty po polsku
     sections/          jedna sekcja raportu na moduł: water_status, causes, history, satellite, forecast, soil,
                        soil_moisture, hydrology, irrigation, recommendations, limitations, summary, sources_info, terrain
   schemas/             kontrakt API (pydantic) podzielony według obszaru; `from app.schemas import X` działa dla każdego typu
@@ -107,6 +106,7 @@ app/
     ifs_forecast.py    prognoza ECMWF IFS (wejście modelu wilgotności)
   core/                obliczenia bez sieci (dane wchodzą jako argumenty), wyniki jako dataclassy
     dates.py           dzisiejszy dzień w Polsce, dopuszczalne daty, okno pobieranych danych
+    textfmt.py         liczby i daty po polsku (na samym dole, bo reguły rekomendacji też piszą uzasadnienia z liczbami)
     et0.py             ET0 FAO-56 Penmana-Monteitha
     ptf.py             pojemność polowa i punkt więdnięcia (Saxton i Rawls 2006), klasy uziarnienia USDA
     crops.py           tabela upraw: Kc, fazy, korzenie, współczynnik p z numerem tabeli FAO-56

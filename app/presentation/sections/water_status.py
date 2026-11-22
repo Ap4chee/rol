@@ -7,10 +7,10 @@ from app.core import analysis
 from app.core.balance_run import Computed
 from app.core.crops import last_completed_season
 from app.core.soil import SoilVariant
+from app.core.textfmt import fmt, fmt_date, plural_days
 from app.core.water_assessment import WaterAssessment
 from app.core.water_balance import CLASS_KEYS, CLASS_LABELS_IN_SEASON, CLASS_LABELS_OFF_SEASON
 from app.presentation.sections.crop import season_reason
-from app.presentation.textfmt import fmt, fmt_date, plural_days
 from app.schemas import BalanceVariant, ClimaticWaterBalance, DailyPoint, SeasonSummary, Status, WaterStatus
 
 SERIES_DAYS_FOR_CHART = 365   # rok wstecz: wykres pokazuje ok. 4 miesiące, resztę odsłania przeciąganie

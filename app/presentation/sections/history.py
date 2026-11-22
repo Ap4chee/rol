@@ -8,7 +8,7 @@ import numpy as np
 from app.config import HISTORY_YEARS
 from app.core import analysis
 from app.core.balance_run import Computed
-from app.presentation.textfmt import fmt, fmt_date, plural_days
+from app.core.textfmt import fmt, fmt_date, plural_days
 from app.schemas import HistorySection, SeasonStress, Status
 
 LONG_STRESS_DAYS = 14       # „długi” stres w okresie krytycznym (do opisu historii)

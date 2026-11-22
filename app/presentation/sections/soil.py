@@ -4,8 +4,8 @@ from __future__ import annotations
 from app.core.crops import Crop
 from app.core.ptf import USDA_LABELS_PL, usda_texture_class
 from app.core.soil import Layer, layer_water
+from app.core.textfmt import fmt
 from app.presentation.sections.sources_info import SOIL_ASSUMED_IMPACT
-from app.presentation.textfmt import fmt
 from app.schemas import SoilLayer, SoilSection, SourceInfo, Status
 from app.sources import soilgrids
 

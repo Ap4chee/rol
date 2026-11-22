@@ -10,8 +10,8 @@ from app.core import recommendations as rules
 from app.core.balance_run import Computed
 from app.core.crops import last_completed_season, season_containing, sowing_after
 from app.core.soil import Layer
+from app.core.textfmt import fmt
 from app.presentation.sections.history import LONG_STRESS_DAYS
-from app.presentation.textfmt import fmt
 from app.schemas import (
     HistorySection,
     HydrologySection,

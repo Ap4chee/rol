@@ -25,7 +25,7 @@ from app.core.recommendations.facts import (
     sowing_words,
     vulnerability_sentence,
 )
-from app.presentation.textfmt import fmt, fmt_date, plural_days
+from app.core.textfmt import fmt, fmt_date, plural_days
 
 
 @dataclass(frozen=True)

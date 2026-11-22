@@ -5,8 +5,8 @@ from datetime import date
 
 from app.config import HISTORY_YEARS
 from app.core import soil_moisture as moisture_calc
+from app.core.textfmt import fmt_date, plural_days
 from app.presentation.sections.sources_info import MOISTURE_NO_IMPACT
-from app.presentation.textfmt import fmt_date, plural_days
 from app.schemas import SoilMoistureLayer, SoilMoistureSection, SourceInfo, Status
 
 

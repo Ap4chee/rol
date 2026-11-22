@@ -11,7 +11,7 @@ from app.core.recommendations.facts import (
     Result,
     is_stressed,
 )
-from app.presentation.textfmt import fmt
+from app.core.textfmt import fmt
 
 
 def _dose_guidance(depletion_mm: float) -> str:

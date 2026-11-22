@@ -12,7 +12,7 @@ import numpy as np
 from app.config import HISTORY_YEARS
 from app.core import analysis
 from app.core.balance_run import Computed, project_balance
-from app.presentation.textfmt import fmt, fmt_date, plural_days
+from app.core.textfmt import fmt, fmt_date, plural_days
 from app.schemas import ForecastDay, ForecastPoint, ForecastResponse, MlForecast, MlForecastPoint, Status, WaterStatus
 from app.services.ml_bridge import MoisturePrediction
 from app.sources import ifs_forecast

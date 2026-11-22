@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 
 from app.core.crops import Crop
-from app.presentation.textfmt import fmt_date, plural_days
+from app.core.textfmt import fmt_date, plural_days
 
 MODEL_LIMITATIONS = [
     "Bilans nie uwzględnia spływu powierzchniowego: cały opad jest liczony jako woda, która wsiąka. "

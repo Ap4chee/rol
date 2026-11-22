@@ -16,7 +16,7 @@ from app.core.recommendations.facts import (
     sowing_words,
     vulnerability_sentence,
 )
-from app.presentation.textfmt import fmt, plural_days
+from app.core.textfmt import fmt, plural_days
 
 
 def reduced_tillage(f: Facts, out: Result) -> None:

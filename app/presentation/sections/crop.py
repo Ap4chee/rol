@@ -17,7 +17,7 @@ from app.core.crops import (
     season_for_harvest_year,
     sowing_after,
 )
-from app.presentation.textfmt import fmt, fmt_date
+from app.core.textfmt import fmt, fmt_date
 from app.schemas import CropInfo, CropParameter, ReportRequest
 
 

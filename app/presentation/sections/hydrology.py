@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from app.core import hydrology as hydro_calc
+from app.core.textfmt import fmt, fmt_date
 from app.presentation.sections.sources_info import HYDRO_NO_IMPACT, river_name
-from app.presentation.textfmt import fmt, fmt_date
 from app.schemas import HydrologySection, HydroYear, Point, SourceInfo, Status
 from app.sources import imgw_hydro, mphp
 

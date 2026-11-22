@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.presentation.textfmt import fmt, fmt_date, plural_days
+from app.core.textfmt import fmt, fmt_date, plural_days
 from app.schemas import SourceInfo, Status
 from app.sources import egib_wfs, imgw_hydro, mphp, sentinel, soilgrids, weather
 from app.sources import soil_moisture as moisture_source

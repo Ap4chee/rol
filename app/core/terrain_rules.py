@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.core.recommendations import Rec
-from app.presentation.textfmt import fmt
+from app.core.textfmt import fmt
 
 SLOPE_NOTABLE_PCT = 5.0        # średni spadek, od którego spływ powierzchniowy jest istotną drogą strat
 SLOPE_STEEP_PART_PCT = 8.0     # ...albo taki spadek na najbardziej stromych 10% powierzchni

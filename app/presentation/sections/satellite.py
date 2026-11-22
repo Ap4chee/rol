@@ -7,8 +7,8 @@ from urllib.parse import urlencode
 
 from app.core import satellite_logic
 from app.core.balance_run import Computed
+from app.core.textfmt import fmt_date, signed
 from app.presentation.sections.sources_info import SATELLITE_NO_IMPACT
-from app.presentation.textfmt import fmt_date, signed
 from app.schemas import NdmiForecast, ReportRequest, SatelliteObservation, SatelliteSection, SourceInfo, Status
 from app.services.ml_bridge import NdmiPrediction
 from app.sources import sentinel

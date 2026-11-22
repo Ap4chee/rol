@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from app.core.analysis import IrrigationNeed as NeedStats
 from app.core.balance_run import IRRIGATION_DOSE_MM
-from app.presentation.textfmt import count_noun, fmt, fmt_date
+from app.core.textfmt import count_noun, fmt, fmt_date
 from app.schemas import IrrigationNeed, MonthAmount, Status
 
 
