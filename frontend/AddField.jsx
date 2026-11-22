@@ -23,6 +23,8 @@ const REPORT_BUSY = 'Pobieram dane działki i liczę bilans wodny (do 30 s)';
 const CROP_IMAGES = {
   maize: '/design/kukurydza.png',
   winter_wheat: '/design/pszenica.png',
+  spring_barley: '/design/jeczmien.png',
+  winter_rapeseed: '/design/rzepak.png',
   grassland: '/design/laka.png',
   potato: '/design/ziemniaki.png',
   sugar_beet: '/design/burak.png',

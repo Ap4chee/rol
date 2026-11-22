@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { actionItems, byUrgency, dateText, fieldHref, fieldTabHref, number, today, waterPercent } from './model.js';
 import { api, Note, ParcelOutline, Status, statusFill, statusInk, statusTone } from './ui.jsx';
 
-const CROP_IMAGES = { maize: 'kukurydza', winter_wheat: 'pszenica', grassland: 'laka', potato: 'ziemniaki', sugar_beet: 'burak' };
+const CROP_IMAGES = { maize: 'kukurydza', winter_wheat: 'pszenica', spring_barley: 'jeczmien', winter_rapeseed: 'rzepak', grassland: 'laka', potato: 'ziemniaki', sugar_beet: 'burak' };
 
 // Pierwsze wejście bloku: krótko w górę z przezroczystości. Przy ograniczonym ruchu samo przenikanie, bez przesunięcia.
 const RISE = 'animate-rise motion-reduce:animate-in motion-reduce:fade-in motion-reduce:fill-mode-both';
