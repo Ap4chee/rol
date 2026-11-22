@@ -3,7 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { DayPicker } from 'react-day-picker';
 import { pl } from 'react-day-picker/locale';
 import { Button } from './button.jsx';
-import { dateText, today } from '../../model.js';
+import { dateText, today } from '@/shared/format/date';
 
 const localDate = (iso) => iso ? new Date(`${iso}T12:00:00`) : undefined;
 

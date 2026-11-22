@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:js && npm run build:css",
-    "build:js": "esbuild frontend/main.jsx --bundle --minify --target=es2020 --external:/design/* --jsx=automatic --tsconfig=tsconfig.json --outfile=static/ui.js",
+    "build:js": "esbuild frontend/app/main.jsx --bundle --minify --target=es2020 --external:/design/* --jsx=automatic --tsconfig=tsconfig.json --outfile=static/ui.js",
     "build:css": "tailwindcss -i frontend/styles/app.css -o static/ui.css --minify",
     "test": "node --test \"frontend/**/*.test.js\""
   },
