@@ -3,7 +3,7 @@
 Wzorzec dla 060910_2.0011.580/2 (outputs/splyw_wody_dzialka_580_2.png): 4 punkty dopływu, 4 punkty odpływu,
 największy odpływ 1,63 ha przy południowo-wschodniej granicy, wysokości na działce 202,45–203,65 m.
 
-  python scripts/check_terrain.py                      # pobiera NMT z WCS GUGiK (kilkanaście do kilkudziesięciu sekund)
+  python scripts/check_terrain.py                      # pobiera arkusz NMT z opendata.geoportal.gov.pl (pierwszy raz 20–50 s)
   python scripts/check_terrain.py 060910_2.0011.580/2 plik.tif   # liczy na wcześniej pobranym wycinku
 """
 from __future__ import annotations

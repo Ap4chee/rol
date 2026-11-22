@@ -28,9 +28,9 @@ DB_PATH = DATA_DIR / "fields.sqlite3"
 WORKERS = 2            # tyle raportów naraz; każdy i tak pobiera swoje źródła równolegle
 CHECK_EVERY_S = 60.0   # jak często worker sprawdza, czy nadszedł nowy dzień albo pora ponowienia
 RETRY_S = 15 * 60.0
-SATELLITE_QUICK_BUDGET_S = 3.0   # tyle pierwsza wersja raportu czeka na zdjęcia; resztę dociąga osobne zadanie
+SATELLITE_QUICK_BUDGET_S = 0.0   # pierwsza wersja raportu nie czeka na zdjęcia; dociąga je osobne zadanie
 
-_followups: set[asyncio.Task] = set()   # dokończenia raportów (satelita) działające obok kolejki workera
+_followups: set[asyncio.Task] = set()   # dokończenia raportów (pełna wersja) działające obok kolejki workera
 
 _wake = asyncio.Event()   # budzi worker zaraz po dodaniu lub zmianie pola
 
@@ -143,7 +143,19 @@ def _spawn(coro) -> None:
     task.add_done_callback(_followups.discard)
 
 
-async def _complete_satellite(row: sqlite3.Row, inp: FieldInput) -> None:
+def _warm_models() -> None:
+    """Wczytuje modele ML przy starcie, żeby pierwszy raport po restarcie nie czekał na nie kilka sekund."""
+    try:
+        from kowr_ml import predict, sm_predict, static  # noqa: F401  (static: ciężkie importy cech gleby)
+        for module in (sm_predict, predict):
+            model_dir = module.default_model_dir()
+            if model_dir is not None:
+                module.load(str(model_dir))
+    except Exception:   # brak modelu nie blokuje raportów; raport poda powód przy prognozie
+        log.exception("Nie udało się wczytać modeli ML przy starcie")
+
+
+async def _complete_report(row: sqlite3.Row, inp: FieldInput) -> None:
     """Druga faza raportu: komplet zdjęć satelitarnych. Rolnik ogląda już pierwszą wersję, a frontend do tego czasu
     dociąga satelitę przez /api/satellite. Pobierania scen są wspólne (sentinel._submit), więc nic nie idzie dwa razy;
     pogoda, gleba i działka są już w pamięci podręcznej, więc liczy się tylko to, co brakowało."""
@@ -161,7 +173,7 @@ async def compute(row: sqlite3.Row) -> None:
     day = today_warsaw().isoformat()
     try:
         inp = FieldInput.model_validate_json(row["input"])
-        # Pierwsza wersja raportu nie czeka na zdjęcia satelitarne: zapisujemy ją od razu, a satelitę (_complete_satellite)
+        # Pierwsza wersja raportu nie czeka na zdjęcia satelitarne: zapisujemy ją od razu, a satelitę (_complete_report)
         # i teren (terrain_service, uruchamiany w build_report) kończą osobne zadania równolegle.
         report = await build_report(report_request(inp), satellite_budget_s=SATELLITE_QUICK_BUDGET_S)
     except HTTPException as exc:
@@ -172,13 +184,14 @@ async def compute(row: sqlite3.Row) -> None:
     else:
         _finish(row, report.model_dump(mode="json"), None, day)
         if report.satellite.status == Status.pending:
-            _spawn(_complete_satellite(row, inp))
+            _spawn(_complete_report(row, inp))
 
 
 async def run_worker() -> None:
     """Pętla workera: liczy do WORKERS pól naraz, budzi się po zmianie pola albo co CHECK_EVERY_S."""
     with _db() as con:   # liczenie przerwane restartem serwera zaczyna się od nowa
         con.execute("UPDATE fields SET job = 'queued' WHERE job = 'running'")
+    _spawn(asyncio.to_thread(_warm_models))
     active: set[asyncio.Task] = set()
     while True:
         _wake.clear()
