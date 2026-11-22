@@ -1,0 +1,9 @@
+# Zależności potoku treningowego kowr_ml/pipeline i eksperymentów (kowr_ml/experiments).
+# Aplikacja ich nie potrzebuje: predykcja (kowr_ml/runtime) działa na requirements.txt.
+-r requirements.txt
+joblib==1.6.0       # zapis modelu; w aplikacji przychodzi razem ze scikit-learn
+# Poniższych nie ma w środowisku aplikacji, więc wersja nie jest przypięta (dobrać przy instalacji).
+pandas              # tabele treningowe
+pyarrow             # Parquet
+eccodes             # pola GRIB archiwum ECMWF IFS (pipeline/soil_moisture/ifs.py)
+torch               # tylko experiments/train_gru.py
