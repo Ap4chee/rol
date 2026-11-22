@@ -103,6 +103,13 @@ class FieldRepository:
                 WHERE id = ? AND input = ? AND job = 'running'""",
                         (json.dumps(report, ensure_ascii=False), day_iso, now, field.id, field.input))
 
+    def replace_report(self, field: StoredField, report: dict, now: float) -> None:
+        """Podmiana gotowego raportu na pełniejszy. Tylko gdy pole się w międzyczasie nie zmieniło i ma już
+        pierwszą wersję raportu; w przeciwnym razie dokończenie jest nieaktualne i przepada."""
+        with self._connect() as con:
+            con.execute("UPDATE fields SET report = ?, refreshed_at = ? WHERE id = ? AND input = ? AND job = 'ok'",
+                        (json.dumps(report, ensure_ascii=False), now, field.id, field.input))
+
     def finish_error(self, field: StoredField, error: str, next_try: float) -> None:
         with self._connect() as con:
             con.execute("""UPDATE fields SET job = 'error', error = ?, next_try = ?
