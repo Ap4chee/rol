@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 from app.config import DATA_DIR, SATELLITE_DEFERRED_BUDGET_S
 from app.report import build_report, today_warsaw
-from app.schemas import FieldInput, ReportRequest, SavedField
+from app.schemas import FieldInput, ReportRequest, SavedField, Status
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +28,9 @@ DB_PATH = DATA_DIR / "fields.sqlite3"
 WORKERS = 2            # tyle raportów naraz; każdy i tak pobiera swoje źródła równolegle
 CHECK_EVERY_S = 60.0   # jak często worker sprawdza, czy nadszedł nowy dzień albo pora ponowienia
 RETRY_S = 15 * 60.0
+SATELLITE_QUICK_BUDGET_S = 3.0   # tyle pierwsza wersja raportu czeka na zdjęcia; resztę dociąga osobne zadanie
+
+_followups: set[asyncio.Task] = set()   # dokończenia raportów (satelita) działające obok kolejki workera
 
 _wake = asyncio.Event()   # budzi worker zaraz po dodaniu lub zmianie pola
 
@@ -133,12 +136,34 @@ def _finish(row: sqlite3.Row, report: dict | None, error: str | None, day: str) 
                         (error, time.time() + RETRY_S, row["id"], row["input"]))
 
 
+def _spawn(coro) -> None:
+    """Zadanie dodatkowe poza kolejką workera (nie zajmuje miejsca z WORKERS); referencja chroni przed GC."""
+    task = asyncio.create_task(coro)
+    _followups.add(task)
+    task.add_done_callback(_followups.discard)
+
+
+async def _complete_satellite(row: sqlite3.Row, inp: FieldInput) -> None:
+    """Druga faza raportu: komplet zdjęć satelitarnych. Rolnik ogląda już pierwszą wersję, a frontend do tego czasu
+    dociąga satelitę przez /api/satellite. Pobierania scen są wspólne (sentinel._submit), więc nic nie idzie dwa razy;
+    pogoda, gleba i działka są już w pamięci podręcznej, więc liczy się tylko to, co brakowało."""
+    try:
+        report = await build_report(report_request(inp), satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S)
+    except Exception:
+        log.exception("Uzupełnienie zdjęć satelitarnych pola %s się nie udało", row["id"])
+        return
+    with _db() as con:   # tylko gdy pole się w międzyczasie nie zmieniło i ma już pierwszą wersję raportu
+        con.execute("UPDATE fields SET report = ?, refreshed_at = ? WHERE id = ? AND input = ? AND job = 'ok'",
+                    (json.dumps(report.model_dump(mode="json"), ensure_ascii=False), time.time(), row["id"], row["input"]))
+
+
 async def compute(row: sqlite3.Row) -> None:
     day = today_warsaw().isoformat()
     try:
         inp = FieldInput.model_validate_json(row["input"])
-        # w tle nikt nie czeka, więc satelita dostaje pełny czas, a raport jest od razu kompletny
-        report = await build_report(report_request(inp), satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S)
+        # Pierwsza wersja raportu nie czeka na zdjęcia satelitarne: zapisujemy ją od razu, a satelitę (_complete_satellite)
+        # i teren (terrain_service, uruchamiany w build_report) kończą osobne zadania równolegle.
+        report = await build_report(report_request(inp), satellite_budget_s=SATELLITE_QUICK_BUDGET_S)
     except HTTPException as exc:
         _finish(row, None, str(exc.detail), day)
     except Exception as exc:   # błąd jednego pola nie może zatrzymać workera
@@ -146,6 +171,8 @@ async def compute(row: sqlite3.Row) -> None:
         _finish(row, None, f"Nie udało się policzyć raportu ({type(exc).__name__}). Ponowię za {RETRY_S / 60:.0f} min.", day)
     else:
         _finish(row, report.model_dump(mode="json"), None, day)
+        if report.satellite.status == Status.pending:
+            _spawn(_complete_satellite(row, inp))
 
 
 async def run_worker() -> None:
