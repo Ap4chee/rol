@@ -1,10 +1,12 @@
-"""Porównanie: sieć GRU (PyTorch, GPU) z tymi samymi danymi i podziałami co train.py.
+"""Porównanie: sieć GRU (PyTorch, GPU) z tymi samymi danymi i podziałami co pipeline/ndmi/train.py.
 
 Wejście sieci: przebieg dzienny z 60 dni przed t (opad, ET0, Tmax, wyczerpanie wiadra referencyjnego)
 oraz te same cechy tabelaryczne co model drzewiasty. Wyjście: kwantyle 0,1 / 0,5 / 0,9 ΔNDMI (strata pinball).
 To eksperyment porównawczy: do aplikacji trafia model, który wypada lepiej na odłożonych skupiskach
 i sezonie; GRU wymagałoby dodania PyTorch do zależności aplikacji.
 Wynik: metrics_gru.json w podanym katalogu przebiegu (albo w RUNS_DIR/gru_<czas>).
+
+Użycie: python -m kowr_ml.experiments.train_gru [katalog_przebiegu]
 """
 from __future__ import annotations
 
@@ -18,9 +20,9 @@ import pandas as pd
 import torch
 from torch import nn
 
-from . import config as C
-from .dataset import weather_by_cluster
-from .features import FEATURES
+from kowr_ml.pipeline import config as C
+from kowr_ml.pipeline.tables import weather_by_cluster
+from kowr_ml.runtime.features import FEATURES
 
 SEQ_DAYS = 60
 QUANTILES = (0.1, 0.5, 0.9)
@@ -80,9 +82,11 @@ def main(argv: list[str]) -> None:
     is_fit = train_mask & ~is_val
 
     # Standaryzacja na zbiorze uczącym; braki -> 0 plus flaga braku.
-    mu = np.nanmean(stat_raw[is_fit], axis=0); sd = np.nanstd(stat_raw[is_fit], axis=0) + 1e-6
+    mu = np.nanmean(stat_raw[is_fit], axis=0)
+    sd = np.nanstd(stat_raw[is_fit], axis=0) + 1e-6
     stat = np.concatenate([np.nan_to_num((stat_raw - mu) / sd), missing], axis=1).astype(np.float32)
-    smu = seq[is_fit].reshape(-1, 4).mean(0); ssd = seq[is_fit].reshape(-1, 4).std(0) + 1e-6
+    smu = seq[is_fit].reshape(-1, 4).mean(0)
+    ssd = seq[is_fit].reshape(-1, 4).std(0) + 1e-6
     seq = ((seq - smu) / ssd).astype(np.float32)
 
     def tensors(mask):
@@ -95,7 +99,7 @@ def main(argv: list[str]) -> None:
         net = Net(stat.shape[1], hidden).to(dev)
         opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-4)
         best, best_state, bad = 1e9, None, 0
-        for epoch in range(EPOCHS):
+        for _epoch in range(EPOCHS):
             net.train()
             perm = torch.randperm(len(fit_t[2]), device=dev)
             for i in range(0, len(perm), BATCH):

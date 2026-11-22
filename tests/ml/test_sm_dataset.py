@@ -3,8 +3,8 @@ from datetime import date, timedelta
 
 import numpy as np
 
-from kowr_ml.features import WeatherSeries
-from kowr_ml.sm_dataset import SM_LAG_DAYS, sm_feature_row
+from kowr_ml.pipeline.soil_moisture.dataset import SM_LAG_DAYS, sm_feature_row
+from kowr_ml.runtime.features import WeatherSeries
 
 START = date(2020, 1, 1)
 N = 400

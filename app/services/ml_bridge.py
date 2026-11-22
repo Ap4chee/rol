@@ -67,11 +67,11 @@ def predict_ndmi(observations: list[Observation], weather: DailyWeather, day: da
                  location: tuple[float, float] | None) -> NdmiPrediction | None:
     """Prognoza NDMI albo None poza sezonem modelu. location to (lat, lon) w EPSG:4326."""
     try:
-        from kowr_ml import predict as ml_predict
-        if not ml_predict.in_season(day):
+        from kowr_ml import NdmiForecaster
+        if not NdmiForecaster.in_season(day):
             return None
         lat, lon = location if location else (None, None)
-        out = ml_predict.predict(observations, weather, day, lat=lat, lon=lon)
+        out = NdmiForecaster.default().predict(observations, weather, day, lat=lat, lon=lon)
     except Exception as exc:   # brak scikit-learn, uszkodzony plik modelu itp.
         log.warning("Prognoza NDMI się nie policzyła", exc_info=exc)
         return NdmiPrediction(available=False, reason=_unavailable(exc))
@@ -86,8 +86,8 @@ def predict_moisture(weather: DailyWeather, ifs: IfsForecast, soil_layers: list[
                      today: date) -> MoisturePrediction:
     """Zmiana wilgotności gleby 0–100 cm na 14 dni (model v3 na prognozie ECMWF IFS)."""
     try:
-        from kowr_ml import sm_predict
-        out = sm_predict.predict(weather, ifs, soil_layers, today)
+        from kowr_ml import SoilMoistureForecaster
+        out = SoilMoistureForecaster.default().predict(weather, ifs, soil_layers, today)
     except Exception as exc:   # brak scikit-learn, uszkodzony plik modelu itp.
         log.warning("Prognoza wilgotności się nie policzyła", exc_info=exc)
         return MoisturePrediction(available=False, reason=_unavailable(exc))

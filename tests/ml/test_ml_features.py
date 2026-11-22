@@ -1,4 +1,4 @@
-"""Cechy modelu prognozy NDMI (kowr_ml/features.py) i predykcja z obserwacji aplikacji. Bez sieci.
+"""Cechy modelu prognozy NDMI (kowr_ml/runtime/features.py) i predykcja z obserwacji aplikacji. Bez sieci.
 
 Najważniejsze: cechy policzone z obserwacji aplikacji (NDMI tylko dla trzech wybranych scen) muszą być takie same
 jak w treningu, gdzie wskaźniki mają wszystkie czyste sceny.
@@ -11,8 +11,10 @@ import pytest
 
 from app.sources.sentinel import Observation, choose_for_indices
 from app.sources.weather import DailyWeather
-from kowr_ml import predict as ml_predict
-from kowr_ml.features import FEATURES, FieldScenes, WeatherSeries, feature_row, observation_features, target
+from kowr_ml import NdmiForecaster
+from kowr_ml.pipeline.ndmi.labels import target
+from kowr_ml.runtime.features import FEATURES, FieldScenes, WeatherSeries, feature_row, observation_features
+from kowr_ml.runtime.ndmi import scenes_from_observations
 
 T = date(2025, 6, 25)
 START = date(2024, 10, 1)
@@ -120,7 +122,7 @@ def test_missing_weather_gives_nan_not_zero():
 def test_app_observations_give_the_same_features_as_training():
     w = weather()
     trained = feature_row(training_scenes(), w, T, 51.09, 22.36)
-    served = feature_row(ml_predict.scenes_from_observations(app_observations()), w, T, 51.09, 22.36)
+    served = feature_row(scenes_from_observations(app_observations()), w, T, 51.09, 22.36)
     assert set(FEATURES) <= set(trained)
     for name in FEATURES:
         assert served[name] == pytest.approx(trained[name], nan_ok=True), name
@@ -130,10 +132,10 @@ def test_predict_returns_forecast_with_all_model_inputs():
     days = 400
     series = DailyWeather(dates=[START + timedelta(days=i) for i in range(days)], rain_mm=np.where(np.arange(days) % 10 == 0, 12.0, 0.0),
                           et0_mm=np.full(days, 3.0), tmin_c=np.full(days, 10.0), tmax_c=np.full(days, 20.0), origin=["open_meteo"] * days)
-    out = ml_predict.predict(app_observations(), series, T, lat=51.09, lon=22.36)
+    forecaster = NdmiForecaster.default()
+    out = forecaster.predict(app_observations(), series, T, lat=51.09, lon=22.36)
     assert out["available"], out
-    models, _ = ml_predict.load(str(ml_predict.default_model_dir()))
-    assert list(out["inputs"]) == list(models["features"])
+    assert list(out["inputs"]) == list(forecaster.bundle.features)
     assert out["delta_p10"] <= out["delta_p50"] <= out["delta_p90"]
     assert out["last_scene_date"] == (T - timedelta(days=3)).isoformat() and out["ndmi_last"] == 0.3
 
@@ -141,7 +143,17 @@ def test_predict_returns_forecast_with_all_model_inputs():
 def test_predict_gives_reason_instead_of_forecast():
     series = DailyWeather(dates=[START + timedelta(days=i) for i in range(400)], rain_mm=np.zeros(400), et0_mm=np.full(400, 3.0),
                           tmin_c=np.full(400, 10.0), tmax_c=np.full(400, 20.0), origin=[""] * 400)
-    assert "poza okresem" in ml_predict.predict(app_observations(), series, date(2025, 11, 5))["reason"]
+    predict = NdmiForecaster.default().predict
+    assert "poza okresem" in predict(app_observations(), series, date(2025, 11, 5))["reason"]
     cloudy = [o for o in app_observations() if not o.accepted]
-    assert "brak czystego zdjęcia" in ml_predict.predict(cloudy, series, T)["reason"]
-    assert "ostatnie czyste zdjęcie" in ml_predict.predict(app_observations(), series, T + timedelta(days=20))["reason"]
+    assert "brak czystego zdjęcia" in predict(cloudy, series, T)["reason"]
+    assert "ostatnie czyste zdjęcie" in predict(app_observations(), series, T + timedelta(days=20))["reason"]
+
+
+def test_missing_model_gives_reason(tmp_path):
+    out = NdmiForecaster(tmp_path).predict(app_observations(), None, T)
+    assert out == {"available": False, "reason": "model prognozy nie jest zainstalowany"}
+
+
+def test_in_season_window():
+    assert NdmiForecaster.in_season(T) and not NdmiForecaster.in_season(date(2025, 11, 5))

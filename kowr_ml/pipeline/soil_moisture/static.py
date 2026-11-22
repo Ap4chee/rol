@@ -1,9 +1,9 @@
-"""Gleba i teren dla skupisk (cechy stałe modelu wilgotności v2) -> cluster_static.parquet.
+"""Gleba i teren dla skupisk (cechy stałe modelu wilgotności) -> cluster_static.parquet.
 
 Liczone tymi samymi funkcjami co w aplikacji dla działki, żeby przy predykcji cechy powstawały tak samo:
 gleba z SoilGrids (app/sources/soilgrids.fetch_soil) i pedotransfer Saxtona–Rawlsa (app/core/soil.build_variants),
 teren z NMT GUGiK 1 m (app/sources/terrain.fetch_dem) i spadek po wygładzeniu 5 m (app/core/flow.slope_percent).
-Działka umowna: kwadrat 200 × 200 m (EPSG:2180) w środku skupiska.
+Działka umowna: kwadrat 200 × 200 m (EPSG:2180) w środku skupiska. Teren jest w tabeli, ale v3 go nie używa.
 """
 from __future__ import annotations
 
@@ -14,26 +14,16 @@ import numpy as np
 from shapely.geometry import box
 
 from app.core.flow import slope_percent
-from app.core.soil import build_variants
 from app.infra.geo import reproject
 from app.sources import NoData, SourceError
 from app.sources.soilgrids import fetch_soil
 from app.sources.terrain import fetch_dem
-
-from . import config as C
+from kowr_ml.pipeline import config as C
+from kowr_ml.runtime.soil_moisture import SOIL_FEATURES, soil_features
 
 HALF_M = 100.0       # połowa boku działki umownej
 DEM_PAD_M = 50.0     # zapas wokół działki, żeby gradient na brzegu nie liczył się z krawędzi rastra
-ROOT_DEPTH_M = 1.0   # jak etykieta: 0–100 cm
-STATIC_FEATURES = ["soil_sand_pct", "soil_clay_pct", "soil_soc_g_kg", "soil_fc_m3m3", "soil_wp_m3m3",
-                   "terrain_slope_pct", "terrain_elev_m"]
-
-
-def topsoil(layers, attr: str, depth_cm: float = 30.0) -> float | None:
-    """Średnia ważona miąższością warstw w 0–depth_cm; None, gdy brak wartości."""
-    pairs = [(getattr(lr, attr), min(lr.bottom_cm, depth_cm) - lr.top_cm) for lr in layers if lr.top_cm < depth_cm]
-    pairs = [(v, w) for v, w in pairs if v is not None and w > 0]
-    return sum(v * w for v, w in pairs) / sum(w for _, w in pairs) if pairs else None
+STATIC_FEATURES = [*SOIL_FEATURES, "terrain_slope_pct", "terrain_elev_m"]
 
 
 async def cluster_row(client: httpx.AsyncClient, name: str, lat: float, lon: float, with_terrain: bool) -> dict:
@@ -44,10 +34,7 @@ async def cluster_row(client: httpx.AsyncClient, name: str, lat: float, lon: flo
            "terrain_error": None if with_terrain else "pominięte po wcześniejszym błędzie NMT"}
     try:
         soil = await fetch_soil(client, reproject(parcel_2180, "EPSG:2180", "EPSG:4326"))
-        variant = build_variants(soil.layers, ROOT_DEPTH_M)[0]
-        row.update({"soil_sand_pct": topsoil(soil.layers, "sand_pct"), "soil_clay_pct": topsoil(soil.layers, "clay_pct"),
-                    "soil_soc_g_kg": topsoil(soil.layers, "soc_g_kg"), "soil_fc_m3m3": variant.fc_root,
-                    "soil_wp_m3m3": variant.wp_root, "soil_method": soil.method})
+        row.update({**soil_features(soil.layers), "soil_method": soil.method})   # ta sama funkcja co w predykcji
     except (SourceError, NoData) as exc:   # np. środek skupiska na zabudowie: brak gleby zostaje brakiem (NaN)
         row["soil_error"] = str(exc)
     if with_terrain:

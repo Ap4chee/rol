@@ -1,4 +1,4 @@
-"""Cechy i etykieta modelu zmiany NDMI. Czyste funkcje bez sieci: te same w treningu i w predykcji.
+"""Cechy modelu zmiany NDMI. Czyste funkcje bez sieci: te same w treningu i w predykcji (etykieta: pipeline/ndmi/labels.py).
 
 Wszystkie okna cech kończą się na dniu t-1 (dzień prognozy t, doba Europe/Warsaw).
 Obserwacja bazowa: najnowsza zaakceptowana scena z t-14 … t-1. Docelowa: pierwsza z t+7 … t+14.
@@ -14,13 +14,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 
 import numpy as np
 
 from app.core.water_balance import run_water_balance
-
-from . import config as C
+from kowr_ml.runtime import config as C
 
 # 16 cech pierwszego modelu
 BASE_FEATURES = [
@@ -245,17 +244,6 @@ def observation_features(s: FieldScenes, t: date) -> dict | None:
     return out
 
 
-def target(s: FieldScenes, t: date) -> dict | None:
-    t64 = np.datetime64(t, "D")
-    lo, hi = C.TARGET_WINDOW_DAYS
-    acc = s.accepted
-    sel = acc[(s.dates[acc] >= t64 + np.timedelta64(lo, "D")) & (s.dates[acc] <= t64 + np.timedelta64(hi, "D"))]
-    if sel.size == 0:
-        return None
-    k = int(sel[0])
-    return {"ndmi_future": float(s.ndmi[k]), "target_index": k, "target_valid_fraction": float(s.valid_fraction[k])}
-
-
 def feature_row(s: FieldScenes, weather: WeatherSeries, t: date, lat: float = NAN, lon: float = NAN) -> dict | None:
     """Pełny wiersz cech dla dnia prognozy t albo None z brakiem danych (obserwacja albo pogoda)."""
     of = observation_features(s, t)
@@ -266,13 +254,3 @@ def feature_row(s: FieldScenes, weather: WeatherSeries, t: date, lat: float = NA
         return None
     last_scene = s.dates[of["_last_index"]].astype(object)
     return {**of, **wf, **weather.extra_features(t, last_scene), **doy_features(t), "lat": float(lat), "lon": float(lon)}
-
-
-def issue_dates(season: int) -> list[date]:
-    d = date.fromisoformat(f"{season}-{C.ISSUE_FIRST}")
-    end = date.fromisoformat(f"{season}-{C.ISSUE_LAST}")
-    out = []
-    while d <= end:
-        out.append(d)
-        d += timedelta(days=C.ISSUE_STEP_DAYS)
-    return out

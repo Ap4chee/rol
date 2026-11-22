@@ -14,6 +14,7 @@ Model do aplikacji: te same hiperparametry, dopasowanie na wszystkich danych.
 Hiperparametry i zestaw cech wybrano w osobnych eksperymentach na tych samych podziałach (opis w README).
 
 Wynik: runs/<data>_<hash>/ z model.joblib, model_card.json, metrics.json, oof_predictions.parquet.
+Użycie: python -m kowr_ml.pipeline.ndmi.train
 """
 from __future__ import annotations
 
@@ -30,8 +31,8 @@ import pandas as pd
 import sklearn
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from . import config as C
-from .features import BASE_FEATURES, FEATURES, SEASONAL_FEATURES
+from kowr_ml.pipeline import config as C
+from kowr_ml.runtime.features import BASE_FEATURES, FEATURES, SEASONAL_FEATURES
 
 PARAMS = {"learning_rate": 0.1, "max_iter": 700, "max_leaf_nodes": 31, "min_samples_leaf": 50, "l2_regularization": 1.0}
 BIG_DROP = -0.05

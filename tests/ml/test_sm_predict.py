@@ -1,9 +1,11 @@
-"""Prognoza IFS i cechy modelu wilgotności v3 liczone tak jak w treningu (kowr_ml/ifs.py, sm2_dataset.py)."""
+"""Prognoza IFS i cechy modelu wilgotności v3 liczone tak jak w treningu (kowr_ml/pipeline/soil_moisture)."""
 import math
 from datetime import date, datetime, timedelta
 
 from app.sources.ifs_forecast import parse
-from kowr_ml.sm_predict import ifs_features, predict
+from app.sources.weather import DailyWeather
+from kowr_ml import SoilMoistureForecaster
+from kowr_ml.runtime.soil_moisture import ifs_features
 
 T = date(2026, 6, 10)
 
@@ -46,5 +48,14 @@ def test_ifs_features_rain_7d_is_first_week_of_longer_horizon():
 
 
 def test_predict_without_model_gives_reason(tmp_path):
-    out = predict(None, None, None, T, model_dir=tmp_path)
+    out = SoilMoistureForecaster(tmp_path).predict(None, None, None, T)
     assert out == {"available": False, "reason": "model prognozy wilgotności nie jest zainstalowany"}
+
+
+def test_predict_with_installed_model():
+    days = 400
+    weather = DailyWeather(dates=[T - timedelta(days=days - i) for i in range(days)], rain_mm=[2.0 if i % 5 == 0 else 0.0 for i in range(days)],
+                           et0_mm=[3.0] * days, tmin_c=[10.0] * days, tmax_c=[22.0] * days, origin=["open_meteo"] * days)
+    out = SoilMoistureForecaster.default().predict(weather, parse(payload(), T), None, T)
+    assert out["available"] and len(out["points"]) == 14
+    assert all(p["delta_p10"] <= p["delta_p50"] <= p["delta_p90"] for p in out["points"])
