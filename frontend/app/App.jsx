@@ -13,6 +13,7 @@ import { Onboarding, useOnboarding } from '@/features/onboarding/Onboarding';
 import { mergeSatellite } from '@/features/report/completion';
 import { Report } from '@/features/report/Report';
 import { WeatherCard } from '@/features/weather/WeatherCard';
+import { prefetchForecast } from '@/features/weather/useForecast';
 import { DeleteFieldDialog, FieldFormDialog } from './FieldDialogs.jsx';
 import { REPORT_TABS } from './reportTabs.jsx';
 import { DASHBOARD_HREF, fieldHref, fieldTabHref, LEGACY_ADD_HREF, mapCode, pageOf, routeTab } from './router.js';
@@ -50,6 +51,9 @@ export function App() {
   const page = pageOf(hash, Boolean(field));
   const [menuOpen, setMenuOpen] = useState(false);
   const desktop = useMediaQuery(DESKTOP);
+  // prognoza od razu po otwarciu raportu: wydruk (montuje zakładkę pogody dopiero przy drukowaniu) ma ją gotową
+  const forecastAt = page === 'field' ? field?.report?.parcel?.centroid ?? field?.report?.request?.point : null;
+  useEffect(() => { prefetchForecast(forecastAt); }, [forecastAt?.lat, forecastAt?.lon]);
 
   const onSatellite = useCallback((id, generatedAt, result) => {
     const merge = (entry) => ({ ...entry, report: mergeSatellite(entry.report, result) });
