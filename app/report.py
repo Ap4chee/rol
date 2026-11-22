@@ -685,11 +685,16 @@ def signed(value: float) -> str:
     return text if text.startswith("-") or text == "0,00" else "+" + text
 
 
-def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: date) -> NdmiForecast:
-    """Prognoza zmiany NDMI na 7–14 dni (kowr_ml). Model jest dodatkiem: błąd albo brak modelu nie psuje raportu."""
+def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: date,
+                  location: tuple[float, float] | None = None) -> NdmiForecast:
+    """Prognoza zmiany NDMI na 7–14 dni (kowr_ml). Model jest dodatkiem: błąd albo brak modelu nie psuje raportu.
+
+    location – (lat, lon) środka działki w EPSG:4326; model używa położenia jako cechy.
+    """
     try:
         from kowr_ml import predict as ml_predict
-        out = ml_predict.predict(result.observations, c.series, analysis_date)
+        lat, lon = location if location else (None, None)
+        out = ml_predict.predict(result.observations, c.series, analysis_date, lat=lat, lon=lon)
     except Exception as exc:  # brak scikit-learn, uszkodzony plik modelu itp.
         return NdmiForecast(available=False, reason=f"moduł prognozy niedostępny ({type(exc).__name__})")
     fc = NdmiForecast(**out)
@@ -701,7 +706,9 @@ def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: 
     elif mid >= satellite_logic.NDMI_DROP:
         trend = "prawdopodobnie wzrośnie"
     else:
-        trend = "prawdopodobnie nie zmieni się wyraźnie"
+        # Gdy model nie wskazuje kierunku, NDMI i tak zwykle się zmienia: zmiana poniżej progu zdarzyła się
+        # w 40% takich przypadków na danych niezależnych (README, „Model ML”). Dlatego nie piszemy „nie zmieni się”.
+        trend = "może zmienić się w obie strony"
     fc.text.append(
         f"Prognoza modelu ({fc.status}): w dniach {fmt_date(fc.window_from)}–{fmt_date(fc.window_to)} uwilgotnienie roślin "
         f"(NDMI) {trend} względem zdjęcia z {fmt_date(fc.last_scene_date)}: zmiana {signed(mid)}, "
@@ -719,7 +726,8 @@ def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: 
 
 
 def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo, c: Computed, class_key: str,
-                      request: ReportRequest, parcel_id: str | None) -> tuple[SatelliteSection, bool]:
+                      request: ReportRequest, parcel_id: str | None,
+                      location: tuple[float, float] | None = None) -> tuple[SatelliteSection, bool]:
     """Sekcja satelitarna i informacja, czy rozbieżność z bilansem uzasadnia oględziny pola."""
     if result is None:
         return SatelliteSection(status=info.status, reason=info.reason, text=[SATELLITE_NO_IMPACT]), False
@@ -782,7 +790,7 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
         section.endpoint = satellite_endpoint(request, parcel_id)
         section.reason = (f"Część zdjęć jeszcze się wczytuje ({result.unfinished} scen; łącze do archiwum zdjęć jest wolne). "
                           "Wynik uzupełni się sam, zwykle w ciągu minuty.")
-    section.ndmi_forecast = ndmi_forecast(result, c, request.date)
+    section.ndmi_forecast = ndmi_forecast(result, c, request.date, location)
     if not c.in_season and section.green_cover is True and c.crop_daily.stage[-1] == "off_season":
         section.text.append("Na polu widać zieloną okrywę, choć według kalendarza wybranej uprawy pole powinno być puste. "
                             "To może być międzyplon, samosiewy albo inna uprawa niż wybrana.")
@@ -1185,7 +1193,8 @@ async def build_report(request: ReportRequest, today: date | None = None,
     satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
     timings["satellite"] = satellite_info.elapsed_s or 0.0
     satellite, satellite_field_check = satellite_section(
-        satellite_result, satellite_info, computed, status.class_key or "none", request, parcel.id if parcel else None)
+        satellite_result, satellite_info, computed, status.class_key or "none", request, parcel.id if parcel else None,
+        location=(lat, lon))
     if satellite.status != Status.ok and satellite_info.status == Status.ok:
         satellite_info.status, satellite_info.reason = satellite.status, satellite.reason
         if satellite.status == Status.no_data:

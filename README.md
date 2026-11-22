@@ -167,7 +167,8 @@ Przygotowane wcześniej i zapisane w repozytorium:
 | `app/data/soilgrids_tiles_pl.json` | położenie 63 kafli SoilGrids nad Polską, wyciągnięte z pliku VRT ISRIC; używane tylko w trybie awaryjnym. Nie zawiera wartości gleby | 21.11.2026 |
 | `outputs/assety_gleby/webp/` | umowne ilustracje warstw gleby (wygenerowane narzędziem AI, patrz niżej) | 21.11.2026 |
 | `static/vendor/` | OpenLayers 10.11.0 i czcionki | 21.11.2026 |
-| `kowr_ml/model/20261121_2014_0502bf/` | wytrenowany model prognozy zmiany NDMI (`model.joblib`, 6,6 MB), karta modelu, metryki, porównanie z GRU. Dane treningowe: Sentinel-2 i Open-Meteo z lat 2019–2025 (bez 2022), pobrane 21.11.2026 | 21.11.2026 |
+| `kowr_ml/model/20261122_0005_e1c565/` | wytrenowany model prognozy zmiany NDMI używany przez aplikację (`model.joblib`, 3,7 MB), karta modelu, metryki, porównanie z GRU. Dane treningowe: Sentinel-2 (obie kolekcje) i Open-Meteo z lat 2017–2026, pobrane 21–22.11.2026 | 22.11.2026 |
+| `kowr_ml/model/20261121_2014_0502bf/` | poprzedni model (`model.joblib`, 6,6 MB), zostawiony do porównań. Dane treningowe: Sentinel-2 i Open-Meteo z lat 2019–2025 (bez 2022), pobrane 21.11.2026 | 21.11.2026 |
 
 Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest częścią repozytorium.
 
@@ -228,19 +229,41 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 Model odpowiada na pytanie „czy w ciągu 1–2 tygodni rośliny na polu zaczną tracić wodę”. Zgodnie ze [specyfikacją](specyfikacja_treningu_ml_kowr.md) prognozuje zmianę wskaźnika NDMI (Sentinel-2, B8A i B11) między ostatnim czystym zdjęciem z 14 dni przed datą analizy a pierwszym czystym zdjęciem z dni +7…+14. Nie prognozuje wilgotności gleby ani dawki nawodnienia.
 
 - **Gdzie w raporcie:** sekcja satelitarna, pole `satellite.ndmi_forecast` (opis w [docs/kontrakt_api.md](docs/kontrakt_api.md)): zmiana z przedziałem 80%, okno prognozy, zdjęcie bazowe, cechy wejściowe. Bez danych (poza okresem 01.04–15.10, brak czystego zdjęcia z 14 dni) raport podaje powód.
-- **Cechy** (wszystkie sprzed daty analizy): ostatnie NDMI, jego wiek i pokrycie pola, trend NDMI z poprzedniego zdjęcia, dzień roku, opad i ET0 z 7, 14 i 30 dni, klimatyczny bilans wodny z 30 dni, średnia Tmax z 7 dni, dni od opadu ≥ 5 mm oraz wyczerpanie referencyjnego bilansu FAO-56 (TAW 100 mm, Kc = 1). Model nie zna gleby ani uprawy, bo w danych treningowych ich nie ma.
-- **Dane treningowe:** 2531 pól 80 × 80 m na gruntach ornych (ESA WorldCover 2021) w 20 skupiskach po 6 × 6 km w całej Polsce, sezony 2019–2021 i 2023–2025, dni prognozy co tydzień od kwietnia do połowy października: 120 152 wiersze. Rok 2022 pominięto, bo kolekcja `sentinel-2-c1-l2a` ma dla niego tylko 1–4 sceny na obszar. Działka 580/2 jest poza zbiorem.
-- **Odtworzenie:** moduły `kowr_ml.fields`, `kowr_ml.weather`, `kowr_ml.s2`, `kowr_ml.dataset`, `kowr_ml.train` (opis w `kowr_ml/__init__.py`). Pobranie danych trwało ok. 50 minut na serwerze z 31 rdzeniami, trening kilkanaście minut na CPU.
+- **Cechy** (47, wszystkie sprzed daty analizy i tylko z danych, które raport i tak pobiera):
+  - stan pola: ostatnie NDMI, jego wiek i pokrycie pola, NDVI, mediany reflektancji pasm B8A, B11 i B04;
+  - historia zdjęć z 45 dni: trend NDMI i NDVI z poprzedniego zdjęcia, trend z jeszcze wcześniejszego i ich różnica, liczba scen i czystych scen, udział roślinności, gołej gleby i chmur według klas SCL;
+  - pora roku i ciepło: dzień roku, sumy temperatur efektywnych (od 1 stycznia, od 1 marca, z 30 dni), średnia temperatura z 7 i 30 dni, najniższa Tmin z 7 dni;
+  - woda: opad i ET0 z 7, 14 i 30 dni, klimatyczny bilans wodny z 30 dni, średnia Tmax z 7 dni, dni od opadu ≥ 5 mm, wyczerpanie referencyjnego bilansu FAO-56 (TAW 100 mm, Kc = 1), opad w dniu zdjęcia i dzień wcześniej, opad i ET0 od zdjęcia do dnia analizy;
+  - położenie: szerokość i długość geograficzna.
 
-Walidacja na rekordach, których model nie widział (MAE zmiany NDMI, mniej = lepiej):
+  Model nie zna gleby ani uprawy, bo w danych treningowych ich nie ma. Kod cech jest wspólny dla treningu i aplikacji (`kowr_ml/features.py`); test sprawdza, że z obserwacji aplikacji (wskaźniki tylko dla trzech scen) wychodzą te same wartości co w treningu.
+- **Dane treningowe:** 15 782 pola 80 × 80 m na gruntach ornych (ESA WorldCover 2021) w 161 skupiskach po 6 × 6 km: 46 wybranych w regionach rolniczych i 115 w regularnej siatce co ok. 50 km na cały kraj. Sezony 2017–2026, obie kolekcje Sentinel-2 tak jak w aplikacji, dni prognozy co tydzień od kwietnia do połowy października: 682 428 wierszy (2017: 4 tys., lata 2018–2024 po 49–63 tys., 2025 i 2026 po ok. 142 tys.). 93 punkty siatki mają pogodę tylko od października 2024 r., bo dzienny limit Open-Meteo skończył się w dniu treningu, stąd przewaga dwóch ostatnich sezonów. Jedno skupisko leży wokół działki 580/2, więc wynik dla niej nie jest testem niezależnym; wszystkie liczby poniżej pochodzą z prognoz dla skupisk, których dopasowanie nie widziało.
+- **Odtworzenie:** moduły `kowr_ml.fields`, `kowr_ml.s2`, `kowr_ml.weather`, `kowr_ml.dataset`, `kowr_ml.train` (opis w `kowr_ml/__init__.py`). Na serwerze z 31 rdzeniami pobranie scen trwało 43 minuty, tabela 1 minutę, trening z oceną 33 minuty. Pogodę ogranicza limit Open-Meteo (ok. 38 skupisk na dobę z jednego adresu).
 
-| Test | Wiersze | Prognoza „bez zmiany” | Model sezonowy (dzień roku + ostatnie NDMI) | **Model (HGB)** | Sieć GRU (porównanie) | Pokrycie przedziału 80% |
+Ocena na polach ze skupisk, których dopasowanie nie widziało (MAE zmiany NDMI, mniej = lepiej):
+
+| Test | Wiersze | Prognoza „bez zmiany” | Model sezonowy (dzień roku + ostatnie NDMI) | 16 cech pierwszego modelu | **Model** | Pokrycie przedziału 80% |
 |---|---:|---:|---:|---:|---:|---:|
-| 4 odłożone skupiska, 2019–2024 | 19 341 | 0,090 | 0,069 | **0,061** | 0,062 | 79% |
-| 16 skupisk treningowych, sezon 2025 | 18 437 | 0,092 | 0,067 | **0,063** | 0,061 | 78% |
-| odłożone skupiska, sezon 2025 | 4 870 | 0,089 | 0,070 | **0,064** | 0,063 | 77% |
+| nowe miejsce, sezon znany z innych miejsc (5 foldów po skupisku) | 682 428 | 0,093 | 0,071 | 0,060 | **0,054** | 80% |
+| nowe miejsce i nieznany sezon (sezon odłożony w całości) | 682 428 | 0,093 | 0,075 | 0,067 | **0,060** | nie liczono |
+| susza: wyczerpanie bilansu referencyjnego ≥ 75% | 202 311 | 0,092 | 0,074 | 0,062 | **0,056** | 79% |
+| głęboka susza: bilans z 30 dni ≤ −100 mm | 32 089 | 0,098 | 0,079 | 0,066 | **0,061** | |
+| duże spadki NDMI (≤ −0,05) | 184 204 | 0,130 | 0,096 | 0,080 | **0,071** | |
+| sezon 2018 (susza) | 60 409 | 0,098 | 0,079 | 0,064 | **0,058** | 79% |
+| sezon 2022 (susza) | 51 572 | 0,098 | 0,073 | 0,063 | **0,056** | 79% |
 
-Model jest ok. 30% lepszy od prognozy „bez zmiany” we wszystkich testach, także przy dużych spadkach NDMI (≤ −0,05: 0,084 wobec 0,130 na odłożonych skupiskach). Sieć GRU (PyTorch, uczona na GPU na przebiegu pogody z 60 dni) wypadła tak samo, więc do aplikacji trafił model drzewiasty, który nie wymaga PyTorcha. Przedział 80% skalibrowano metodą conformalized quantile regression na prognozach spoza foldu. Pełne metryki (według miesiąca, po polach) są w `kowr_ml/model/20261121_2014_0502bf/metrics.json`, a karta modelu w `model_card.json`. Model ma status „eksperymentalny”: sprawdzono go na odłożonych obszarach i późniejszym sezonie, ale pola treningowe to fragmenty gruntów ornych, a nie granice deklarowanych upraw.
+Wiersze od trzeciego w dół to wycinki pierwszego testu. Pierwszy test odpowiada sytuacji raportu dla dat z lat 2017–2026 (działka jest nowa, sezon model zna), drugi pokazuje, czego się spodziewać w kolejnym sezonie.
+
+- **Wobec poprzedniego modelu** (`20261121_2014_0502bf`, 16 cech, 20 skupisk, sezony 2019–2021 i 2023–2025) na 497 144 wierszach ze 141 skupisk, których tamten nie widział: błąd 0,065 → 0,054 (o 17% mniej), w sezonie 2018: 0,071 → 0,057, w 2022: 0,068 → 0,056, w 2026: 0,072 → 0,055, dla dużych spadków: 0,093 → 0,073. Poprzedni model zawyżał prognozę średnio o 0,013, nowy o 0,004.
+- **Komunikaty raportu** (próg 0,03): „prawdopodobnie spadnie” sprawdza się w 74% przypadków, „prawdopodobnie wzrośnie” w 82%. Model wykrywa 71% faktycznych spadków, a kierunek zmiany większej niż 0,05 trafia w 91%. Gdy nie wskazuje kierunku, NDMI zmienia się o mniej niż 0,03 tylko w 40% przypadków, dlatego raport pisze wtedy „może zmienić się w obie strony”, a nie „nie zmieni się”.
+- **Przedział 80%:** regresja kwantylowa z poprawką conformalized quantile regression liczoną osobno dla obu granic (dolna o 0,007 niżej, górna o 0,010 wyżej). Pokrycie liczone z poprawką wyznaczoną bez ocenianego foldu: 80,0%, w poszczególnych sezonach 78–81%. Przy spadkach większych niż 0,15 (8% wierszy) w przedziale mieści się połowa obserwacji, a błąd wynosi 0,12: model takie spadki zaniża.
+- **Granica dokładności:** to samo pole na dwóch czystych zdjęciach w odstępie jednego dnia różni się w NDMI średnio o 0,026, a w odstępie 2–3 dni o 0,039. Błąd prognozy na 1–4 tygodnie nie zejdzie wyraźnie poniżej tego poziomu.
+- **Co sprawdziliśmy i odrzuciliśmy:** dłuższe okna opadu i bilansu (60 i 90 dni), większą wagę wierszy z suszy, wyrównanie wag sezonów i sam większy zbiór przy tych samych cechach nie zmieniały błędu. Maksimum NDMI z całego sezonu dałoby jeszcze ok. 1 punkt procentowy, ale wymaga wskaźników ze wszystkich scen sezonu, czyli wielokrotnie dłuższego pobierania w raporcie. Idealna prognoza pogody na okno 7–14 dni dałaby 1–3 punkty; prawdziwa prognoza da mniej.
+- **Sieć GRU** (PyTorch na GPU, przebieg pogody z 60 dni i te same cechy, zespół 5 sieci, `kowr_ml/train_gru.py`) na podziale pierwszego modelu wypadła o 4–6% lepiej: 0,051 wobec 0,055 na 4 odłożonych skupiskach i 0,056 wobec 0,058 na odłożonych skupiskach w sezonie 2025. Do aplikacji trafił model drzewiasty, bo nie wymaga PyTorcha i mieści się w 3,7 MB; sieć jest kierunkiem dalszej pracy.
+
+Pełne metryki (według sezonu i miesiąca) są w `kowr_ml/model/20261122_0005_e1c565/metrics.json`, karta modelu w `model_card.json`, wynik sieci w `metrics_gru.json`. Poprzedni model został w repozytorium (`kowr_ml/model/20261121_2014_0502bf/`); aplikacja bierze najnowszy katalog, a zmienna `KOWR_ML_MODEL_DIR` pozwala wskazać inny. Model ma status „eksperymentalny”: pola treningowe to fragmenty gruntów ornych, a nie granice deklarowanych upraw.
+
+Sprawdzenie w aplikacji na prawdziwych działkach (22.11.2026): 4 lokalizacje (580/2, Żuławy, Podkarpacie, punkt koło Poznania) i 9 dat z lat 2018–2026. Prognoza powstała w 20 z 36 przypadków, w pozostałych raport podał powód (brak czystego zdjęcia z 14 dni; punkt koło Poznania nie ma pikseli roślinności w żadnej dacie). Z 11 prognoz, które dało się porównać z późniejszym zdjęciem, 8 zmieściło się w przedziale. Na samej działce 580/2 trafiła 1 z 4: spadek NDMI o 0,24 w lipcu 2022 r. model przewidział jako −0,19 (dolna granica −0,23), a spadku o 0,21 w czerwcu 2023 r. nie przewidział (prognoza −0,06).
 
 ## Weryfikacja wyników
 
@@ -286,7 +309,7 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 - **FAO-56**: tabele pochodzą z wydania z 1998 r. dostępnego na fao.org. Materiał KOWR cytuje wydanie poprawione z 2025 r.; nie porównaliśmy tabel między wydaniami.
 - **Progi reguł** rekomendacji i zgodności satelity z bilansem są założeniami roboczymi zapisanymi jako stałe w kodzie, nie wartościami z publikacji.
 - **Granice działek: ULDK, a przy jego awarii zbiorczy WFS ewidencji GUGiK.** 21.11.2026 wieczorem ULDK i KIEG przekierowywały każde zapytanie, z różnych adresów IP, na stronę zastępczą `integracja01.gugik.gov.pl/resp/`. Zbiorczy WFS stoi na innym serwerze i wtedy działał: na 5 działkach pobranych wcześniej z ULDK dał tę samą granicę (powierzchnia zgodna do 0,0001 ha). Raport podaje w tabeli źródeł, z której usługi pochodzi granica. WFS nie zastępuje wyszukiwania po nazwie obrębu i numerze (filtr po dwóch polach zwraca HTTP 500), więc przy awarii ULDK działa pełny identyfikator i kliknięcie na mapie. Gdy zawiodą obie usługi, działki zapisane wcześniej w pamięci podręcznej działają, a dla nowych raport powstaje dla wskazanego punktu: bez powierzchni, zdjęć satelitarnych pola i spływu.
-- **Model ML** prognozuje wskaźnik satelitarny, nie wilgotność gleby. Nie zna gleby ani uprawy działki, uczono go na pogodzie z Open-Meteo (przy NASA POWER raport ostrzega o mniejszej pewności) i działa tylko od 1 kwietnia do 15 października, gdy jest czyste zdjęcie z 14 dni przed datą. Zbiór treningowy nadreprezentuje okresy z dobrą widocznością pola.
+- **Model ML** prognozuje wskaźnik satelitarny, nie wilgotność gleby. Nie zna gleby ani uprawy działki, uczono go na pogodzie z Open-Meteo (przy NASA POWER raport ostrzega o mniejszej pewności) i działa tylko od 1 kwietnia do 15 października, gdy jest czyste zdjęcie z 14 dni przed datą; na polach testowych z pełną pogodą ten warunek spełniało 44–51% par pole–tydzień. Zbiór treningowy nadreprezentuje okresy z dobrą widocznością pola. Duże spadki NDMI (zbiór, gwałtowne dojrzewanie) model zaniża. Gdy czyste zdjęcie pochodzi z samego dnia analizy, model go nie używa (bierze dane do dnia poprzedniego), a wskaźniki ma wtedy dla starszego zdjęcia bazowego.
 - Prototyp dla jednego użytkownika na komputerze lokalnym: bez kont, bazy danych i danych osobowych.
 
 ## Skala, limity i koszty

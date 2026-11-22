@@ -1,8 +1,8 @@
 """Predykcja zmiany NDMI dla działki i daty z danych, które aplikacja i tak pobiera (bez dodatkowych zapytań).
 
-Wejście: obserwacje Sentinel-2 z app/sources/sentinel.py (Observation: date, ndmi, valid_pixels, total_pixels,
-accepted) i seria pogody z app/sources/weather.py (DailyWeather). Dzień prognozy t = data analizy:
-obserwacje i pogoda tylko do t-1, prognoza dotyczy okna t+7 … t+14.
+Wejście: obserwacje Sentinel-2 z app/sources/sentinel.py (Observation: data, liczby pikseli klas SCL wszystkich scen
+z 45 dni, NDMI/NDVI i mediany pasm dla najwyżej trzech czystych scen) i seria pogody z app/sources/weather.py
+(DailyWeather). Dzień prognozy t = data analizy: obserwacje i pogoda tylko do t-1, prognoza dotyczy okna t+7 … t+14.
 Bez danych wejściowych zwracamy powód zamiast prognozy (AGENTS.md, „Model ML”).
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from . import config as C
-from .features import WeatherSeries, feature_row
+from .features import NAN, FieldScenes, WeatherSeries, feature_row
 
 MODEL_DIR_ENV = "KOWR_ML_MODEL_DIR"
 
@@ -42,8 +42,28 @@ def in_season(t: date) -> bool:
     return first <= t <= last
 
 
-def predict(observations: list, weather, t: date, model_dir: str | Path | None = None) -> dict:
-    """Wynik do raportu: {'available': True, ...} albo {'available': False, 'reason': ...}."""
+def scenes_from_observations(observations: list) -> FieldScenes:
+    """Obserwacje aplikacji jako sceny pola. Wskaźniki bierzemy tylko ze scen zaakceptowanych i policzonych."""
+    rows = [o for o in observations if o.total_pixels]
+
+    def value(o, name: str, only_accepted: bool = True) -> float:
+        v = getattr(o, name, None)
+        return NAN if v is None or (only_accepted and not (o.accepted and o.ndmi is not None)) else float(v)
+
+    return FieldScenes.from_columns(
+        dates=[o.date for o in rows], total_px=[o.total_pixels for o in rows], veg_px=[o.valid_pixels for o in rows],
+        bare_px=[o.bare_pixels for o in rows], cloud_px=[o.cloudy_pixels for o in rows],
+        valid_fraction=[o.valid_pixels / o.total_pixels for o in rows],
+        ndmi=[value(o, "ndmi") for o in rows], ndvi=[value(o, "ndvi") for o in rows], nir=[value(o, "nir08") for o in rows],
+        swir=[value(o, "swir16") for o in rows], red=[value(o, "red") for o in rows])
+
+
+def predict(observations: list, weather, t: date, lat: float | None = None, lon: float | None = None,
+            model_dir: str | Path | None = None) -> dict:
+    """Wynik do raportu: {'available': True, ...} albo {'available': False, 'reason': ...}.
+
+    lat, lon – środek działki w EPSG:4326 (cechy modelu); bez nich model dostaje brak wartości.
+    """
     model_dir = model_dir or default_model_dir()
     if model_dir is None or not (Path(model_dir) / "model.joblib").exists():
         return {"available": False, "reason": "model prognozy nie jest zainstalowany"}
@@ -51,20 +71,16 @@ def predict(observations: list, weather, t: date, model_dir: str | Path | None =
         return {"available": False, "reason": (
             f"poza okresem, na którym model był uczony ({C.ISSUE_FIRST[3:]}.{C.ISSUE_FIRST[:2]}–"
             f"{C.ISSUE_LAST[3:]}.{C.ISSUE_LAST[:2]}); poza sezonem wegetacji zmiana NDMI nie mówi o stanie upraw")}
-    accepted = sorted((o for o in observations if o.accepted and o.ndmi is not None and o.total_pixels),
-                      key=lambda o: o.date)
-    if not accepted:
+    scenes = scenes_from_observations(observations)
+    if scenes.accepted.size == 0:
         return {"available": False, "reason": "brak czystego zdjęcia satelitarnego działki z wartością NDMI"}
-    d = np.array([o.date for o in accepted], dtype="datetime64[D]")
-    nd = np.array([o.ndmi for o in accepted], dtype=float)
-    fr = np.array([o.valid_pixels / o.total_pixels for o in accepted], dtype=float)
     if weather is None:
         return {"available": False, "reason": "brak serii pogodowej"}
-    ws = WeatherSeries(list(weather.dates), weather.rain_mm, weather.et0_mm, weather.tmax_c)
-    row = feature_row(d, nd, fr, ws, t)
+    ws = WeatherSeries(list(weather.dates), weather.rain_mm, weather.et0_mm, weather.tmax_c, getattr(weather, "tmin_c", None))
+    row = feature_row(scenes, ws, t, NAN if lat is None else lat, NAN if lon is None else lon)
     if row is None:
-        lo, hi = C.LAST_WINDOW_DAYS
-        last = str(d[-1])
+        hi = C.LAST_WINDOW_DAYS[1]
+        last = str(scenes.dates[scenes.accepted[-1]])
         return {"available": False, "reason": (
             f"ostatnie czyste zdjęcie z {last}, a model wymaga zdjęcia z {hi} dni przed datą analizy "
             f"albo braki w pogodzie z ostatnich 30 dni")}
@@ -73,8 +89,10 @@ def predict(observations: list, weather, t: date, model_dir: str | Path | None =
     X = np.array([[row.get(k, np.nan) for k in models["features"]]], dtype=float)
     p50 = float(models["median"].predict(X)[0])
     lo_, hi_ = float(models["p10"].predict(X)[0]), float(models["p90"].predict(X)[0])
-    adj = float(models.get("interval_adjust", 0.0))  # kalibracja przedziału z treningu (train.interval_adjustment)
-    p10, p90 = min(lo_, hi_, p50) - adj, max(lo_, hi_, p50) + adj
+    # kalibracja przedziału z treningu (train.interval_adjustments); starsze pliki modelu mają jedną wspólną poprawkę
+    adj_low = float(models.get("interval_adjust_low", models.get("interval_adjust", 0.0)))
+    adj_high = float(models.get("interval_adjust_high", models.get("interval_adjust", 0.0)))
+    p10, p90 = min(lo_, hi_, p50) - adj_low, max(lo_, hi_, p50) + adj_high
     k = row["_last_index"]
     return {
         "available": True,
@@ -83,9 +101,9 @@ def predict(observations: list, weather, t: date, model_dir: str | Path | None =
         "window_from": (t + timedelta(days=C.TARGET_WINDOW_DAYS[0])).isoformat(),
         "window_to": (t + timedelta(days=C.TARGET_WINDOW_DAYS[1])).isoformat(),
         "ndmi_last": round(row["ndmi_last"], 3),
-        "last_scene_date": str(d[k]),
+        "last_scene_date": str(scenes.dates[k]),
         "last_scene_age_days": int(row["days_since_last_scene"]),
         "delta_p50": round(p50, 3), "delta_p10": round(p10, 3), "delta_p90": round(p90, 3),
-        "inputs": {key: (None if isinstance(v, float) and np.isnan(v) else round(float(v), 3))
-                   for key, v in row.items() if not key.startswith("_")},
+        "inputs": {key: (None if not np.isfinite(row.get(key, np.nan)) else round(float(row[key]), 3))
+                   for key in models["features"]},
     }

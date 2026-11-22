@@ -58,9 +58,9 @@ Prognoza modelu z [kowr_ml](../kowr_ml/), dodatek do bilansu. Pole może być `n
 | `window_from`, `window_to` | okno, którego dotyczy prognoza (data analizy + 7 … + 14 dni) |
 | `ndmi_last`, `last_scene_date`, `last_scene_age_days` | zdjęcie, od którego liczona jest zmiana |
 | `delta_p50` | prognozowana zmiana NDMI (bezwymiarowa, 2 miejsca po przecinku mają sens) |
-| `delta_p10`, `delta_p90` | przedział 80% (skalibrowany na odłożonych skupiskach pól) |
-| `inputs` | wartości cech wejściowych modelu (opad i ET0 z 7/14/30 dni, bilans referencyjny itd.), do panelu „dlaczego” |
-| `text` | gotowe zdania po polsku do wyświetlenia |
+| `delta_p10`, `delta_p90` | przedział 80% (skalibrowany na prognozach dla skupisk pól spoza treningu, osobno dolna i górna granica) |
+| `inputs` | wartości cech wejściowych modelu, do panelu „dlaczego”: ostatnie NDMI i NDVI, trend, opad i ET0 z 7/14/30 dni, bilans referencyjny, sumy temperatur, udział gołej gleby i chmur na zdjęciach z 45 dni, mediany pasm, położenie. Lista i kolejność jak w `model_card.json` (`features`); `null` = brak wartości |
+| `text` | gotowe zdania po polsku do wyświetlenia. Pierwsze mówi o kierunku: „prawdopodobnie spadnie”, „prawdopodobnie wzrośnie” albo, gdy prognozowana zmiana jest mniejsza niż 0,03, „może zmienić się w obie strony” |
 
 Na stronie: karta „Prognoza stanu roślin na 7–14 dni” w sekcji satelitarnej. Przy `available: false` zamiast karty pokazać `reason`. Z prognozy nie wolno wyliczać dawki nawodnienia ani wilgotności gleby.
 

@@ -76,18 +76,20 @@ def _fraction_from_tile(squares: list, tile: str) -> np.ndarray:
 
 
 def build_fields() -> pd.DataFrame:
-    rng = np.random.default_rng(C.RANDOM_SEED)
     rows = []
-    for name, lat, lon in C.CLUSTERS:
-        squares = candidate_squares(lat, lon)
-        frac = cropland_fraction(squares, lat, lon)
-        ok = np.flatnonzero(frac >= C.FIELD_MIN_CROPLAND)
-        pick = rng.choice(ok, size=min(C.FIELDS_PER_CLUSTER, len(ok)), replace=False) if len(ok) else []
-        for k, i in enumerate(sorted(pick)):
-            c = squares[i].centroid
-            rows.append({"field_id": f"{name}_{k:03d}", "cluster": name, "lat": c.y, "lon": c.x,
-                         "cropland_fraction": float(frac[i]), "wkt": squares[i].wkt})
-        print(f"{name}: kandydatów {len(squares)}, grunty orne {len(ok)}, wybrano {len(pick)}", flush=True)
+    for group in C.CLUSTER_GROUPS:
+        # Osobny generator na grupę skupisk (config.CLUSTER_GROUPS): tak powstał zbiór i tak daje się go odtworzyć.
+        rng = np.random.default_rng(C.RANDOM_SEED)
+        for name, lat, lon in group:
+            squares = candidate_squares(lat, lon)
+            frac = cropland_fraction(squares, lat, lon)
+            ok = np.flatnonzero(frac >= C.FIELD_MIN_CROPLAND)
+            pick = rng.choice(ok, size=min(C.FIELDS_PER_CLUSTER, len(ok)), replace=False) if len(ok) else []
+            for k, i in enumerate(sorted(pick)):
+                c = squares[i].centroid
+                rows.append({"field_id": f"{name}_{k:03d}", "cluster": name, "lat": c.y, "lon": c.x,
+                             "cropland_fraction": float(frac[i]), "wkt": squares[i].wkt})
+            print(f"{name}: kandydatów {len(squares)}, grunty orne {len(ok)}, wybrano {len(pick)}", flush=True)
     return pd.DataFrame(rows)
 
 

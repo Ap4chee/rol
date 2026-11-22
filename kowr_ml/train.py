@@ -1,165 +1,203 @@
-"""Trening HistGradientBoosting dla ΔNDMI i porównanie z baseline'ami (spec. sekcja 4).
+"""Trening HistGradientBoosting dla ΔNDMI, ocena i porównanie z punktami odniesienia (spec. sekcja 4).
 
-Podział:
-  - trening/strojenie: skupiska spoza TEST_CLUSTERS, sezony przed TEST_SEASON (GroupKFold po skupisku),
-  - test przestrzenny: TEST_CLUSTERS, sezony przed TEST_SEASON,
-  - test czasowy: skupiska treningowe, TEST_SEASON,
-  - test łączny: TEST_CLUSTERS, TEST_SEASON.
-Baseline'y: ΔNDMI = 0 oraz model sezonowy (dzień roku + ostatnie NDMI, ten sam algorytm).
-Model trafia do aplikacji tylko wtedy, gdy bije ΔNDMI = 0 na obu testach; inaczej karta oznacza go jako
-niezakwalifikowany. Przy niewielu sezonach zawsze jest oznaczony jako eksperymentalny.
-Wynik: runs/<data>_<hash>/ z model.joblib, model_card.json, metrics.json, test_predictions.parquet.
+Ocena na prognozach spoza foldu, zawsze dla pól ze skupisk, których model w danym dopasowaniu nie widział:
+  - nowe miejsce (`spatial`): 5 foldów po skupisku, wszystkie sezony w treningu. To sytuacja aplikacji dla dat
+    z lat 2017–2026: działka jest nowa, ale sezon model zna z innych miejsc.
+  - nowe miejsce i nieznany sezon (`season`): dla każdego sezonu S i 3 foldów skupisk trening bez sezonu S
+    i bez skupisk foldu, test na sezonie S w skupiskach foldu. To sytuacja przyszłego sezonu.
+Punkty odniesienia: ΔNDMI = 0, model sezonowy (dzień roku + ostatnie NDMI, ten sam algorytm i podział),
+16 cech pierwszego modelu (ten sam podział) oraz, jeśli podano KOWR_ML_PREVIOUS_MODEL, poprzedni plik modelu
+oceniony na skupiskach, których nie było w jego treningu.
+Przedział 10–90%: regresja kwantylowa i poprawka conformal (Romano i in. 2019) liczona osobno dla dolnej
+i górnej granicy; pokrycie podajemy z poprawką wyznaczoną bez ocenianego foldu.
+Model do aplikacji: te same hiperparametry, dopasowanie na wszystkich danych.
+Hiperparametry i zestaw cech wybrano w osobnych eksperymentach na tych samych podziałach (opis w README).
+
+Wynik: runs/<data>_<hash>/ z model.joblib, model_card.json, metrics.json, oof_predictions.parquet.
 """
 from __future__ import annotations
 
 import hashlib
-import itertools
 import json
+import os
 import platform
 from datetime import datetime, timezone
+from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.model_selection import GroupKFold
 
 from . import config as C
-from .features import FEATURES, SEASONAL_FEATURES
+from .features import BASE_FEATURES, FEATURES, SEASONAL_FEATURES
 
-GRID = {"learning_rate": [0.05, 0.1], "max_leaf_nodes": [15, 31], "min_samples_leaf": [50, 200],
-        "l2_regularization": [0.0, 1.0]}
+PARAMS = {"learning_rate": 0.1, "max_iter": 700, "max_leaf_nodes": 31, "min_samples_leaf": 50, "l2_regularization": 1.0}
 BIG_DROP = -0.05
 QUANTILES = (0.1, 0.9)
+DRY_DEPLETION = 0.75       # wyczerpanie bilansu referencyjnego uznawane za suszę (frakcja TAW)
+VERY_DRY_CWB_MM = -100.0   # klimatyczny bilans wodny z 30 dni uznawany za głęboką suszę
+PREVIOUS_MODEL_ENV = "KOWR_ML_PREVIOUS_MODEL"
 
 
-def make_model(loss: str = "absolute_error", quantile: float | None = None, **params) -> HistGradientBoostingRegressor:
-    kw = dict(loss=loss, max_iter=600, early_stopping=True, validation_fraction=0.15, n_iter_no_change=30,
-              random_state=C.RANDOM_SEED, **params)
+def make_model(loss: str = "absolute_error", quantile: float | None = None, **overrides) -> HistGradientBoostingRegressor:
+    kw = dict(loss=loss, early_stopping=True, validation_fraction=0.15, n_iter_no_change=30,
+              random_state=C.RANDOM_SEED, **{**PARAMS, **overrides})
     if quantile is not None:
         kw["quantile"] = quantile
     return HistGradientBoostingRegressor(**kw)
+
+
+def fold_of(cluster: str, k: int) -> int:
+    """Stały przydział skupiska do foldu, zależny tylko od nazwy."""
+    return int(hashlib.sha1(cluster.encode()).hexdigest(), 16) % k
 
 
 def mae(y, p) -> float:
     return float(np.mean(np.abs(np.asarray(y) - np.asarray(p))))
 
 
-def metrics_block(df: pd.DataFrame, pred_cols: dict[str, str]) -> dict:
-    """MAE po wierszach i uśrednione po polach, według miesiąca i dla dużych spadków."""
-    out = {"rows": int(len(df)), "fields": int(df["field_id"].nunique())}
-    month = pd.to_datetime(df["issue_date"]).dt.month
-    big = df["ndmi_delta"] <= BIG_DROP
-    out["big_drop_rows"] = int(big.sum())
-    for name, col in pred_cols.items():
-        err = (df["ndmi_delta"] - df[col]).abs()
+def oof_spatial(df: pd.DataFrame, features: list[str], loss: str = "absolute_error", quantile: float | None = None) -> np.ndarray:
+    """Prognozy spoza foldu: 5 foldów po skupisku, wszystkie sezony w treningu."""
+    X, y = df[features].to_numpy(float), df["ndmi_delta"].to_numpy(float)
+    fold = df["spatial_group"].map(lambda c: fold_of(c, C.CV_FOLDS)).to_numpy()
+    pred = np.full(len(y), np.nan)
+    for k in range(C.CV_FOLDS):
+        te = fold == k
+        if te.any():
+            pred[te] = make_model(loss, quantile).fit(X[~te], y[~te]).predict(X[te])
+    return pred
+
+
+def oof_season(df: pd.DataFrame, features: list[str]) -> np.ndarray:
+    """Prognozy dla sezonu i skupisk, których dopasowanie nie widziało."""
+    X, y = df[features].to_numpy(float), df["ndmi_delta"].to_numpy(float)
+    season = df["season"].to_numpy()
+    fold = df["spatial_group"].map(lambda c: fold_of(c, C.SEASON_CV_FOLDS)).to_numpy()
+    pred = np.full(len(y), np.nan)
+    for s in np.unique(season):
+        for k in range(C.SEASON_CV_FOLDS):
+            te, tr = (season == s) & (fold == k), (season != s) & (fold != k)
+            if te.any() and tr.any():
+                pred[te] = make_model().fit(X[tr], y[tr]).predict(X[te])
+    return pred
+
+
+def interval_adjustments(y: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> tuple[float, float]:
+    """O ile obniżyć dolną i podnieść górną granicę, żeby poniżej i powyżej zostało po 10% obserwacji."""
+    level = min(1.0, np.ceil((len(y) + 1) * QUANTILES[1]) / len(y))
+    return float(np.quantile(lo - y, level)), float(np.quantile(y - hi, level))
+
+
+def calibrated_interval(df: pd.DataFrame, lo: np.ndarray, hi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Przedział z poprawką wyznaczoną na pozostałych foldach (uczciwe pokrycie)."""
+    y = df["ndmi_delta"].to_numpy(float)
+    fold = df["spatial_group"].map(lambda c: fold_of(c, C.CV_FOLDS)).to_numpy()
+    lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
+    out_lo, out_hi = lo.copy(), hi.copy()
+    for k in range(C.CV_FOLDS):
+        te = fold == k
+        if te.any():
+            a_lo, a_hi = interval_adjustments(y[~te], lo[~te], hi[~te])
+            out_lo[te], out_hi[te] = lo[te] - a_lo, hi[te] + a_hi
+    return out_lo, out_hi
+
+
+def metrics_block(df: pd.DataFrame, preds: dict[str, np.ndarray], interval: tuple[np.ndarray, np.ndarray] | None = None) -> dict:
+    """MAE po wierszach: łącznie, w suszy, dla dużych spadków, według sezonu i miesiąca."""
+    y = df["ndmi_delta"].to_numpy(float)
+    out = {"rows": int(len(df)), "fields": int(df["field_id"].nunique()), "clusters": int(df["spatial_group"].nunique())}
+    month = pd.to_datetime(df["issue_date"]).dt.month.to_numpy()
+    season = df["season"].to_numpy()
+    big = y <= BIG_DROP
+    dry = df["ref_depletion_frac"].to_numpy() >= DRY_DEPLETION
+    very_dry = df["cwb_mm_30d"].to_numpy() <= VERY_DRY_CWB_MM
+    out.update(big_drop_rows=int(big.sum()), dry_rows=int(dry.sum()), very_dry_rows=int(very_dry.sum()))
+    for name, p in preds.items():
+        ok = np.isfinite(p)
+        err = np.abs(y - p)
         out[name] = {
-            "mae_rows": float(err.mean()),
-            "mae_fields": float(err.groupby(df["field_id"]).mean().mean()),
-            "mae_big_drop": float(err[big].mean()) if big.any() else None,
-            "mae_by_month": {int(m): float(v) for m, v in err.groupby(month).mean().items()},
+            "mae": float(err[ok].mean()),
+            "bias": float((p - y)[ok].mean()),
+            "mae_big_drop": float(err[ok & big].mean()),
+            "mae_dry": float(err[ok & dry].mean()),
+            "mae_very_dry": float(err[ok & very_dry].mean()),
+            "mae_by_season": {int(s): float(err[ok & (season == s)].mean()) for s in np.unique(season[ok])},
+            "mae_by_month": {int(m): float(err[ok & (month == m)].mean()) for m in np.unique(month[ok])},
         }
-    if "p10" in df and "p90" in df:
-        inside = (df["ndmi_delta"] >= df["p10"]) & (df["ndmi_delta"] <= df["p90"])
-        out["interval_80_coverage"] = float(inside.mean())
-        out["interval_80_mean_width"] = float((df["p90"] - df["p10"]).mean())
+    if interval is not None:
+        lo, hi = interval
+        inside = (y >= lo) & (y <= hi)
+        out["interval_80"] = {"coverage": float(inside.mean()), "below": float((y < lo).mean()), "above": float((y > hi).mean()),
+                              "mean_width": float((hi - lo).mean()), "coverage_dry": float(inside[dry].mean()),
+                              "coverage_by_season": {int(s): float(inside[season == s].mean()) for s in np.unique(season)}}
     return out
 
 
-def tune(train: pd.DataFrame) -> tuple[dict, list]:
-    # Uczymy na tablicach numpy (kolejność jak w FEATURES): aplikacja podaje dane w tej samej postaci.
-    X, y, g = train[FEATURES].to_numpy(float), train["ndmi_delta"].to_numpy(float), train["spatial_group"].to_numpy()
-    gkf = GroupKFold(n_splits=min(5, len(set(g))))
-    results = []
-    for values in itertools.product(*GRID.values()):
-        params = dict(zip(GRID.keys(), values))
-        errs = []
-        for tr, va in gkf.split(X, y, g):
-            m = make_model(**params).fit(X[tr], y[tr])
-            errs.append(mae(y[va], m.predict(X[va])))
-        results.append({**params, "cv_mae": float(np.mean(errs))})
-        print(params, f"cv MAE {np.mean(errs):.4f}", flush=True)
-    best = min(results, key=lambda r: r["cv_mae"])
-    return {k: best[k] for k in GRID}, results
+def fit_set(df: pd.DataFrame) -> dict:
+    X, y = df[FEATURES].to_numpy(float), df["ndmi_delta"].to_numpy(float)
+    return {"median": make_model().fit(X, y),
+            "p10": make_model("quantile", QUANTILES[0]).fit(X, y),
+            "p90": make_model("quantile", QUANTILES[1]).fit(X, y)}
 
 
-def interval_adjustment(train: pd.DataFrame, params: dict) -> float:
-    """Kalibracja przedziału 10–90% (conformalized quantile regression, Romano i in. 2019).
-
-    Na prognozach spoza foldu (GroupKFold po skupisku) liczymy, o ile trzeba poszerzyć przedział,
-    żeby obejmował 80% obserwacji. Wartość dodajemy po obu stronach przy predykcji.
-    """
-    X, y, g = train[FEATURES].to_numpy(float), train["ndmi_delta"].to_numpy(float), train["spatial_group"].to_numpy()
-    scores = np.empty(len(y))
-    for tr, va in GroupKFold(n_splits=min(5, len(set(g)))).split(X, y, g):
-        lo = make_model("quantile", QUANTILES[0], **params).fit(X[tr], y[tr]).predict(X[va])
-        hi = make_model("quantile", QUANTILES[1], **params).fit(X[tr], y[tr]).predict(X[va])
-        lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
-        scores[va] = np.maximum(lo - y[va], y[va] - hi)
-    level = QUANTILES[1] - QUANTILES[0]
-    n = len(scores)
-    return float(np.quantile(scores, min(1.0, np.ceil((n + 1) * level) / n)))
-
-
-def fit_set(train: pd.DataFrame, params: dict) -> dict:
-    X, y = train[FEATURES].to_numpy(float), train["ndmi_delta"].to_numpy(float)
-    return {
-        "median": make_model(**params).fit(X, y),
-        "p10": make_model("quantile", QUANTILES[0], **params).fit(X, y),
-        "p90": make_model("quantile", QUANTILES[1], **params).fit(X, y),
-        "seasonal": make_model(**params).fit(train[SEASONAL_FEATURES].to_numpy(float), y),
-    }
-
-
-def predict_set(models: dict, df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    out["pred_zero"] = 0.0
-    X = df[FEATURES].to_numpy(float)
-    out["pred_seasonal"] = models["seasonal"].predict(df[SEASONAL_FEATURES].to_numpy(float))
-    out["pred_hgb"] = models["median"].predict(X)
-    lo, hi = models["p10"].predict(X), models["p90"].predict(X)
-    adj = models.get("interval_adjust", 0.0)
-    out["p10"], out["p90"] = np.minimum(lo, hi) - adj, np.maximum(lo, hi) + adj
-    return out
+def previous_model_block(df: pd.DataFrame, new_pred: np.ndarray) -> dict | None:
+    """Poprzedni plik modelu i nowy model na tych samych wierszach: skupiska spoza treningu poprzedniego."""
+    path = os.environ.get(PREVIOUS_MODEL_ENV)
+    if not path:
+        return None
+    prev = joblib.load(Path(path) / "model.joblib")
+    card = json.loads((Path(path) / "model_card.json").read_text(encoding="utf-8"))
+    unseen = ~df["spatial_group"].isin(card["clusters"]).to_numpy()
+    part = df[unseen]
+    p_prev = prev["median"].predict(part[prev["features"]].to_numpy(float))
+    block = metrics_block(part, {"zero": np.zeros(len(part)), "previous": p_prev, "new_out_of_fold": new_pred[unseen]})
+    block["previous_run"] = card.get("run_id")
+    block["previous_seasons"] = card.get("seasons")
+    return block
 
 
 def main() -> None:
-    df = pd.read_parquet(C.DATA_DIR / "training.parquet")
-    is_test_space = df["spatial_group"].isin(C.TEST_CLUSTERS)
-    is_test_time = df["season"] == C.TEST_SEASON
-    train = df[~is_test_space & ~is_test_time]
-    tests = {"space": df[is_test_space & ~is_test_time], "time": df[~is_test_space & is_test_time],
-             "space_and_time": df[is_test_space & is_test_time]}
-    print(f"trening {len(train)} wierszy; testy: " + ", ".join(f"{k} {len(v)}" for k, v in tests.items()), flush=True)
+    df = pd.read_parquet(C.DATA_DIR / "training.parquet").reset_index(drop=True)
+    y = df["ndmi_delta"].to_numpy(float)
+    print(f"wierszy {len(df)}, pól {df['field_id'].nunique()}, skupisk {df['spatial_group'].nunique()}, cech {len(FEATURES)}", flush=True)
 
-    params, grid_results = tune(train)
-    print("najlepsze", params, flush=True)
-    models = fit_set(train, params)
-    models["interval_adjust"] = interval_adjustment(train, params)
-    print(f"poszerzenie przedziału {models['interval_adjust']:.4f}", flush=True)
-    pred_cols = {"zero": "pred_zero", "seasonal": "pred_seasonal", "hgb": "pred_hgb"}
-    metrics, preds = {}, []
-    for name, part in tests.items():
-        if len(part) == 0:
-            continue
-        p = predict_set(models, part)
-        metrics[name] = metrics_block(p, pred_cols)
-        preds.append(p.assign(test=name))
-    qualifies = all(metrics[k]["hgb"]["mae_rows"] < metrics[k]["zero"]["mae_rows"] for k in ("space", "time") if k in metrics)
+    zero = np.zeros(len(df))
+    spatial = {"zero": zero, "seasonal": oof_spatial(df, SEASONAL_FEATURES), "base16": oof_spatial(df, BASE_FEATURES),
+               "hgb": oof_spatial(df, FEATURES)}
+    print("nowe miejsce: " + ", ".join(f"{k} {mae(y, v):.4f}" for k, v in spatial.items()), flush=True)
+    lo, hi = oof_spatial(df, FEATURES, "quantile", QUANTILES[0]), oof_spatial(df, FEATURES, "quantile", QUANTILES[1])
+    cal_lo, cal_hi = calibrated_interval(df, np.minimum(lo, spatial["hgb"]), np.maximum(hi, spatial["hgb"]))
+    season = {"zero": zero, "seasonal": oof_season(df, SEASONAL_FEATURES), "base16": oof_season(df, BASE_FEATURES),
+              "hgb": oof_season(df, FEATURES)}
+    print("nowe miejsce i sezon: " + ", ".join(f"{k} {mae(y, v):.4f}" for k, v in season.items()), flush=True)
 
-    # Model do aplikacji: ten sam zestaw hiperparametrów, dopasowany na wszystkich danych.
-    final = fit_set(df, params)
-    final_adjust = interval_adjustment(df, params)
+    metrics = {"new_place": metrics_block(df, spatial, (cal_lo, cal_hi)), "new_place_and_season": metrics_block(df, season)}
+    raw = (np.minimum(lo, spatial["hgb"]), np.maximum(hi, spatial["hgb"]))
+    metrics["new_place"]["interval_80_before_adjustment"] = {
+        "coverage": float(((y >= raw[0]) & (y <= raw[1])).mean()), "below": float((y < raw[0]).mean()), "above": float((y > raw[1]).mean())}
+    previous = previous_model_block(df, spatial["hgb"])
+    if previous:
+        metrics["previous_model_on_clusters_it_never_saw"] = previous
+
+    # Model do aplikacji: wszystkie dane. Poprawki przedziału z prognoz spoza foldu.
+    final = fit_set(df)
+    adjust_low, adjust_high = interval_adjustments(y, raw[0], raw[1])
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M") + "_" + hashlib.sha1(
-        json.dumps(params, sort_keys=True).encode()).hexdigest()[:6]
+        json.dumps({"params": PARAMS, "features": FEATURES}, sort_keys=True).encode()).hexdigest()[:6]
     run = C.RUNS_DIR / run_id
     run.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"median": final["median"], "p10": final["p10"], "p90": final["p90"], "features": FEATURES,
-                 "interval_adjust": final_adjust}, run / "model.joblib")
-    pd.concat(preds).to_parquet(run / "test_predictions.parquet", index=False)
-    (run / "metrics.json").write_text(json.dumps({"params": params, "grid": grid_results, "tests": metrics}, indent=2))
+    joblib.dump({**final, "features": FEATURES, "interval_adjust_low": adjust_low, "interval_adjust_high": adjust_high},
+                run / "model.joblib", compress=3)
+    oof = df[["field_id", "season", "issue_date", "spatial_group", "ndmi_last", "ndmi_delta"]].copy()
+    oof = oof.assign(pred_new_place=spatial["hgb"], p10=cal_lo, p90=cal_hi, pred_new_place_and_season=season["hgb"],
+                     pred_seasonal=spatial["seasonal"], pred_base16=spatial["base16"])
+    oof.to_parquet(run / "oof_predictions.parquet", index=False)
+    (run / "metrics.json").write_text(json.dumps({"params": PARAMS, **metrics}, indent=2), encoding="utf-8")
     stats = json.loads((C.DATA_DIR / "dataset_stats.json").read_text())
+    m_sp, m_se = metrics["new_place"], metrics["new_place_and_season"]
+    qualifies = m_sp["hgb"]["mae"] < m_sp["zero"]["mae"] and m_se["hgb"]["mae"] < m_se["zero"]["mae"]
     card = {
         "name": "kowr_ndmi_delta_7_14d",
         "run_id": run_id,
@@ -168,21 +206,24 @@ def main() -> None:
                   "ndmi_last = ostatnia zaakceptowana scena w t-14..t-1",
         "features": FEATURES,
         "quantiles": list(QUANTILES),
-        "interval_adjust": final_adjust,
-        "hyperparameters": params,
-        "train_rows_evaluated_model": int(len(train)),
+        "interval_adjust_low": adjust_low,
+        "interval_adjust_high": adjust_high,
+        "hyperparameters": PARAMS,
         "train_rows_final_model": int(len(df)),
+        "fields": int(df["field_id"].nunique()),
         "seasons": sorted(int(s) for s in df["season"].unique()),
-        "clusters": [c[0] for c in C.CLUSTERS], "test_clusters": list(C.TEST_CLUSTERS), "test_season": C.TEST_SEASON,
+        "clusters": sorted(df["spatial_group"].unique()),
         "dataset_stats": stats,
-        "metrics": {k: {m: v[m]["mae_rows"] for m in pred_cols} | {"interval_80_coverage": v.get("interval_80_coverage")}
-                    for k, v in metrics.items()},
+        "metrics": {
+            "new_place": {k: m_sp[k]["mae"] for k in spatial} | {"interval_80_coverage": m_sp["interval_80"]["coverage"]},
+            "new_place_and_season": {k: m_se[k]["mae"] for k in season},
+        },
         "thresholds": {"min_pixels": C.MIN_PIXELS, "min_coverage": C.MIN_COVERAGE, "scl": C.SCL_VEGETATION},
         "data": {
             "fields": f"ESA WorldCover 10 m 2021 v200, klasa {C.WORLDCOVER_CROPLAND}, kwadraty {C.FIELD_SIZE_M} m "
                       "(CC BY 4.0, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) "
                       "processed by ESA WorldCover consortium)",
-            "sentinel2": f"{C.S2_COLLECTION} przez {C.STAC_URL} (Sentinel Data Legal Notice)",
+            "sentinel2": f"{', '.join(C.S2_COLLECTIONS)} przez {C.STAC_URL} (Sentinel Data Legal Notice)",
             "weather": "Open-Meteo Historical Weather API, domyślny model, timezone Europe/Warsaw (dane CC BY 4.0)",
         },
         "versions": {"python": platform.python_version(), "scikit-learn": sklearn.__version__,
@@ -192,9 +233,10 @@ def main() -> None:
             "Pogoda z jednej komórki na skupisko; brak prognozy pogody na okno 7–14 dni.",
             "Model prognozuje zmianę wskaźnika satelitarnego, nie wilgotność gleby ani dawkę nawodnienia.",
             "Zbiór nadreprezentuje okresy z dobrą widocznością roślinności (próg chmur i SCL).",
+            "Sezon 2017 jest niepełny, a część punktów siatki ma pogodę tylko dla sezonów 2025–2026 (limit Open-Meteo).",
         ],
     }
-    (run / "model_card.json").write_text(json.dumps(card, indent=2, ensure_ascii=False))
+    (run / "model_card.json").write_text(json.dumps(card, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(card["metrics"], indent=2))
     print(f"zapisano {run}")
 

@@ -1,0 +1,69 @@
+{
+  "device": "NVIDIA GeForce RTX 3090",
+  "train_s": 817.4,
+  "val_clusters": [
+    "dzialdowo",
+    "g5105_1570",
+    "lomza"
+  ],
+  "best_val_mae": 0.05603817105293274,
+  "sweep": [
+    {
+      "hidden": 32,
+      "lr": 0.001,
+      "val_mae": 0.05603817105293274
+    },
+    {
+      "hidden": 32,
+      "lr": 0.003,
+      "val_mae": 0.05785214528441429
+    },
+    {
+      "hidden": 64,
+      "lr": 0.001,
+      "val_mae": 0.05680844187736511
+    },
+    {
+      "hidden": 64,
+      "lr": 0.003,
+      "val_mae": 0.05714544281363487
+    },
+    {
+      "hidden": 128,
+      "lr": 0.001,
+      "val_mae": 0.056716322898864746
+    },
+    {
+      "hidden": 128,
+      "lr": 0.003,
+      "val_mae": 0.056607797741889954
+    }
+  ],
+  "chosen": {
+    "hidden": 32,
+    "lr": 0.001,
+    "val_mae": 0.05603817105293274
+  },
+  "ensemble_size": 5,
+  "torch": "2.8.0+cu129",
+  "tests": {
+    "space": {
+      "rows": 32630,
+      "gru_mae_rows": 0.0512256920337677,
+      "zero_mae_rows": 0.09230366349220276,
+      "interval_80_coverage_raw": 0.783174992338339
+    },
+    "time": {
+      "rows": 137641,
+      "gru_mae_rows": 0.056317709386348724,
+      "zero_mae_rows": 0.09274925291538239,
+      "interval_80_coverage_raw": 0.7359580357596937
+    },
+    "space_and_time": {
+      "rows": 4870,
+      "gru_mae_rows": 0.05593922361731529,
+      "zero_mae_rows": 0.08954719454050064,
+      "interval_80_coverage_raw": 0.7324435318275154
+    }
+  }
+}
