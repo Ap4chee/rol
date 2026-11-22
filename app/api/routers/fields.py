@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/fields")
 
 @router.get("", response_model=list[SavedField])
 async def list_fields(worker: FieldWorker = Depends(field_worker)) -> list[SavedField]:
-    """Zapisane pola z ostatnim raportem i stanem liczenia (`job`)."""
+    """Zapisane pola z ostatnim raportem i stanem liczenia (`job`). Raporty liczy worker w tle."""
     return await worker.list_fields()
 
 

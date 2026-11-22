@@ -20,7 +20,9 @@ async def satellite(parcel_id: ParcelId, crop: CropKey = Query(), date: Date = Q
                     sowing_date: Date | None = None, harvest_date: Date | None = None,
                     next_sowing_date: Date | None = None,
                     builder: ReportBuilder = Depends(report_builder)) -> SatelliteResponse:
-    """Pogoda, gleba i działka są już w pamięci podręcznej, więc bilans potrzebny do oceny zgodności liczy się od razu."""
+    """Komplet obserwacji satelitarnych, gdy nie zdążyły się wczytać razem z raportem (wolne łącze do archiwum).
+
+    Pogoda, gleba i działka są już w pamięci podręcznej, więc bilans potrzebny do oceny zgodności liczy się od razu."""
     try:
         request = ReportRequest(parcel_id=parcel_id, crop=crop, date=date, sowing_date=sowing_date,
                                 harvest_date=harvest_date, next_sowing_date=next_sowing_date)

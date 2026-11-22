@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api")
 @router.get("/forecast", response_model=ForecastResponse)
 async def forecast(lon: Lon, lat: Lat, days: int = Query(default=FORECAST_MAX_DAYS, ge=1, le=FORECAST_MAX_DAYS),
                    client: httpx.AsyncClient = Depends(http_client), day: date = Depends(today)) -> ForecastResponse:
-    """Prognoza do 16 dni dla współrzędnych pola."""
+    """Lokalna prognoza na pulpit i zakładkę Pogoda (do 16 dni), poza historycznym bilansem raportu."""
     try:
         return forecast_response(await fetch_dashboard_forecast(client, lat, lon, day, days=days))
     except (NoData, SourceError) as exc:

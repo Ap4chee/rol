@@ -17,7 +17,9 @@ router = APIRouter(prefix="/api")
 @router.get("/terrain", response_model=TerrainResponse)
 async def terrain(parcel_id: ParcelId, client: httpx.AsyncClient = Depends(http_client),
                   jobs: TerrainJobs = Depends(terrain_jobs)) -> TerrainResponse:
-    """Liczone osobno, bo wycinek modelu terenu z WCS GUGiK trwa kilkanaście do kilkudziesięciu sekund."""
+    """Teren i spływ wody dla działki: spadek, drogi spływu, punkty dopływu i odpływu, wnioski.
+
+    Liczone osobno, bo wycinek numerycznego modelu terenu z WCS GUGiK trwa kilkanaście do kilkudziesięciu sekund."""
     try:
         parcel, _ = await parcels.get_parcel_by_id(client, parcel_id)
     except (NoData, SourceError) as exc:
