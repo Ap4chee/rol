@@ -30,10 +30,10 @@ from pyproj import CRS, Transformer
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
-from app import cache
 from app.config import TIMEOUT_SOIL_REST_S, check_forced_failure
 from app.core.soil import Layer
-from app.geo import reproject
+from app.infra import cache
+from app.infra.geo import reproject
 from app.sources import NoData, SourceError
 
 HOMOLOSINE_PROJ4 = "+proj=igh +lat_0=0 +lon_0=0 +datum=WGS84 +units=m +no_defs"

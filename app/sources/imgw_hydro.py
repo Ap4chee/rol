@@ -23,9 +23,9 @@ from datetime import date, datetime
 
 import httpx
 
-from app import cache
 from app.config import CACHE_DIR, TIMEOUT_HYDRO_S, check_forced_failure
 from app.core import hydrology as calc
+from app.infra import cache
 from app.sources import NoData, SourceError
 
 # Oba adresy dają te same pola; 21.11.2026 `hydro2` zaczął okresowo zwracać pustą odpowiedź (200, 0 bajtów).

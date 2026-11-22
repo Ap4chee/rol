@@ -22,7 +22,6 @@ from datetime import date, timedelta
 import httpx
 import numpy as np
 
-from app import cache
 from app.config import (
     TIMEOUT_WEATHER_ARCHIVE_S,
     TIMEOUT_WEATHER_POWER_S,
@@ -30,6 +29,7 @@ from app.config import (
     check_forced_failure,
 )
 from app.core.et0 import actual_vapour_pressure_from_rh_mean_kpa, et0_fao56_mm_day
+from app.infra import cache
 from app.schemas import ForecastDay, ForecastResponse, Status
 from app.sources import NoData, SourceError
 

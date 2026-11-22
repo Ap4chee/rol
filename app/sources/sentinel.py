@@ -47,9 +47,9 @@ import numpy as np
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
-from app import cache
 from app.config import USER_AGENT, check_forced_failure
-from app.geo import reproject
+from app.infra import cache
+from app.infra.geo import reproject
 from app.sources import SourceError
 
 STAC_URL = "https://earth-search.aws.element84.com/v1"

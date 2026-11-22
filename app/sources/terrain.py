@@ -21,7 +21,7 @@ from shapely.geometry.base import BaseGeometry
 from app.config import TIMEOUT_TERRAIN_S, check_forced_failure
 from app.core import flow
 from app.core.terrain_rules import Point, TerrainFacts
-from app.geo import reproject, transformer
+from app.infra.geo import reproject, transformer
 from app.sources import NoData, SourceError
 
 WCS_URL = "https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF"

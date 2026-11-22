@@ -23,7 +23,7 @@ from shapely import wkt
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
-from app import cache
+from app.infra import cache
 from app.sources import NoData, SourceError, egib_wfs, uldk
 
 CACHE_NS = "uldk"  # nazwa historyczna; wpisy z obu źródeł, z polem `source`

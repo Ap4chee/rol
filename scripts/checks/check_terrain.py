@@ -18,7 +18,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import terrain_rules  # noqa: E402
-from app.geo import reproject  # noqa: E402
+from app.infra.geo import reproject  # noqa: E402
 from app.sources import parcels, terrain  # noqa: E402
 
 

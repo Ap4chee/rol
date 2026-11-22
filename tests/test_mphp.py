@@ -1,7 +1,7 @@
 """Najbliższy ciek z odpowiedzi GetFeatureInfo mapy MPHP10k (bez sieci)."""
 from shapely.geometry import LineString, box
 
-from app.geo import reproject
+from app.infra.geo import reproject
 from app.sources.mphp import SEARCH_RADIUS_M, nearest, query_params, search_half_m
 
 

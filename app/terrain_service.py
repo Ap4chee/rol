@@ -9,9 +9,9 @@ import asyncio
 
 import httpx
 
-from app import cache
 from app.config import USER_AGENT
 from app.core import terrain_rules
+from app.infra import cache
 from app.schemas import Cause, Recommendation, SourceInfo, Status, TerrainResponse
 from app.sources import NoData, SourceError, parcels, terrain
 

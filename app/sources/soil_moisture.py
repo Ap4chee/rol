@@ -11,9 +11,9 @@ from datetime import date
 
 import httpx
 
-from app import cache
 from app.config import TIMEOUT_WEATHER_POWER_S, check_forced_failure
 from app.core.soil_moisture import LAYERS
+from app.infra import cache
 from app.sources import NoData, SourceError
 from app.sources.weather import NASA_POWER_URL, _get_json, snap
 
