@@ -65,7 +65,7 @@ export function ForecastDays({ position, size = 'sm', onRangeChange }) {
     return <div role={forecast.status === 'error' ? 'alert' : 'status'}><Note section={forecast} className="my-0"/></div>;
   }
 
-  return <div className="@container/forecast" onKeyDown={onKeyDown}>
+  return <div className="@container/forecast" onKeyDown={onKeyDown} data-print-pending={forecast ? undefined : ''}>
     {stops.length > 1 && <div className={cn('no-print flex items-center justify-between gap-2', big ? 'mb-4' : 'mb-2.5')}>
       <span className={cn('num font-medium text-neutral-600', big ? 'text-[13px]' : 'text-[12px] text-neutral-500')}>{range}</span>
       <div className="flex items-center gap-2.5">

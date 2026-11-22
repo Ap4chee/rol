@@ -28,6 +28,8 @@ export function ParcelMap({ parcel, terrain, point, onPick, location }) {
   pick.current = onPick;
   const [base, setBase] = useState('orto');
   const [boundaries, setBoundaries] = useState(Boolean(onPick));
+  // czy mapa skończyła rysować bieżący kadr (kafle pobrane, dolot zakończony); na to czeka wydruk raportu
+  const [rendered, setRendered] = useState(false);
   const focus = !onPick && Boolean(parcel?.geometry);
   const ol = window.ol;
 
@@ -67,6 +69,9 @@ export function ParcelMap({ parcel, terrain, point, onPick, location }) {
       const [lon, lat] = ol.proj.toLonLat(coordinate);
       pick.current?.({ lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) });
     });
+    map.on('movestart', () => setRendered(false));
+    map.on('loadstart', () => setRendered(false));
+    map.on('rendercomplete', () => setRendered(!map.getView().getAnimating()));
     instance.current = { map, osm, orto, borders, parcelSource, terrainSource, maskSource, locationSource, format: new ol.format.GeoJSON() };
     // Na wydruku ramka mapy ma inną szerokość niż na ekranie. Bez przeliczenia płótno zostaje w starym rozmiarze,
     // skaluje się do szerokości strony i pod zdjęciem zostaje szary pas. Kafle z ekranu wystarczają, bo widok się zwęża.
@@ -156,7 +161,7 @@ export function ParcelMap({ parcel, terrain, point, onPick, location }) {
 
   if (!ol) return <Callout tone="neutral">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</Callout>;
   // @container: pasek przełączników i wiersz podpowiedzi układają się według szerokości mapy, nie ekranu
-  return <div className="parcel-map @container">
+  return <div className="parcel-map @container" data-print-pending={focus && !rendered ? '' : undefined}>
     <div className="relative">
       {/* Szklany pasek nad mapą (podkład, granice). W widoku jednej działki (raport) ukryty jak wcześniej.
           Na wąskiej mapie dwa rzędy przy prawej krawędzi, żeby nie wejść na przyciski powiększania. */}

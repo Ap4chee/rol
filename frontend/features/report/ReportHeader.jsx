@@ -6,6 +6,7 @@ import { MoreMenu } from '@/shared/ui/menu';
 import { ParcelOutline } from '@/shared/ui/parcel-outline';
 import { useToast } from '@/shared/ui/toaster';
 import { cn } from '@/shared/lib/cn';
+import { printWhenReady } from '@/shared/lib/printing';
 import { CropTile, TILE } from '@/features/fields/CropTile';
 import { Status } from '@/features/fields/Status';
 import { headerFacts } from './logic.js';
@@ -50,6 +51,17 @@ function SaveButton({ field, saved, onSave }) {
 }
 
 /** Nagłówek raportu: uprawa i sylwetka działki, fakty, nazwa ze stanem wody, zapis, PDF i menu pola. */
+/** „Pobierz PDF”: układ wydruku potrzebuje chwili na mapę, prognozę i obrazki, więc przycisk pokazuje, że trwa składanie. */
+function PdfButton() {
+  const [preparing, setPreparing] = useState(false);
+  const print = async () => {
+    setPreparing(true);
+    try { await printWhenReady(); } finally { setPreparing(false); }
+  };
+  return <Button variant="secondary" icon={<Printer/>} disabled={preparing} onClick={print}>
+    {preparing ? 'Składam PDF…' : 'Pobierz PDF'}</Button>;
+}
+
 export function ReportHeader({ field, report, saved, onSave, onEdit, onDelete, onBack }) {
   const title = useRef(null);
   useEffect(() => { title.current?.focus({ preventScroll: true }); }, []);
@@ -83,7 +95,7 @@ export function ReportHeader({ field, report, saved, onSave, onEdit, onDelete, o
       <div data-tour="report-actions" className="no-print flex shrink-0 items-center gap-2">
         {/* zapis tylko dla raportu z linku, którego nie ma jeszcze wśród pól; zapisane pole odświeża się samo */}
         {!saved && <SaveButton field={field} saved={saved} onSave={onSave}/>}
-        <Button variant="secondary" icon={<Printer/>} onClick={() => window.print()}>Pobierz PDF</Button>
+        <PdfButton/>
         <MoreMenu items={[{ label: 'Edytuj pole', icon: Pencil, onSelect: onEdit },
           ...(saved ? [{ label: 'Usuń pole', icon: Trash2, onSelect: onDelete, danger: true }] : [])]}/>
       </div>

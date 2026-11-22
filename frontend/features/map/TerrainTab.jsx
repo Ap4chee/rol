@@ -13,6 +13,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { measure, Stat, StatGrid, wrapping } from '@/shared/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 
+const LAND_USE_COLUMNS = { 1: 'grid-cols-1 md:grid-cols-1', 2: 'md:grid-cols-2', 3: 'grid-cols-3 md:grid-cols-3' };
 const SLOPE_LABELS = ['Średni spadek', 'Najbardziej strome 10%'];
 // Komórki liczb: etykieta może zająć dwie linie (wąska kolumna obok mapy), liczby i tak stoją w jednej linii na dole.
 const SLOPE_CELLS = 'md:grid-cols-2 [&>*]:flex [&>*]:flex-col [&>*]:justify-between [&>*]:gap-1';
@@ -29,7 +30,8 @@ export function TerrainTab({ report, terrain, control }) {
         <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>
       </div>
       <Section title="Ukształtowanie i spływ" className="lg:col-span-5">
-        <div className="flex flex-col gap-4">
+        {/* wydruk z przycisku czeka (do limitu), aż teren się policzy, zamiast drukować szkielet */}
+        <div className="flex flex-col gap-4" data-print-pending={pending && !control.failed ? '' : undefined}>
           <Note section={terrain} className="my-0"/>
           {(pending || terrain?.status === 'ok') && <SlopeStats terrain={terrain} pending={pending}/>}
           {pending && <p role="status" className="flex items-start gap-2 text-[13px] text-neutral-500">
@@ -81,14 +83,16 @@ function SlopeStats({ terrain, pending }) {
 
 /** Udziały klas pokrycia terenu na działce (ESA WorldCover) i wniosek policzony na serwerze. */
 function LandUse({ use }) {
-  const shown = use.classes.filter((item) => item.share_pct >= 5).slice(0, 3);
+  const major = use.classes.filter((item) => item.share_pct >= 5).slice(0, 3);
+  const shown = major.length ? major : use.classes.slice(0, 1);
   // zdania z serwera: [udziały, (mało pikseli), wniosek, zastrzeżenie o mapie]; udziały są już w liczbach wyżej
   const lines = use.text.slice(1);
   const verdict = lines.length > 1 ? lines[lines.length - 2] : null;
   const warn = use.verdict === 'not_farmland' || use.verdict === 'partly_other' || use.crop_matches === false;
   return <>
-    <StatGrid className="md:grid-cols-3">
-      {(shown.length ? shown : use.classes.slice(0, 1)).map((item) => <Stat key={item.key}
+    {/* tyle kolumn, ile klas: przy jednej klasie pusta część siatki zostawała szara */}
+    <StatGrid className={LAND_USE_COLUMNS[shown.length]}>
+      {shown.map((item) => <Stat key={item.key}
         label={wrapping(item.label.charAt(0).toUpperCase() + item.label.slice(1))} value={measure(number(item.share_pct), '%')}/>)}
     </StatGrid>
     {warn && verdict && <Callout tone="warning" className="mt-5 max-w-[76ch]">{verdict}</Callout>}
