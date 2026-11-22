@@ -157,7 +157,7 @@ function FieldCard({ field, style }) {
       {retention.length > 0 && <div className="mt-4 flex gap-2.5 rounded-xl bg-brand-50 px-3.5 py-3">
         <Droplets aria-hidden className="mt-0.5 size-4 shrink-0 text-brand-600" strokeWidth={1.75}/>
         <div className="min-w-0">
-          <p className="text-[11.5px] font-semibold uppercase tracking-wide text-brand-700">Co zrobić</p>
+          <p className="text-[12.5px] font-semibold text-brand-700">Co zrobić</p>
           <p className="mt-0.5 line-clamp-2 text-[14px] font-medium leading-snug text-neutral-900">{retention[0].title}</p>
           {retention.length > 1 && <p className="mt-0.5 text-[12.5px] text-neutral-500">i {retention.length - 1} więcej w raporcie</p>}
         </div>
