@@ -1,5 +1,5 @@
 // Spectrum UI (https://spectrumhq.in, github.com/arihantcodes/spectrum-ui), komponent „stat-cards”.
-// Licencja Apache-2.0 (plik LICENSE w tym katalogu). Zmodyfikowano na potrzeby Asystenta wody:
+// Licencja Apache-2.0 (plik LICENSE w tym katalogu). Zmodyfikowano na potrzeby WaterOS:
 // zostały tylko części używane przez stat-cards (bez generatorów danych demonstracyjnych, które liczyły się
 // przy imporcie), krzywa ruchu jak w app.css, teksty stanów po polsku, spacje w liczbach nie znikają.
 'use client';

@@ -1231,10 +1231,20 @@ def _no_weather_report(request: ReportRequest, parcel: parcels.Parcel | None, so
         limitations=[reason], sources=sources, timings_s=timings)
 
 
+# źródło pobierane równolegle → etap pokazywany rolnikowi w trakcie liczenia
+PROGRESS_STAGE = {"weather": "weather", "soil": "soil", "hydrology": "water"}
+
+
 async def build_report(request: ReportRequest, today: date | None = None,
-                       satellite_budget_s: float = SATELLITE_INLINE_BUDGET_S) -> ReportResponse:
-    """Pełny raport. `satellite_budget_s` to czas, jaki raport czeka na zdjęcia satelitarne."""
+                       satellite_budget_s: float = SATELLITE_INLINE_BUDGET_S, progress=None) -> ReportResponse:
+    """Pełny raport. `satellite_budget_s` to czas, jaki raport czeka na zdjęcia satelitarne.
+    `progress(etap, stan)`: zgłasza rzeczywisty postęp ('running' | 'done' | 'skipped') dla widoku liczenia."""
     started = time.perf_counter()
+
+    def mark(stage: str, state: str) -> None:
+        if progress is not None:
+            progress(stage, state)
+
     today = today or today_warsaw()
     if request.date > today:
         raise HTTPException(status_code=422, detail="Data analizy nie może być z przyszłości.")
@@ -1250,7 +1260,12 @@ async def build_report(request: ReportRequest, today: date | None = None,
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
         t0 = time.perf_counter()
+        mark("parcel", "running")
         parcel, uldk_info = await resolve_parcel(client, request)
+        mark("parcel", "done")
+        mark("satellite", "running" if parcel is not None else "skipped")
+        for stage in ("weather", "soil", "water"):
+            mark(stage, "running")
         timings["uldk"] = round(time.perf_counter() - t0, 2)
         lon, lat = parcel.centroid_lonlat if parcel else (request.point.lon, request.point.lat)
         geometry = parcel.geometry if parcel else ShapelyPoint(lon, lat)
@@ -1269,6 +1284,8 @@ async def build_report(request: ReportRequest, today: date | None = None,
             started_at = time.perf_counter()
             result = await coro
             timings[name] = round(time.perf_counter() - started_at, 2)
+            if name in PROGRESS_STAGE:
+                mark(PROGRESS_STAGE[name], "done")
             return result
 
         t0 = time.perf_counter()
@@ -1302,6 +1319,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
         return _no_weather_report(request, parcel, sources, started, timings, soil, hydrology)
 
     t0 = time.perf_counter()
+    mark("balance", "running")
     soil_assumed = soil_data is None
     variants = [assumed_variant()] if soil_assumed else build_variants(soil_data.layers, crop.root_depth_m)
     computed = compute(weather_result.series, crop, variants)
@@ -1313,8 +1331,12 @@ async def build_report(request: ReportRequest, today: date | None = None,
     history = history_section(computed)
     causes = causes_section(computed, status, soil_assumed)
     timings["compute"] = round(time.perf_counter() - t0, 3)
+    mark("balance", "done")
 
     satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
+    if parcel is not None:
+        mark("satellite", "done")
+    mark("recommendations", "running")
     timings["satellite"] = satellite_info.elapsed_s or 0.0
     satellite, satellite_field_check = satellite_section(
         satellite_result, satellite_info, computed, status.class_key or "none", request, parcel.id if parcel else None,

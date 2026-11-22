@@ -32,14 +32,6 @@ FERT_RAIN_MM, FERT_RAIN_MAX_MM = 2.0, 5.0
 FERT_RUNOFF_MM, FERT_RUNOFF_MAX_MM = 10.0, 20.0   # opad w 2 kolejnych dniach: nawóz może spłynąć
 SNOW_CODES = {71, 73, 75, 77, 85, 86}             # kody pogody WMO: śnieg
 
-NOTES = [
-    "Oceny są uproszczone, a progi umowne. Wilgotność wierzchu gleby to model z opadu i parowania, nie pomiar.",
-    "Wiatr to największa prędkość w ciągu doby na wysokości 10 m. Rano i wieczorem zwykle wieje słabiej.",
-    "Plan nie uwzględnia sprzętu, etykiet środków ochrony roślin ani terminów z programu azotanowego. "
-    "Sprawdź je przed zabiegiem.",
-    "Ostatnie dni prognozy są mniej pewne. Plan zmienia się razem z prognozą, więc sprawdzaj go codziennie.",
-]
-
 
 def surface_soil(sand_pct: float | None, clay_pct: float | None, soc_g_kg: float | None) -> tuple[float, float, float, bool]:
     """Pojemność polowa i punkt więdnięcia wierzchu [m3/m3] oraz REW [mm]; bez uziarnienia gleba umowna (True)."""

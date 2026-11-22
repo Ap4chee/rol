@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Menu, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Menu, Pencil, Plus, Trash2 } from 'lucide-react';
 import { LoadingState } from '@/components/spectrumui/loading-state';
 import {
   ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle, ResponsiveModalTrigger,
@@ -8,12 +8,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Dialog } from '@/components/ui/dialog';
+import { MoreMenu } from '@/components/ui/menu';
 import { ToastProvider, useToast } from '@/components/ui/toaster';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { AddFieldForm } from './AddField.jsx';
 import { Dashboard, JobBadge } from './Dashboard.jsx';
 import { FieldworkPage } from './Fieldwork.jsx';
 import { FieldsMap } from './FieldsMap.jsx';
+import { GenerationSteps } from './GenerationSteps.jsx';
+import { Onboarding, useOnboarding } from './Onboarding.jsx';
 import { mapCode } from './fieldsMap.js';
 import { Report } from './Report.jsx';
 import { mergeSatellite } from './completion.js';
@@ -93,26 +96,26 @@ function mergeFields(previous, next) {
   return next.map((field) => {
     const old = previous.find((entry) => entry.id === field.id);
     return old && old.name === field.name && old.job === field.job && old.error === field.error
-      && old.refreshed_at === field.refreshed_at ? old : withTestShape(field);
+      && old.refreshed_at === field.refreshed_at && JSON.stringify(old.progress ?? null) === JSON.stringify(field.progress ?? null)
+      ? old : withTestShape(field);
   });
 }
 
 /** Pole zapisane, ale jego pierwszy raport jeszcze się liczy na serwerze (albo liczenie się nie udało). */
-function FieldPending({ field, onEdit, onDelete }) {
+function FieldPending({ field, onEdit, onDelete, onBack }) {
   return <div className="flex flex-col gap-6">
+    <Button variant="ghost" size="sm" icon={<ArrowLeft/>} onClick={onBack} className="-ml-2 self-start">Wstecz</Button>
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-tight md:text-[34px]">{field.name}</h1>
         <div role="status" className="mt-3"><JobBadge field={field}/></div>
       </div>
-      <div className="flex gap-2">
-        <Button variant="secondary" size="sm" icon={<Pencil/>} onClick={onEdit}>Edytuj</Button>
-        <Button variant="secondary" size="sm" icon={<Trash2/>} onClick={onDelete}>Usuń</Button>
-      </div>
+      <MoreMenu items={[{ label: 'Edytuj pole', icon: Pencil, onSelect: onEdit },
+        { label: 'Usuń pole', icon: Trash2, onSelect: onDelete, danger: true }]}/>
     </header>
     {field.job === 'error'
       ? <Callout tone="danger" title="Raport się nie policzył">{field.error} Serwer spróbuje ponownie sam.</Callout>
-      : <LoadingState label="Liczę raport w tle: pogoda, gleba, zdjęcia satelitarne (zwykle do minuty)"/>}
+      : <GenerationSteps field={field}/>}
   </div>;
 }
 
@@ -166,7 +169,7 @@ function App() {
     setLoaded(true);
     clearTimeout(poll.current);
     const busy = currentFields.current.some((field) => field.job === 'queued' || field.job === 'running');
-    poll.current = setTimeout(refresh, busy ? 3000 : 60000);
+    poll.current = setTimeout(refresh, busy ? 1200 : 60000);   // w trakcie liczenia często: widać kolejne etapy
   }, [show]);
 
   useEffect(() => {
@@ -252,7 +255,30 @@ function App() {
   }
 
   const closeMenu = () => setMobileOpen(false);
+  // „Wstecz” z widoku pola wraca tam, skąd rolnik przyszedł: pulpit, poziom mapy albo plan prac
+  const cameFrom = useRef('');
+  if (page !== 'field') cameFrom.current = hash;
+  const goBack = () => { window.location.hash = cameFrom.current.replace(/^#/, ''); };
   const addField = () => openModal();
+
+  // samouczek: powitanie przy pierwszej wizycie na pulpicie, objaśnienie raportu przy pierwszym gotowym raporcie
+  const hasReport = Boolean(field?.report);
+  const onboarding = useOnboarding({ ready: loaded && shared !== 'loading', page, tab, hasReport,
+    blocked: modal.open || deleting.open || mobileOpen });
+
+  function closeTour(reason) {
+    onboarding.close(reason);
+    if (reason === 'add') openModal();
+  }
+
+  /** „Jak to działa” w menu: na otwartym raporcie objaśnia raport, poza nim zaczyna od powitania na pulpicie. */
+  function showHelp() {
+    const onReport = page === 'field' && hasReport;
+    if (onReport && tab !== 'podsumowanie') window.location.hash = fieldTabHref(current, 'podsumowanie');
+    if (!onReport && page !== 'dashboard') window.location.hash = '';
+    // po zamknięciu szuflady menu i przerysowaniu widoku, żeby samouczek znalazł elementy do podświetlenia
+    setTimeout(() => onboarding.start(onReport ? 'report' : 'welcome'), 280);
+  }
 
   // Układ: na komputerze menu na tle strony (bez ramki), treść na białym panelu z marginesem; na telefonie
   // górny pasek (stała wysokość, udostępniona jako --app-header dla przyklejanych pasków niżej) i treść na całą szerokość.
@@ -271,7 +297,7 @@ function App() {
       <header className="no-print sticky top-0 z-40 flex h-14 items-center gap-0.5 border-b border-black/[0.06] bg-canvas/90 px-2 backdrop-blur-md md:hidden">
         <Tooltip label="Menu">
           <ResponsiveModalTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Otwórz menu"><Menu strokeWidth={1.9}/></Button>
+            <Button variant="ghost" size="icon" aria-label="Otwórz menu" data-tour="menu"><Menu strokeWidth={1.9}/></Button>
           </ResponsiveModalTrigger>
         </Tooltip>
         <Brand/>
@@ -285,12 +311,12 @@ function App() {
         }}
         className="no-print w-[84vw] max-w-[300px] border-r-0 bg-canvas p-0 sm:max-w-[300px] [&>button]:top-[14px] [&>span]:hidden">
         <ResponsiveModalTitle className="sr-only">Menu</ResponsiveModalTitle>
-        <Sidebar page={page} compact={false} onToggle={toggleCompact} onNavigate={closeMenu} onAdd={addField}/>
+        <Sidebar page={page} compact={false} onToggle={toggleCompact} onNavigate={closeMenu} onAdd={addField} onHelp={showHelp}/>
       </ResponsiveModalContent>
     </ResponsiveModal>
 
     <div className="no-print hidden overflow-hidden md:sticky md:top-0 md:block md:h-svh md:self-start">
-      <Sidebar page={page} compact={compact} onToggle={toggleCompact} onNavigate={closeMenu} onAdd={addField}/>
+      <Sidebar page={page} compact={compact} onToggle={toggleCompact} onNavigate={closeMenu} onAdd={addField} onHelp={showHelp}/>
     </div>
 
     <div className="print-plain flex min-h-[calc(100svh_-_var(--app-header))] min-w-0 flex-col overflow-x-clip bg-white md:my-2 md:mr-2 md:min-h-[calc(100svh_-_1rem)] md:rounded-2xl md:border md:border-black/[0.06] md:shadow-hairline print:min-h-0!">
@@ -300,10 +326,10 @@ function App() {
           {shared === 'loading' ? <SharedLoading/> : !loaded ? <LoadingState label="Wczytuję pola"/> : <>
             {shared && <Callout tone="danger" role="alert" title="Nie udało się otworzyć raportu z linku" className="mb-6">{shared}</Callout>}
             {page === 'field' && !field.report ? <FieldPending field={field} onEdit={() => openModal(field)}
-              onDelete={() => askDelete(field)}/>
+              onDelete={() => askDelete(field)} onBack={goBack}/>
               : page === 'field' ? <Report key={field.id + field.report.generated_at} field={field} tab={tab}
               onTab={(next) => { window.location.hash = fieldTabHref(current, next); }} onEdit={() => openModal(field)}
-              onDelete={() => askDelete(field)} onSave={save} onSatellite={onSatellite}
+              onDelete={() => askDelete(field)} onSave={save} onSatellite={onSatellite} onBack={goBack}
               saved={fields.some((entry) => entry.id === field.id)}/>
               : page === 'map' ? <FieldsMap code={mapAt} fields={fields} onAdd={addField}/>
               // plan potrzebuje uprawy i gleby z raportu; pole, którego raport jeszcze się liczy, dołącza po policzeniu
@@ -330,6 +356,8 @@ function App() {
         <Button variant="danger" onClick={confirmDelete}>Usuń pole</Button>
       </div>
     </Dialog>
+
+    <Onboarding tour={onboarding.tour} narrow={!desktop} onClose={closeTour}/>
   </div>;
 }
 

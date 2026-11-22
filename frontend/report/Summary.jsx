@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, ChevronRight, CircleAlert, Info, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronRight, CircleAlert, RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Card } from '@/components/ui/card';
@@ -103,13 +103,6 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
           <CircleAlert aria-hidden className="size-4 shrink-0" strokeWidth={2.25}/>Stres wodny od {dateText(stressDay)}</p>}
       </>}
       <Note section={water} className="mt-4"/>
-      {/* pewność wyniku na dole kolumny, gdy obok jest wyższy panel działania */}
-      {water.uncertainty_text && <div className="mt-auto pt-5">
-        {limited
-          ? <Callout tone="warning" title="Wynik zależy od gleby">{water.uncertainty_text}</Callout>
-          : <p className="flex max-w-[64ch] gap-2 text-[13px] leading-relaxed text-neutral-500">
-            <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-neutral-400"/>{water.uncertainty_text}</p>}
-      </div>}
     </div>
 
     {first && <div className="flex flex-col border-t border-black/[0.06] bg-neutral-50/70 p-5 md:border-l md:border-t-0 md:p-6">

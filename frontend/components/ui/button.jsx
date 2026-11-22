@@ -4,7 +4,7 @@ import { cva } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner.jsx';
 
-// Na bazie LoadingButton ze Spectrum UI (cva + Slot + stan ładowania), w kolorach Asystenta wody.
+// Na bazie LoadingButton ze Spectrum UI (cva + Slot + stan ładowania), w kolorach WaterOS.
 export const buttonVariants = cva(
   'relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap font-medium '
   + 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 '

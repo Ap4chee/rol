@@ -30,6 +30,7 @@ CHECK_EVERY_S = 60.0   # jak często worker sprawdza, czy nadszedł nowy dzień 
 RETRY_S = 15 * 60.0
 
 _wake = asyncio.Event()   # budzi worker zaraz po dodaniu lub zmianie pola
+_progress: dict[str, dict[str, str]] = {}   # etapy liczonych właśnie raportów (w pamięci procesu): id pola → etap → stan
 
 
 @contextmanager
@@ -70,6 +71,7 @@ def _saved(row: sqlite3.Row) -> SavedField:
     return SavedField(
         id=row["id"], name=row["name"], input=FieldInput.model_validate_json(row["input"]), job=row["job"],
         error=row["error"], report=json.loads(row["report"]) if row["report"] else None,
+        progress=dict(_progress[row["id"]]) if row["job"] == "running" and row["id"] in _progress else None,
         refreshed_at=datetime.fromtimestamp(row["refreshed_at"], timezone.utc) if row["refreshed_at"] else None)
 
 
@@ -135,10 +137,12 @@ def _finish(row: sqlite3.Row, report: dict | None, error: str | None, day: str) 
 
 async def compute(row: sqlite3.Row) -> None:
     day = today_warsaw().isoformat()
+    stages = _progress[row["id"]] = {}
     try:
         inp = FieldInput.model_validate_json(row["input"])
         # w tle nikt nie czeka, więc satelita dostaje pełny czas, a raport jest od razu kompletny
-        report = await build_report(report_request(inp), satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S)
+        report = await build_report(report_request(inp), satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S,
+                                    progress=stages.__setitem__)
     except HTTPException as exc:
         _finish(row, None, str(exc.detail), day)
     except Exception as exc:   # błąd jednego pola nie może zatrzymać workera
@@ -146,6 +150,9 @@ async def compute(row: sqlite3.Row) -> None:
         _finish(row, None, f"Nie udało się policzyć raportu ({type(exc).__name__}). Ponowię za {RETRY_S / 60:.0f} min.", day)
     else:
         _finish(row, report.model_dump(mode="json"), None, day)
+    finally:
+        if _progress.get(row["id"]) is stages:
+            del _progress[row["id"]]
 
 
 async def run_worker() -> None:

@@ -35,7 +35,7 @@ function EmptyState({ onAdd }) {
     <h1 className="mt-6 font-display text-[28px] font-semibold leading-[1.05] tracking-tight md:text-[34px]">Dodaj pierwsze pole</h1>
     <p className="mt-3 max-w-[42ch] text-[15px] leading-relaxed text-neutral-600">
       Wpisz numer działki albo wskaż ją na mapie. Sprawdzimy, czy brakuje jej wody i co z tym zrobić.</p>
-    <Button size="lg" className="mt-8" icon={<Plus/>} onClick={onAdd}>Dodaj pole</Button>
+    <Button size="lg" className="mt-8" icon={<Plus/>} onClick={onAdd} data-tour="add">Dodaj pole</Button>
   </div>;
 }
 
@@ -556,7 +556,7 @@ export function Dashboard({ fields, onAdd, onEdit, onDelete }) {
         <Eyebrow>{date}</Eyebrow>
         <h1 className="mt-2 font-display text-[28px] font-semibold leading-[1.05] tracking-tight md:text-[34px]">Pulpit</h1>
       </div>
-      <Button icon={<Plus/>} onClick={onAdd}>Dodaj pole</Button>
+      <Button icon={<Plus/>} onClick={onAdd} data-tour="add">Dodaj pole</Button>
     </header>
     {ready.length > 0 && <Overview fields={ready} intro={intro}/>}
     {/* kolumna boczna dopiero od 64rem szerokości pulpitu (prognoza potrzebuje ok. 290 px); węziej karty, a pod nimi panele */}

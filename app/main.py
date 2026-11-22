@@ -198,7 +198,7 @@ async def fieldwork_plan(lon: float = Query(ge=14.0, le=24.3), lat: float = Quer
         [d.date for d in rows], [d.precipitation_mm for d in rows], [d.et0_mm for d in rows],
         [d.temperature_max_c for d in rows], [d.temperature_min_c for d in rows], [d.wind_max_kmh for d in rows],
         [d.weather_code for d in rows], len(forecast.recent), CROPS[crop.value], fc, wp, rew)
-    notes = list(fieldwork.NOTES)
+    notes: list[str] = []   # tylko braki danych; ograniczenia planu opisuje README
     if soil_assumed:
         notes.insert(0, "Brak danych o glebie pola: wilgotność wierzchu policzona dla gleby umownej (glina).")
     if not forecast.past_days_complete:

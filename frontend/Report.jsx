@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Pencil, Printer, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, Pencil, Printer, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MoreMenu } from '@/components/ui/menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toaster';
 import { TextStates } from '@/components/spectrumui/text-states';
@@ -33,7 +34,7 @@ function SaveIcon({ done }) {
 }
 
 /** Widok pola: nagłówek z działaniami i zakładki raportu; przy drukowaniu wszystkie części jedna pod drugą. */
-export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellite, saved }) {
+export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellite, onBack, saved }) {
   const title = useRef(null);
   const tabs = useRef(null);
   const printing = usePrinting();
@@ -107,6 +108,7 @@ export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellit
   const saveLabel = justSaved ? 'Zapisano' : saved ? 'Zapisz' : 'Zapisz pole';
 
   return <article className="min-w-0">
+    <Button variant="ghost" size="sm" icon={<ArrowLeft/>} onClick={onBack} className="no-print -ml-2 mb-4">Wstecz</Button>
     <header className="mb-7 flex animate-rise flex-col gap-5 motion-reduce:animate-none md:mb-8 md:flex-row md:items-end md:justify-between">
       <div className="flex min-w-0 items-center gap-4">
       {/* pole rolnika na pierwszy rzut oka: uprawa i kształt działki z geometrii */}
@@ -130,22 +132,19 @@ export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellit
         </div>
       </div>
       </div>
-      <div className="no-print flex shrink-0 items-center gap-2">
-        <Button variant="secondary" icon={<Pencil/>} onClick={onEdit} className="max-sm:w-10 max-sm:px-0">
-          <span className="max-sm:sr-only">Edytuj</span></Button>
-        {saved && <Button variant="secondary" icon={<Trash2/>} onClick={onDelete}
-          className="hover:border-severe/30 hover:bg-severe-soft hover:text-severe-ink max-sm:w-10 max-sm:px-0">
-          <span className="max-sm:sr-only">Usuń</span></Button>}
-        <Button variant="secondary" icon={<Printer/>} onClick={() => window.print()} className="max-sm:w-10 max-sm:px-0">
-          <span className="max-sm:sr-only">PDF</span></Button>
-        <Button onClick={save} className="max-sm:flex-1">
+      <div data-tour="report-actions" className="no-print flex shrink-0 items-center gap-2">
+        {/* zapis tylko dla raportu z linku, którego nie ma jeszcze wśród pól; zapisane pole odświeża się samo */}
+        {!saved && <Button onClick={save} className="max-sm:flex-1">
           {/* miejsce na najdłuższy napis: przycisk nie zmienia szerokości przy „Zapisano”, ikona zostaje przy tekście */}
           <span className="grid justify-items-center">
             {SAVE_LABELS.map((label) => <span key={label} aria-hidden className="invisible col-start-1 row-start-1 flex items-center gap-2">
               <span className="size-4"/>{label}</span>)}
             <span className="col-start-1 row-start-1 flex items-center gap-2"><SaveIcon done={justSaved}/><TextStates text={saveLabel}/></span>
           </span>
-        </Button>
+        </Button>}
+        <Button variant="secondary" icon={<Printer/>} onClick={() => window.print()}>Pobierz PDF</Button>
+        <MoreMenu items={[{ label: 'Edytuj pole', icon: Pencil, onSelect: onEdit },
+          ...(saved ? [{ label: 'Usuń pole', icon: Trash2, onSelect: onDelete, danger: true }] : [])]}/>
       </div>
     </header>
 
@@ -156,13 +155,14 @@ export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellit
       </section>)}</div>
       : <Tabs ref={tabs} value={tab} onValueChange={openTab} className="scroll-mt-[var(--app-header,0px)]">
         {/* na telefonie pasek do krawędzi ekranu: zakładki nie urywają się 16 px przed krawędzią */}
-        <div className="no-print sticky top-[var(--app-header,0px)] z-20 border-b border-black/[0.07] bg-white max-md:-mx-4">
+        <div data-tour="tabs" className="no-print sticky top-[var(--app-header,0px)] z-20 border-b border-black/[0.07] bg-white max-md:-mx-4">
           <TabsList value={tab} aria-label="Części raportu" className="-mb-px max-md:scroll-px-4 max-md:px-4">
             {TABS.map((key) => <TabsTrigger key={key} value={key} count={key === 'rekomendacje' ? recCount : undefined}>
               {TAB_LABELS[key]}</TabsTrigger>)}
           </TabsList>
         </div>
-        {TABS.map((key) => <TabsContent key={key} value={key} className="rounded-lg pt-8">{panels[key]()}</TabsContent>)}
+        {/* data-tour-panel: samouczek podświetla pierwszą sekcję podsumowania (ocenę) */}
+        {TABS.map((key) => <TabsContent key={key} value={key} data-tour-panel={key} className="rounded-lg pt-8">{panels[key]()}</TabsContent>)}
       </Tabs>}
   </article>;
 }

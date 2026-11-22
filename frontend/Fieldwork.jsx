@@ -176,11 +176,8 @@ function FieldPlan({ plan }) {
         </TR>)}
       </TBody>
     </Table>
-    <Legend>
-      <p>Najedź na kafelek, żeby zobaczyć powód.</p>
-      <span className="block">Wierzch gleby: wilgotność warstwy 0–10 cm rano w % pojemności polowej (model z opadu i parowania).
-        {plan.soil_assumed && ' Gleba umowna, bo raport nie ma danych o glebie.'}</span>
-    </Legend>
+    <Legend/>
+    {/* tylko braki danych (gleba umowna, luka w opadzie); stałych uwag o ograniczeniach planu serwer już nie wysyła */}
     <Notes notes={plan.notes}/>
   </>;
 }

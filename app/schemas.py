@@ -628,6 +628,9 @@ class SavedField(BaseModel):
     error: str | None = Field(default=None, description="powód nieudanego liczenia; worker ponowi je sam")
     report: dict[str, Any] | None = Field(default=None, description="ostatni policzony raport (ReportResponse)")
     refreshed_at: DateTime | None = Field(default=None, description="kiedy policzono raport w `report`")
+    progress: dict[str, str] | None = Field(default=None, description=(
+        "tylko gdy job = running: etap liczenia → running | done | skipped; etapy: parcel, weather, soil, water, "
+        "balance, satellite, recommendations (źródła pobierają się równolegle, więc kilka etapów trwa naraz)"))
 
 
 # ---------- plan prac polowych ----------

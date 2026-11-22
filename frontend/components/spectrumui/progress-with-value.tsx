@@ -1,5 +1,5 @@
 // Spectrum UI (https://spectrumhq.in, github.com/arihantcodes/spectrum-ui), komponent „progress-with-value-dependencies”.
-// Licencja Apache-2.0 (plik LICENSE w tym katalogu). Zmodyfikowano na potrzeby Asystenta wody.
+// Licencja Apache-2.0 (plik LICENSE w tym katalogu). Zmodyfikowano na potrzeby WaterOS.
 "use client";
 
 import * as React from "react";

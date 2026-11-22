@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarDays, LayoutDashboard, MapIcon, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { CalendarDays, CircleHelp, LayoutDashboard, MapIcon, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -40,16 +40,16 @@ export function Brand({ compact = false, reveal = false, onClick, className }) {
     <BrandMark/>
     <span className={compact ? 'sr-only'
       : cn('whitespace-nowrap font-display text-[16px] font-semibold tracking-[-0.015em] text-neutral-950', reveal && REVEAL)}>
-      Asystent wody
+      WaterOS
     </span>
   </a>;
 }
 
-/** Pozycja menu: link (`href`) albo przycisk. Aktywna to biała pigułka na tle strony. */
-function NavItem({ icon: Icon, label, active = false, compact, reveal, href, onClick }) {
+/** Pozycja menu: link (`href`) albo przycisk. Aktywna to biała pigułka na tle strony. `tour`: znacznik dla samouczka. */
+function NavItem({ icon: Icon, label, active = false, compact, reveal, href, onClick, tour }) {
   const Comp = href ? 'a' : 'button';
   return <Tooltip label={compact ? label : null} side="right">
-    <Comp href={href} type={href ? undefined : 'button'} onClick={onClick} aria-current={active ? 'page' : undefined}
+    <Comp href={href} type={href ? undefined : 'button'} onClick={onClick} aria-current={active ? 'page' : undefined} data-tour={tour}
       className={cn('press group flex h-10 w-full items-center gap-3.5 overflow-hidden whitespace-nowrap rounded-[10px] pl-3.5 pr-3 text-left text-[14px] font-medium md:h-9',
         active
           ? 'bg-white text-neutral-950 shadow-[0_0_0_1px_rgb(14_16_13/0.06),0_1px_2px_rgb(14_16_13/0.05)]'
@@ -61,8 +61,8 @@ function NavItem({ icon: Icon, label, active = false, compact, reveal, href, onC
   </Tooltip>;
 }
 
-/** Nawigacja: pulpit, mapa pól i dodawanie pola (modal). `compact`: same ikony z dymkami (tylko na komputerze). */
-export function Sidebar({ page, compact, onToggle, onNavigate, onAdd }) {
+/** Nawigacja: pulpit, mapa pól i dodawanie pola (modal), na dole samouczek. `compact`: same ikony z dymkami (tylko na komputerze). */
+export function Sidebar({ page, compact, onToggle, onNavigate, onAdd, onHelp }) {
   const toggleLabel = compact ? 'Rozwiń menu' : 'Zwiń menu';
   const reveal = useChangedSinceMount(compact);
   return <div className="flex h-full flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:pb-2 md:pt-2">
@@ -70,12 +70,13 @@ export function Sidebar({ page, compact, onToggle, onNavigate, onAdd }) {
     <nav aria-label="Menu główne" className="mt-6">
       <ul className="flex flex-col gap-0.5">
         <li><NavItem href="#" icon={LayoutDashboard} label="Pulpit" active={page === 'dashboard'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
-        <li><NavItem href="#mapa" icon={MapIcon} label="Mapa pól" active={page === 'map'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
-        <li><NavItem href="#plan" icon={CalendarDays} label="Plan prac" active={page === 'plan'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
+        <li><NavItem href="#mapa" icon={MapIcon} label="Mapa pól" tour="nav-map" active={page === 'map'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
+        <li><NavItem href="#plan" icon={CalendarDays} label="Plan prac" tour="nav-plan" active={page === 'plan'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
         <li><NavItem icon={Plus} label="Dodaj pole" compact={compact} reveal={reveal} onClick={() => { onNavigate(); onAdd(); }}/></li>
       </ul>
     </nav>
     <div className="mt-auto flex flex-col gap-3 pt-8">
+      <NavItem icon={CircleHelp} label="Jak to działa" compact={compact} reveal={reveal} onClick={() => { onNavigate(); onHelp(); }}/>
       {/* zwijanie tylko na komputerze; przycisk stoi w tym samym miejscu w obu stanach, więc można od razu cofnąć */}
       <div className="hidden pl-1.5 md:block">
         <Tooltip label={toggleLabel} side="right">

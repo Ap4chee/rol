@@ -285,7 +285,40 @@
 @keyframes tip-out { from { opacity: 0; clip-path: inset(0 100% 0 0); transform: translate(8px, -50%); } }
 @keyframes tip-out-left { from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translate(calc(-100% - 8px), -50%); } }
 
+/* ---------- samouczek (Onboarding.jsx) ---------- */
+/* obwódka podświetlonego elementu: biała kreska i zielona fala, która co chwilę się rozchodzi */
+.tour-ring { box-shadow: 0 0 0 2px rgb(255 255 255 / 0.92); animation: tour-ring 2.2s var(--ease-out) infinite; }
+@keyframes tour-ring {
+  0% { box-shadow: 0 0 0 2px rgb(255 255 255 / 0.92), 0 0 0 2px rgb(141 197 159 / 0.85); }
+  70%, 100% { box-shadow: 0 0 0 2px rgb(255 255 255 / 0.92), 0 0 0 14px rgb(141 197 159 / 0); }
+}
+/* ilustracje kroków: każdy element wchodzi raz, z opóźnieniem ustawionym w stylu (kolejność opowiada, co się dzieje) */
+.tour-pop { animation: tour-pop 460ms var(--ease-out) both; }
+.tour-fade { animation: tour-fade 500ms var(--ease-out) both; }
+.tour-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: tour-draw 900ms var(--ease-in-out) both; }
+.tour-grow { transform-origin: left; animation: tour-grow 900ms var(--ease-out) both; }
+.tour-type { animation: tour-type 700ms steps(16, end) both; }
+.tour-pin { transform: translate(-50%, -100%); animation: tour-pin 520ms cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+.tour-zoom { animation: tour-zoom 7s var(--ease-out) both; }
+.tour-float { animation: tour-float 4.5s ease-in-out infinite alternate; }
+.tour-rain { opacity: 0; animation: tour-rain 1.25s linear infinite; }
+@keyframes tour-pop { from { opacity: 0; transform: translateY(8px) scale(0.94); } }
+@keyframes tour-fade { from { opacity: 0; } }
+@keyframes tour-draw { from { stroke-dashoffset: 1; } }
+@keyframes tour-grow { from { transform: scaleX(0); } }
+@keyframes tour-type { from { clip-path: inset(0 100% 0 0); } }
+@keyframes tour-pin { from { opacity: 0; transform: translate(-50%, calc(-100% - 22px)); } }
+@keyframes tour-zoom { from { transform: scale(1.1); } }
+@keyframes tour-float { to { transform: translateY(-6px); } }
+@keyframes tour-rain {
+  0% { opacity: 0; transform: translateY(-5px); }
+  20% { opacity: 0.95; }
+  80% { opacity: 0.8; }
+  100% { opacity: 0; transform: translateY(20px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .tour-ring, .tour-art * { animation: none !important; }
   .field3d-canvas, .water-chart .actual, .water-chart .today-dot, .bar-grow, .layer-tip { animation: none !important; }
   .water-chart .actual.past { stroke-dashoffset: 0 !important; }
   .press:active { transform: none; }
