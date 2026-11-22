@@ -43,6 +43,32 @@ Jeśli pod `http://127.0.0.1:8000` widzisz inny interfejs niż ktoś z zespołu,
 
 Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip install -r requirements.txt` i `.venv/bin/python -m uvicorn app.main:app`.
 
+### Docker i Google Cloud Run
+
+`Dockerfile` buduje obraz w dwóch etapach: najpierw frontend (`npm ci`, `npm run build`, czyli `static/ui.js` i `static/ui.css` ze źródeł w `frontend/`), potem serwer na Pythonie 3.12. Do obrazu trafia kod `app/`, modele z `kowr_ml/model/` i `kowr_ml/model_sm/` oraz `static/` i `outputs/assety_gleby/webp/`. Dane treningowe, `cache/`, `data/`, dokumentacja i testy zostają poza obrazem (`.dockerignore`, `.gcloudignore`). Serwer słucha na porcie z `$PORT` (domyślnie 8080).
+
+Lokalnie:
+
+```sh
+docker build -t kowr .
+docker run --rm -p 8080:8080 kowr
+```
+
+Wdrożenie na Cloud Run, gdy masz gcloud CLI (`winget install Google.CloudSDK`, potem `gcloud init`) i projekt GCP z włączonym billingiem:
+
+```powershell
+.\deploy.ps1 -Project <id-projektu>                 # region europe-central2 (Warszawa), usługa "kowr"
+.\deploy.ps1 -Project <id> -Region europe-west1 -Service kowr-demo
+```
+
+Skrypt włącza API Cloud Run, Cloud Build i Artifact Registry, wysyła źródła do Cloud Build (lokalny Docker nie jest potrzebny) i wypisuje publiczny adres HTTPS. Pierwsze wdrożenie trwa 5–10 minut. Ustawienia usługi i ich powody:
+
+- `--max-instances 1`: zapisane pola są w SQLite na dysku instancji, a worker raportów działa w tym samym procesie. Kilka instancji miałoby rozjechane listy pól.
+- `--no-cpu-throttling` i `--min-instances 1`: worker przelicza pola w tle także między zapytaniami, a pierwsze wejście jury nie czeka na zimny start. Instancja działa wtedy cały czas i jest rozliczana za cały czas działania, nie tylko za zapytania (2 vCPU, 2 GiB).
+- `--timeout 300`: pobieranie NMT z GUGiK potrafi trwać do 180 s.
+
+Ograniczenie: dysk Cloud Run jest ulotny. Restart lub nowe wdrożenie kasuje zapisane pola (`data/`) i pamięć podręczną (`cache/`). Raporty liczą się od nowa z danych na żywo, więc wynik się nie zmienia, ale lista pól na pulpicie wraca do pustej.
+
 ## Funkcje
 
 - **Pulpit**: liczba pól w każdym stanie wody, pola ułożone od najpilniejszego, najbliższe działania z zapisanych analiz i przewijana prognoza pogody do 16 dni dla wybranego pola. Pola zapisują się na serwerze, a ich raporty liczy worker w tle: zaraz po dodaniu pola i potem raz na dobę. Karta pola pokazuje stan liczenia (kręcąca się plakietka „Liczę raport” / „Odświeżam raport”, błąd z powodem) i godzinę ostatniego odświeżenia.
