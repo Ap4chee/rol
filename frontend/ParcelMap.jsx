@@ -181,7 +181,13 @@ export function ParcelMap({ parcel, terrain, point, onPick, location }) {
       if (collection) data.terrainSource.addFeatures(data.format.readFeatures(collection,
         { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' }));
     }
-  }, [terrain, ol]);
+    // Spływy sięgają cały bufor wokół działki; w raporcie (bez przybliżania) kadr obejmuje cały ten wycinek.
+    if (!focus || data.terrainSource.isEmpty()) return;
+    const extent = ol.extent.extend(data.terrainSource.getExtent().slice(), data.parcelSource.getExtent());
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    data.map.getView().cancelAnimations();
+    data.map.getView().fit(extent, { padding: [16, 16, 16, 16], duration: reduced ? 0 : 400, easing: ol.easing.easeOut });
+  }, [terrain, ol, focus]);
 
   if (!ol) return <Callout tone="neutral">Nie udało się uruchomić mapy. Możesz wyszukać działkę po numerze.</Callout>;
   // @container: pasek przełączników i wiersz podpowiedzi układają się według szerokości mapy, nie ekranu
