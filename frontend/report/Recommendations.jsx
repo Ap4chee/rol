@@ -1,4 +1,4 @@
-import { ClipboardCheck, Droplets, MapPin, ShowerHead, Tractor } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { StatCards } from '@/components/spectrumui/charts/stat-cards';
 import { StatusBadge } from '@/components/ui/status';
@@ -26,7 +26,20 @@ function enter(intro, step) {
   return intro ? { className: 'animate-rise motion-reduce:animate-none', style: { animationDelay: `${ENTER_MS[step]}ms` } } : {};
 }
 
-const GROUP_ICONS = { retention: Droplets, agrotechnical: Tractor, irrigation: ShowerHead };
+// zdjęcia zabiegów (static/design) tylko tam, gdzie zdjęcie jednoznacznie pokazuje działanie; reszta ma ilustrację grupy
+const ACTION_PHOTOS = { residue_cover: 'mulcz', cover_crop: 'miedzyplon', organic_matter: 'gleba',
+  buffer_strip_watercourse: 'zadrzewienia', buffer_strip_flow_path: 'zadrzewienia', protect_depression: 'zaglebienie' };
+const GROUP_IMAGES = { retention: 'retencja', agrotechnical: 'agrotechnika', irrigation: 'nawadnianie', field_check: 'ogledziny' };
+
+/** Obrazek działania: zdjęcie zabiegu albo ilustracja grupy (te same co w „Najbliższych działaniach” na pulpicie). */
+function ActionImage({ action, group }) {
+  const photo = ACTION_PHOTOS[action];
+  // bez loading="lazy": przy druku zakładka jest daleko w dokumencie i obrazki mogłyby się nie wczytać
+  return <span aria-hidden className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-neutral-100 ring-1 ring-inset ring-black/[0.04]">
+    <img src={photo ? `/design/${photo}.jpg` : `/design/akcja-${GROUP_IMAGES[group]}.png`} alt="" width="44" height="44" decoding="async"
+      className={photo ? 'size-full object-cover' : 'size-9 object-contain'}/>
+  </span>;
+}
 
 // shortcut: zdanie kończy się na [.!?] przed wielką literą („ok. 56 dni” zostaje w środku); krótki powód z backendu byłby pewniejszy
 const SENTENCE_END = /(?<=[.!?])\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])/;
@@ -40,21 +53,19 @@ function pickFact(why, shown) {
 }
 
 /** Działanie jako wiersz: tytuł i jeden fakt z danych pola; jak to zrobić i pełne uzasadnienie po rozwinięciu. */
-function RecommendationRow({ item, group, fact, rest }) {
-  const Icon = GROUP_ICONS[group];
+function RecommendationRow({ item, action, group, fact, rest }) {
   return <AccordionItem value={item.key}>
     {/* pierścień fokusu do środka: lista przycina to, co wystaje */}
     <AccordionTrigger className="items-start gap-3.5 px-4 py-4 font-sans focus-visible:ring-inset md:px-5">
       <span className="flex min-w-0 flex-1 gap-3.5">
-        <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-          <Icon className="size-4" strokeWidth={2}/></span>
+        <ActionImage action={action} group={group}/>
         <span className="min-w-0 pt-0.5">
           <span className="block text-[15px] font-semibold leading-snug text-neutral-950">{item.title}</span>
           {fact && <span className="mt-1 block text-[13.5px] font-normal leading-relaxed text-neutral-500">{fact}</span>}
         </span>
       </span>
     </AccordionTrigger>
-    <AccordionContent className="space-y-3 pb-5 pl-[62px] pr-5 text-[13.5px] md:pl-[66px]">
+    <AccordionContent className="space-y-3 pb-5 pl-[74px] pr-5 text-[13.5px] md:pl-[78px]">
       <div>
         <p className="font-semibold text-neutral-900">Jak to zrobić</p>
         <p className="mt-1 max-w-[68ch] text-neutral-700">{item.what}</p>
@@ -164,7 +175,7 @@ export function Recommendations({ report, terrainActions, intro = false }) {
             <h3 className="font-sans text-[16px] font-semibold tracking-tight text-neutral-950">{title}</h3>
             <Accordion type="multiple" className="surface mt-3 overflow-hidden">
               {/* klucz z pozycją: działanie z terenu może mieć ten sam klucz co działanie z raportu */}
-              {items.map((item, n) => <RecommendationRow key={`${item.key}-${n}`} item={{ ...item, key: `${item.key}-${n}` }} group={key}
+              {items.map((item, n) => <RecommendationRow key={`${item.key}-${n}`} item={{ ...item, key: `${item.key}-${n}` }} action={item.key} group={key}
                 {...pickFact(item.why, shown)}/>)}
             </Accordion>
             {note && <p className="mt-3 text-[13.5px] leading-relaxed text-neutral-500">{note}</p>}
@@ -178,8 +189,7 @@ export function Recommendations({ report, terrainActions, intro = false }) {
       <h3 className="font-sans text-[16px] font-semibold tracking-tight text-neutral-950">Co sprawdzić na polu</h3>
       <ul className="surface mt-4 divide-y divide-black/[0.06]">
         {checks.map((item) => <li key={item.key} className="flex gap-3.5 p-4 md:px-5">
-          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-            <ClipboardCheck className="size-4" strokeWidth={2}/></span>
+          <ActionImage action={item.key} group="field_check"/>
           <div className="min-w-0 pt-0.5">
             <p className="text-[14px] font-semibold leading-snug text-neutral-900">{item.title}</p>
             <p className="mt-1 text-[13.5px] leading-relaxed text-neutral-500">{item.what}</p>
