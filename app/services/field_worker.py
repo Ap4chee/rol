@@ -15,11 +15,14 @@ from datetime import UTC, date, datetime
 
 from app.config import SATELLITE_DEFERRED_BUDGET_S
 from app.core.dates import InvalidAnalysisDate, today_warsaw
+from app.infra.http import new_client
 from app.persistence.field_repository import FieldRepository, StoredField
 from app.schemas import FieldInput, ReportRequest, SavedField, Status
 from app.services import ml_bridge
 from app.services.errors import ReportUnavailable
 from app.services.report_builder import ReportBuilder
+from app.services.source_gatherer import SourceGatherer
+from app.services.terrain_jobs import TerrainJobs
 
 log = logging.getLogger(__name__)
 
@@ -51,10 +54,14 @@ class FieldWorker:
     """Zapisane pola, kolejka liczenia i etapy raportów liczonych w tej chwili (tylko w pamięci procesu)."""
 
     def __init__(self, repository: FieldRepository, builder: ReportBuilder,
-                 today: Callable[[], date] = today_warsaw) -> None:
+                 today: Callable[[], date] = today_warsaw,
+                 terrain: TerrainJobs | None = None, parcels: SourceGatherer | None = None) -> None:
         self._repo = repository
         self._builder = builder
         self._today = today
+        # Teren pól liczymy z wyprzedzeniem tylko wtedy, gdy dostaliśmy oba: kolejkę terenu i sposób na działkę.
+        self._terrain = terrain
+        self._parcels = parcels
         self._wake = asyncio.Event()   # budzi pętlę zaraz po dodaniu lub zmianie pola
         self._progress: dict[str, dict[str, str]] = {}   # id pola → etap → stan
         # Dokończenia raportów (satelita) działają obok kolejki i nie zajmują miejsca z WORKERS.
@@ -101,6 +108,7 @@ class FieldWorker:
                                     time.time())
             if report.satellite.status == Status.pending:
                 self._spawn(self._complete_report(field, inp, day))
+            self._spawn(self._prepare_terrain([inp]))   # teren osobno, równolegle z dociąganiem satelity
         finally:
             if self._progress.get(field.id) is stages:
                 del self._progress[field.id]
@@ -121,10 +129,27 @@ class FieldWorker:
             return
         await asyncio.to_thread(self._repo.replace_report, field, report.model_dump(mode="json"), time.time())
 
+    async def _prepare_terrain(self, inputs: list[FieldInput]) -> None:
+        """Teren pól liczony w tle, żeby przy otwarciu raportu był już gotowy. Po kolei, bo arkusz NMT
+        pobieramy jeden naraz. Pole z terenem w pamięci podręcznej kosztuje tylko zapytanie o działkę."""
+        if self._terrain is None or self._parcels is None:
+            return
+        for inp in inputs:
+            try:
+                async with new_client() as client:
+                    parcel, _info = await self._parcels.resolve_parcel(client, report_request(inp, self._today()))
+                if parcel is not None:
+                    await self._terrain.get(parcel)   # z pamięci podręcznej albo liczy i zapisuje
+            except Exception:   # błąd terenu jednego pola nie zatrzymuje pozostałych; raport poda powód
+                log.exception("Teren pola %s nie policzył się w tle", field_id(inp))
+
     async def run(self) -> None:
         """Pętla workera: liczy do WORKERS pól naraz, budzi się po zmianie pola albo co CHECK_EVERY_S."""
         await asyncio.to_thread(self._repo.requeue_running)
         self._spawn(asyncio.to_thread(ml_bridge.warm_up))
+        # Po restarcie albo wyczyszczeniu cache teren wszystkich pól liczy się od nowa, zanim ktoś otworzy raport.
+        stored = await asyncio.to_thread(self._repo.list)
+        self._spawn(self._prepare_terrain([FieldInput.model_validate_json(f.input) for f in stored]))
         active: set[asyncio.Task] = set()
         while True:
             self._wake.clear()

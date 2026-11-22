@@ -53,10 +53,12 @@ def create_app(data_dir: Path = DATA_DIR) -> FastAPI:
         lifespan=lifespan,
     )
     terrain_jobs = TerrainJobs()
-    builder = ReportBuilder(SourceGatherer(start_terrain=terrain_jobs.start))
+    gatherer = SourceGatherer(start_terrain=terrain_jobs.start)
+    builder = ReportBuilder(gatherer)
     app.state.terrain_jobs = terrain_jobs
     app.state.report_builder = builder
-    app.state.field_worker = FieldWorker(FieldRepository(data_dir / FIELDS_DB), builder)
+    app.state.field_worker = FieldWorker(FieldRepository(data_dir / FIELDS_DB), builder,
+                                         terrain=terrain_jobs, parcels=gatherer)
     app.state.fieldwork_planner = FieldworkPlanner()
 
     app.middleware("http")(revalidate_frontend)
