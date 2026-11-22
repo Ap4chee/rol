@@ -11,7 +11,7 @@ import { NumberTicker } from '@/components/spectrumui/number-ticker';
 import { SkeletonReveal } from '@/components/spectrumui/skeleton-reveal';
 import { cn } from '@/lib/utils';
 import { actionItems, byUrgency, dateText, fieldHref, fieldTabHref, number, today, waterPercent } from './model.js';
-import { api, Note, Status, statusFill, statusInk, statusTone } from './ui.jsx';
+import { api, Note, ParcelOutline, Status, statusFill, statusInk, statusTone } from './ui.jsx';
 
 const CROP_IMAGES = { maize: 'kukurydza', winter_wheat: 'pszenica', grassland: 'laka', potato: 'ziemniaki', sugar_beet: 'burak' };
 
@@ -97,11 +97,14 @@ function Overview({ fields, intro }) {
 
 // ---------- karty pól ----------
 
-/** Kafelek uprawy: ilustracja z /design albo ikona, gdy uprawa jej nie ma. */
-function CropTile({ crop }) {
+// wspólny wygląd kafelków uprawy i sylwetki działki (karta pola, nagłówek raportu)
+export const TILE = 'size-11 shrink-0 rounded-xl bg-neutral-50 ring-1 ring-inset ring-black/[0.05]';
+
+/** Kafelek uprawy: ilustracja z /design albo ikona, gdy uprawa jej nie ma. `className` zmienia rozmiar kafelka. */
+export function CropTile({ crop, className }) {
   const image = CROP_IMAGES[crop?.key];
-  return <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-neutral-50 ring-1 ring-inset ring-black/[0.05]">
-    {image ? <img src={`/design/${image}.png`} alt="" width="40" height="40" loading="lazy" decoding="async" className="size-10 object-contain"/>
+  return <span className={cn('grid place-items-center', TILE, className)}>
+    {image ? <img src={`/design/${image}.png`} alt="" width="40" height="40" loading="lazy" decoding="async" className="size-[90%] object-contain"/>
       : <Sprout aria-hidden className="size-5 text-brand-600" strokeWidth={1.75}/>}
   </span>;
 }
@@ -133,6 +136,7 @@ function FieldCard({ field, style }) {
           <p className="mt-0.5 truncate text-[13px] text-neutral-500">
             {report.crop.name}{report.parcel?.area_ha != null && <> · <span className="num">{number(report.parcel.area_ha, 2)} ha</span></>}</p>
         </div>
+        <ParcelOutline geometry={report.parcel?.geometry} className={cn(TILE, 'p-1')}/>
         <ChevronRight aria-hidden className="size-4 shrink-0 text-neutral-300 transition-[color,translate] duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-neutral-500"/>
       </div>
       {/* kolejność wzroku: 1) stan wody (duża liczba w kolorze stanu), 2) co zrobić, 3) szczegóły drobnym drukiem */}

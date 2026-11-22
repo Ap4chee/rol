@@ -11,7 +11,7 @@ export const Card = forwardRef(function Card({ className, asChild, interactive, 
     className)} {...props}/>;
 });
 
-/** Mikro-etykieta (mono, wersaliki) nad liczbą albo blokiem. */
+/** Mikro-etykieta (mała, szara) nad liczbą albo blokiem. */
 export function Eyebrow({ as: Comp = 'p', className, ...props }) {
   return <Comp className={cn('eyebrow', className)} {...props}/>;
 }

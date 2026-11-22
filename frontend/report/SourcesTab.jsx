@@ -17,8 +17,15 @@ export function SourcesTab({ report }) {
   const limitations = report.limitations ?? [];
   // raport jest już scalony z dociągniętymi częściami (completion.js), więc wpisy źródeł są aktualne
   const sources = report.sources ?? [];
+  const parcel = report.parcel;
+  const place = parcel && [parcel.region && `obręb ${parcel.region}`, parcel.commune && `gm. ${parcel.commune}`,
+    parcel.county && `pow. ${parcel.county}`, parcel.voivodeship && `woj. ${parcel.voivodeship}`].filter(Boolean).join(', ');
   return <div className="flex flex-col gap-14">
     <Section title="Skąd to wiemy">
+      {/* pełny identyfikator EGiB tylko tutaj; w nagłówku raportu numer i obręb */}
+      {parcel?.id && <p className="mb-4 text-[13.5px] text-neutral-600">
+        Działka ewidencyjna <span className="num whitespace-nowrap font-mono text-[12.5px] text-neutral-900">{parcel.id}</span>
+        {place && `, ${place}`}</p>}
       {/* w wąskim miejscu (telefon, wąska kolumna obok menu) okres danych schodzi pod nazwę źródła zamiast przewijania tabeli */}
       <div className="@container">
         <Table>

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Callout } from '@/components/ui/callout';
 import { StatusBadge, TONE } from '@/components/ui/status';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,31 @@ export function Sparkline({ values, min, max, label, height = 44, className }) {
   return <svg className={cn('block w-full', className)} style={{ height }} viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label={label}>
     <path d="M3 39H157" fill="none" stroke="currentColor" strokeOpacity=".18" vectorEffect="non-scaling-stroke"/>
     <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+  </svg>;
+}
+
+/**
+ * Sylwetka działki z geometrii raportu, wypełniona bruzdami. EPSG:4326 → płaski układ (długość × cos szerokości),
+ * północ u góry, jak na mapie. Bez geometrii (wskazany punkt) nic nie rysuje.
+ */
+export function ParcelOutline({ geometry, className }) {
+  const furrows = useId();
+  const polygons = geometry?.type === 'Polygon' ? [geometry.coordinates] : geometry?.type === 'MultiPolygon' ? geometry.coordinates : [];
+  const rings = polygons.flat().filter((ring) => ring.length > 2);
+  if (!rings.length) return null;
+  const kx = Math.cos(rings[0][0][1] * Math.PI / 180);
+  const points = rings.map((ring) => ring.map(([lon, lat]) => [lon * kx, -lat]));
+  const xs = points.flat().map(([x]) => x), ys = points.flat().map(([, y]) => y);
+  const minX = Math.min(...xs), minY = Math.min(...ys), w = Math.max(...xs) - minX, h = Math.max(...ys) - minY;
+  const k = 84 / (Math.max(w, h) || 1);   // kwadrat 100×100 z marginesem na obrys, kształt wyśrodkowany
+  const ox = (100 - w * k) / 2, oy = (100 - h * k) / 2;
+  const d = points.map((ring) => 'M' + ring.map(([x, y]) => `${((x - minX) * k + ox).toFixed(1)},${((y - minY) * k + oy).toFixed(1)}`).join('L') + 'Z').join('');
+  return <svg viewBox="0 0 100 100" aria-hidden className={className}>
+    <defs><pattern id={furrows} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)">
+      <path d="M0 4H8" stroke="var(--color-brand-400)" strokeWidth="2.5"/></pattern></defs>
+    <path d={d} fillRule="evenodd" fill="var(--color-brand-200)"/>
+    <path d={d} fillRule="evenodd" fill={`url(#${furrows})`} stroke="var(--color-brand-700)" strokeWidth="2"
+      strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
   </svg>;
 }
 

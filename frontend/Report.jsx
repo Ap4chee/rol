@@ -6,7 +6,8 @@ import { useToast } from '@/components/ui/toaster';
 import { TextStates } from '@/components/spectrumui/text-states';
 import { usePrinting } from '@/lib/printing';
 import { cn } from '@/lib/utils';
-import { Status } from './ui.jsx';
+import { CropTile, TILE } from './Dashboard.jsx';
+import { ParcelOutline, Status } from './ui.jsx';
 import { dateText, number, TABS } from './model.js';
 import { HistoryTab } from './report/HistoryTab.jsx';
 import { GROUPS, groupActions, Recommendations } from './report/Recommendations.jsx';
@@ -86,23 +87,32 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
     historia: () => <HistoryTab report={report} intro={intro('historia')}/>,
     zrodla: () => <SourcesTab report={report}/>,
   };
+  const parcel = report.parcel;
+  // numer i obręb zamiast identyfikatora EGiB (pełny identyfikator jest w zakładce Źródła)
+  const parcelText = parcel?.number ? [`działka ${parcel.number}`, parcel.region && `obręb ${parcel.region}`].filter(Boolean).join(', ')
+    : parcel?.id ?? 'wskazany punkt';
   const facts = [
     { text: report.crop.name },
-    report.parcel?.area_ha != null && { text: `${number(report.parcel.area_ha, 2)} ha` },
-    { text: report.parcel?.id ?? 'wskazany punkt', code: Boolean(report.parcel?.id) },
+    parcel?.area_ha != null && { text: `${number(parcel.area_ha, 2)} ha` },
+    { text: parcelText, wrap: true },
     { text: `stan na ${dateText(report.analysis_date)}` },
   ].filter(Boolean);
   const saveLabel = justSaved ? 'Zapisano' : saved ? 'Zapisz' : 'Zapisz pole';
 
   return <article className="min-w-0">
     <header className="mb-7 flex animate-rise flex-col gap-5 motion-reduce:animate-none md:mb-8 md:flex-row md:items-end md:justify-between">
+      <div className="flex min-w-0 items-center gap-4">
+      {/* pole rolnika na pierwszy rzut oka: uprawa i kształt działki z geometrii */}
+      <div className="flex shrink-0 gap-1.5">
+        <CropTile crop={report.crop} className="size-12 md:size-14"/>
+        <ParcelOutline geometry={parcel?.geometry} className={cn(TILE, 'size-12 p-1 md:size-14')}/>
+      </div>
       <div className="min-w-0">
         {/* kropka sklejona twardą spacją z poprzednim faktem: zawinięty wiersz nigdy nie zaczyna się od „·” */}
         <p className="text-[13px] leading-relaxed text-neutral-500">
           {facts.map((fact, i) => <Fragment key={i}>
             {i > 0 && <span aria-hidden className="text-neutral-300">{' · '}</span>}
-            {/* identyfikator działki w całości: przeniesiony do nowego wiersza zamiast urwanej końcówki („…580/” + „2”) */}
-            <span className={fact.code ? 'num whitespace-nowrap font-mono text-[12px] text-neutral-600' : 'whitespace-nowrap'}>{fact.text}</span>
+            <span className={fact.wrap ? undefined : 'whitespace-nowrap'}>{fact.text}</span>
           </Fragment>)}
         </p>
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-2">
@@ -111,6 +121,7 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
             {field.name}</h1>
           <Status water={water}/>
         </div>
+      </div>
       </div>
       <div className="no-print flex shrink-0 items-center gap-2">
         <Button variant="secondary" icon={<RefreshCw/>} onClick={onEdit} className="max-sm:w-10 max-sm:px-0">
