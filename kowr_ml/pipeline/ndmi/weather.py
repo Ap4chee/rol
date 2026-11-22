@@ -19,7 +19,7 @@ import time
 import httpx
 import pandas as pd
 
-from . import config as C
+from kowr_ml.pipeline import config as C
 
 PAUSE_S = 40.0   # odstęp między zapytaniami (limit minutowy liczy długie zakresy jak wiele wywołań)
 

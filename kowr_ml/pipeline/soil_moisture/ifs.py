@@ -1,8 +1,8 @@
 """Archiwalne prognozy ECMWF IFS (open data na AWS, s3://ecmwf-forecasts) dla skupisk -> ifs_forecast.parquet.
 
-Do modelu wilgotności v2 (sm2_dataset.py) potrzebna jest prognoza wydana w dniu t, a nie faktyczna pogoda.
+Do modelu wilgotności (dataset.py) potrzebna jest prognoza wydana w dniu t, a nie faktyczna pogoda.
 Bierzemy przebieg 00 UTC z dnia t (w aplikacji dostępny rano tego dnia) i z każdego pliku kroku tylko potrzebne
-pola, zapytaniem o zakres bajtów według pliku .index. Dni prognozy t jak w sm_dataset (co ISSUE_STEP_DAYS od 1.01.2019).
+pola, zapytaniem o zakres bajtów według pliku .index. Dni prognozy t jak w dataset.py (co ISSUE_STEP_DAYS od 1.01.2019).
 
 Archiwum: od 18.01.2023 siatka 0,4° (`0p4-beta`) z opadem i temperaturą; od 02.2024 siatka 0,25° (`ifs/0p25`),
 dodatkowo wilgotność gleby warstw 1–3 (0–7, 7–28, 28–100 cm, jak w ERA5-Land): `swvl1…3`, później `vsw` poziomy 1–3.
@@ -26,8 +26,8 @@ from datetime import date, timedelta
 import httpx
 import numpy as np
 
-from . import config as C
-from .sm_dataset import HORIZON_DAYS, ISSUE_STEP_DAYS, SM_SEASONS
+from kowr_ml.pipeline import config as C
+from kowr_ml.pipeline.soil_moisture.dataset import HORIZON_DAYS, ISSUE_STEP_DAYS, SM_SEASONS
 
 BASE = "https://ecmwf-forecasts.s3.amazonaws.com"
 FIRST_DAY = date(2023, 1, 18)

@@ -15,7 +15,7 @@ from pyproj import Transformer
 from shapely.geometry import box, mapping
 from shapely.ops import transform as shp_transform
 
-from . import config as C
+from kowr_ml.pipeline import config as C
 
 TO_2180 = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
 TO_4326 = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)

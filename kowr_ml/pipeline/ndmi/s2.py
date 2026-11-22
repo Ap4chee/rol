@@ -1,8 +1,9 @@
 """Obserwacje pól z Sentinel-2 L2A (Earth Search), zgodnie ze specyfikacją, sekcja 3, i tak jak liczy aplikacja.
 
 Sceny z obu kolekcji (`sentinel-2-c1-l2a` ma pierwszeństwo, `sentinel-2-l2a` uzupełnia lata 2017, 2018 i 2022),
-łączone po satelicie, dniu i kaflu jak w app/sources/sentinel.py. Reflektancja = DN · scale + offset z `raster:bands`;
-gdy scena ma `earthsearch:boa_offset_applied = true`, przesunięcie jest już odjęte w pikselach i offset = 0.
+łączone po satelicie, dniu i kaflu jak w app/sources/sentinel.py. Reflektancja = DN · scale + offset z `raster:bands`,
+z tą samą regułą offsetu co aplikacja (opis i pomiary w app/sources/sentinel.py): w `sentinel-2-l2a` przesunięcie
+jest już odjęte w pikselach i offset = 0 niezależnie od flagi `earthsearch:boa_offset_applied`.
 
 Pętla po scenach, nie po polach: dla każdej sceny czytamy jedno okno obejmujące całe skupisko,
 najpierw SCL, a pasma B8A (nir08), B11 (swir16) i B04 (red) tylko gdy choć jedno pole przeszło próg.
@@ -15,7 +16,7 @@ field_id, scene_id, collection, platform, date (doba Europe/Warsaw), total_px, v
 (n_veg, n_bare, n_cloud, n_water, n_snow, n_nodata), ndmi (NaN = obserwacja odrzucona), ndmi_iqr, ndvi,
 mediany reflektancji nir_med, swir_med, red_med.
 
-Użycie: python -m kowr_ml.s2 [procesy] [sezon,sezon,...] [skupisko,skupisko,...]
+Użycie: python -m kowr_ml.pipeline.ndmi.s2 [procesy] [sezon,sezon,...] [skupisko,skupisko,...]
 """
 from __future__ import annotations
 
@@ -32,7 +33,7 @@ from shapely import wkt as shp_wkt
 from shapely.geometry import box, mapping
 from shapely.ops import transform as shp_transform
 
-from . import config as C
+from kowr_ml.pipeline import config as C
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 GDAL_OPTIONS = {
@@ -73,9 +74,8 @@ def scene_items(cluster_bbox_4326: tuple, season: int) -> list[dict]:
                 search = client.search(collections=[collection], intersects=mapping(box(*cluster_bbox_4326)),
                                        datetime=f"{season}-{C.S2_MONTHS[0]}/{season}-{C.S2_MONTHS[1]}", limit=200)
                 for item in search.items():
-                    # W `sentinel-2-l2a` przesunięcie reflektancji jest już odjęte w pikselach, także gdy flaga
-                    # `earthsearch:boa_offset_applied` mówi inaczej (opis w app/sources/sentinel.py).
-                    offset_applied = (collection == "sentinel-2-l2a"
+                    # Ta sama reguła co app/sources/sentinel.py (_scene_from_item); tam opis i pomiary.
+                    offset_applied = (collection == C.OFFSET_APPLIED_COLLECTION
                                       or bool(item.properties.get("earthsearch:boa_offset_applied")))
                     assets, ok = {}, True
                     for key, name in (("scl", "scl"), ("nir", "nir08"), ("swir", "swir16"), ("red", "red")):

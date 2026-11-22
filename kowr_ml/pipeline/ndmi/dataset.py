@@ -3,35 +3,26 @@
 Wejście: fields.parquet, obs/*.parquet, weather.parquet. Wynik: training.parquet i dataset_stats.json
 (liczby wierszy odrzuconych z każdego powodu). Skupiska liczone równolegle.
 
-Użycie: python -m kowr_ml.dataset [procesy]
+Użycie: python -m kowr_ml.pipeline.ndmi.dataset [procesy]
 """
 from __future__ import annotations
 
 import json
 import sys
 from concurrent.futures import ProcessPoolExecutor
-from datetime import date
 
 import pandas as pd
 
-from . import config as C
-from .features import FEATURES, FieldScenes, WeatherSeries, feature_row, issue_dates, target
+from kowr_ml.pipeline import config as C
+from kowr_ml.pipeline.ndmi.labels import issue_dates, target
+from kowr_ml.pipeline.tables import weather_series
+from kowr_ml.runtime.features import FEATURES, FieldScenes, feature_row
 
 STAT_KEYS = ("candidates", "no_last_scene_or_weather", "no_target_scene", "rows")
 
 
-def weather_series(g: pd.DataFrame) -> WeatherSeries:
-    g = g.sort_values("date")
-    return WeatherSeries([date.fromisoformat(d) for d in g["date"]], g["rain_mm"], g["et0_mm"], g["tmax_c"], g.get("tmin_c"))
-
-
-def weather_by_cluster(name: str = "weather.parquet") -> dict[str, WeatherSeries]:
-    w = pd.read_parquet(C.DATA_DIR / name)
-    return {cluster: weather_series(g) for cluster, g in w.groupby("cluster")}
-
-
 def field_scenes(g: pd.DataFrame) -> FieldScenes:
-    """Sceny pola z wierszy obs/*.parquet (kowr_ml.s2)."""
+    """Sceny pola z wierszy obs/*.parquet (s2.py)."""
     return FieldScenes.from_columns(
         g["date"].to_numpy(dtype="datetime64[D]"), g["total_px"], g["n_veg"], g["n_bare"], g["n_cloud"],
         g["valid_px"] / g["total_px"], g["ndmi"], g["ndvi"], g["nir_med"], g["swir_med"], g["red_med"])

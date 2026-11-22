@@ -1,11 +1,32 @@
-"""Parametry zbioru i treningu. Zmiana progu albo okna wymaga tylko ponownego przeliczenia dataset.py."""
+"""Parametry zbiorów i treningu: skupiska pól, sezony, podziały oceny, źródła danych, katalogi.
+
+Okna cech i etykiety NDMI są w kowr_ml/runtime/config.py (te same w predykcji), progi scen Sentinel-2
+w app/sources/sentinel.py. Zmiana okna albo progu wymaga tylko ponownego przeliczenia tabeli (ndmi/dataset.py).
+"""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("KOWR_ML_DATA", Path(__file__).resolve().parent / "data"))
-RUNS_DIR = Path(os.environ.get("KOWR_ML_RUNS", Path(__file__).resolve().parent / "runs"))
+from app.sources.sentinel import COLLECTIONS as S2_COLLECTIONS
+from app.sources.sentinel import (
+    MIN_COVERAGE,
+    MIN_PIXELS,
+    OFFSET_APPLIED_COLLECTION,
+    SCL_BARE_SOIL,
+    SCL_CLOUDY,
+    SCL_VEGETATION,
+    STAC_URL,
+)
+from kowr_ml.runtime.config import ISSUE_FIRST, ISSUE_LAST
+
+__all__ = ["MIN_COVERAGE", "MIN_PIXELS", "OFFSET_APPLIED_COLLECTION", "S2_COLLECTIONS", "SCL_BARE_SOIL", "SCL_CLOUDY",
+           "SCL_VEGETATION", "STAC_URL", "ISSUE_FIRST", "ISSUE_LAST"]
+
+# Dane i przebiegi leżą obok pakietu, poza gitem (.gitignore: kowr_ml/data, kowr_ml/runs).
+PACKAGE_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = Path(os.environ.get("KOWR_ML_DATA", PACKAGE_DIR / "data"))
+RUNS_DIR = Path(os.environ.get("KOWR_ML_RUNS", PACKAGE_DIR / "runs"))
 
 # Skupiska pól: (nazwa, szer. N, dł. E) w EPSG:4326. Trzy grupy, bo powstawały w trzech krokach:
 #   CLUSTERS_FIRST – 20 skupisk pierwszego modelu (regiony rolnicze, z dala od działki demo 580/2),
@@ -104,7 +125,7 @@ SEASONS = tuple(range(2017, 2027))
 # Ocena: foldy po skupisku (nowe miejsce) oraz sezon odłożony w całości (nowe miejsce i nieznany sezon).
 CV_FOLDS = 5
 SEASON_CV_FOLDS = 3
-# Podział pierwszego modelu (20 skupisk, 2019–2025); używa go jeszcze porównawcza sieć GRU (train_gru.py).
+# Podział pierwszego modelu (20 skupisk, 2019–2025); używają go model wilgotności i sieć GRU (experiments/train_gru.py).
 TEST_CLUSTERS = ("gniezno", "biala_podlaska", "glubczyce", "pyrzyce")
 TEST_SEASON = 2025
 
@@ -115,41 +136,18 @@ FIELD_MIN_CROPLAND = 0.95       # udział pikseli WorldCover klasy 40 wewnątrz 
 FIELDS_PER_CLUSTER = 150
 RANDOM_SEED = 2026
 
-# Sentinel-2: te same kolekcje i zasady co aplikacja (app/sources/sentinel.py)
-STAC_URL = "https://earth-search.aws.element84.com/v1"
-S2_COLLECTIONS = ("sentinel-2-c1-l2a", "sentinel-2-l2a")   # pierwsza ma pierwszeństwo przy tej samej scenie
-S2_COLLECTION = S2_COLLECTIONS[0]
+# Sentinel-2: kolekcje, STAC i progi czystej sceny z aplikacji (import wyżej), tu tylko to, czego aplikacja nie ma.
 S2_MONTHS = ("03-01", "10-31")  # zakres dat pobierania scen w sezonie
-SCL_VEGETATION = 4
-SCL_BARE_SOIL = 5
-SCL_CLOUDY = (3, 8, 9, 10)      # cień chmur, chmury, cirrus
-MIN_PIXELS = 6
-MIN_COVERAGE = 0.65
-MIN_DENOMINATOR = 1e-6
-APP_WINDOW_DAYS = 45            # okno scen w aplikacji; cechy z historii zdjęć nie sięgają dalej
+MIN_DENOMINATOR = 1e-6          # jak w app/sources/sentinel.py: mianownik wskaźnika bliski zeru = piksel odrzucony
 
-# Etykieta i dni prognozy
-ISSUE_FIRST = "04-01"
-ISSUE_LAST = "10-15"
+# Dni prognozy w tabeli NDMI: co tydzień od ISSUE_FIRST do ISSUE_LAST
 ISSUE_STEP_DAYS = 7
-LAST_WINDOW_DAYS = (1, 14)      # obserwacja bazowa w t-14 … t-1
-TARGET_WINDOW_DAYS = (7, 14)    # obserwacja docelowa w t+7 … t+14
-# Poprzednia obserwacja (do trendu): najnowsza 7–30 dni przed bazową. Dolna granica 7 dni odpowiada
-# wyborowi scen w aplikacji (app/sources/sentinel.py, choose_for_indices: sceny co najmniej 7 dni od siebie).
-TREND_WINDOW_DAYS = (7, 30)
-SCENE_SPACING_DAYS = 7
 
 # Pogoda: te same parametry co aplikacja (app/sources/weather.py)
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_DAILY = "precipitation_sum,et0_fao_evapotranspiration,temperature_2m_max,temperature_2m_min"
 WEATHER_START = "2016-10-01"    # rozgrzewka bilansu referencyjnego przed pierwszym sezonem
 WEATHER_END = "2026-11-10"
-
-# Referencyjny bilans wiadra (FAO-56, Kc = 1): wskaźnik suchości niezależny od gleby i uprawy,
-# bo w treningu nie znamy ani jednej, ani drugiej. Nie jest to bilans działki z aplikacji.
-REF_TAW_MM = 100.0
-REF_P = 0.5
-GDD_BASE_C = 5.0                # próg sumy temperatur efektywnych
 
 WORLDCOVER_URL = ("https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/"
                   "ESA_WorldCover_10m_2021_v200_{tile}_Map.tif")
