@@ -29,7 +29,7 @@ from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry import Point as ShapelyPoint
 from shapely.geometry.base import BaseGeometry
 
-from app.config import check_forced_failure
+from app.config import POLAND_LAT_MAX, POLAND_LAT_MIN, POLAND_LON_MAX, POLAND_LON_MIN, check_forced_failure
 from app.sources import NoData, SourceError
 
 WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/PZGIK/EGIB/WFS/UslugaZbiorcza"
@@ -84,7 +84,7 @@ def parse_parcels(xml_text: str) -> list[dict]:
         if not polygons:
             continue
 
-        def field(name: str) -> str | None:
+        def field(name: str, member=member) -> str | None:
             node = member.find(f"{_MS}{name}")
             return node.text.strip() if node is not None and node.text and node.text.strip() else None
 
@@ -105,7 +105,7 @@ def _finish(record: dict) -> dict:
     if geometry.is_empty or not geometry.is_valid and geometry.buffer(0).is_empty:
         raise SourceError("WFS EGiB zwrócił pustą geometrię działki")
     minx, miny, maxx, maxy = geometry.bounds
-    if not (14.0 <= minx and maxx <= 24.3 and 48.9 <= miny and maxy <= 55.0):
+    if not (POLAND_LON_MIN <= minx and maxx <= POLAND_LON_MAX and POLAND_LAT_MIN <= miny and maxy <= POLAND_LAT_MAX):
         raise SourceError("WFS EGiB zwrócił geometrię poza Polską")
     return {
         "id": record["id"], "number": record["number"],

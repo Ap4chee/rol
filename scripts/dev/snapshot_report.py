@@ -20,8 +20,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.config import SATELLITE_DEFERRED_BUDGET_S  # noqa: E402
-from app.report import build_report  # noqa: E402
 from app.schemas import Point, ReportRequest  # noqa: E402
+from app.services.report_builder import ReportBuilder  # noqa: E402
 
 CASES = {
     "580_2_2018-07-15": ReportRequest(parcel_id="060910_2.0011.580/2", crop="winter_wheat", date=date(2018, 7, 15)),
@@ -47,8 +47,9 @@ def scrub(value):
 
 async def snapshot(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    builder = ReportBuilder()
     for name, request in CASES.items():
-        report = await build_report(request, satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S)
+        report = await builder.build(request, satellite_budget_s=SATELLITE_DEFERRED_BUDGET_S)
         data = scrub(report.model_dump(mode="json"))
         (out_dir / f"{name}.json").write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True),
                                               encoding="utf-8")

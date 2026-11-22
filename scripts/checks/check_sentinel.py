@@ -20,7 +20,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.report import today_warsaw  # noqa: E402
+from app.core.dates import today_warsaw  # noqa: E402
 from app.sources import parcels, sentinel  # noqa: E402
 
 EXPECTED = {

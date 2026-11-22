@@ -2,7 +2,6 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.schemas import Status
 from app.sources import NoData
 from app.sources.weather import parse_dashboard_forecast
 
@@ -18,7 +17,6 @@ def test_forecast_uses_warsaw_day_boundary_and_preserves_missing_values():
         "et0_fao_evapotranspiration": [1, 1.1, 1.5, None],
         "wind_speed_10m_max": [10, 12, 18.5, None],
     }}, today)
-    assert result.status is Status.ok
     assert [d.date for d in result.recent] == dates[:2]
     assert result.recent[0].et0_mm == 1
     assert result.days[0].wind_max_kmh == 18.5

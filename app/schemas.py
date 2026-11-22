@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.config import POLAND_LAT_MAX, POLAND_LAT_MIN, POLAND_LON_MAX, POLAND_LON_MIN
 from app.core.crops import CROPS, Crop, with_season_dates
 
 
@@ -37,8 +38,8 @@ class CropKey(str, Enum):
 
 class Point(BaseModel):
     """Punkt w EPSG:4326."""
-    lon: float = Field(ge=14.0, le=24.3, description="długość geograficzna, stopnie")
-    lat: float = Field(ge=48.9, le=55.0, description="szerokość geograficzna, stopnie")
+    lon: float = Field(ge=POLAND_LON_MIN, le=POLAND_LON_MAX, description="długość geograficzna, stopnie")
+    lat: float = Field(ge=POLAND_LAT_MIN, le=POLAND_LAT_MAX, description="szerokość geograficzna, stopnie")
 
 
 class AddressQuery(BaseModel):

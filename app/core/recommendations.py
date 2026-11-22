@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from math import ceil
 
-from app.textfmt import fmt, fmt_date, plural_days
+from app.presentation.textfmt import fmt, fmt_date, plural_days
 
 # --- progi reguł (założenia robocze) ---
 LONG_BARE_PERIOD_DAYS = 45          # dłuższa przerwa bez uprawy uzasadnia okrywę gleby

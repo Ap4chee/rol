@@ -16,8 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.report import build_report, today_warsaw  # noqa: E402
+from app.core.dates import today_warsaw  # noqa: E402
 from app.schemas import Point, ReportRequest  # noqa: E402
+from app.services.report_builder import ReportBuilder  # noqa: E402
 
 
 def main() -> None:
@@ -36,7 +37,7 @@ def main() -> None:
     request = ReportRequest(parcel_id=args.parcel, point=point, crop=args.crop,
                             date=date.fromisoformat(args.date) if args.date else today_warsaw())
     t0 = time.perf_counter()
-    report = asyncio.run(build_report(request))
+    report = asyncio.run(ReportBuilder().build(request))
     elapsed = time.perf_counter() - t0
     sys.stdout.reconfigure(encoding="utf-8")
     if args.json:
