@@ -22,7 +22,7 @@ Potem otwórz `http://127.0.0.1:8000`. Zapisane pola są w `data/fields.sqlite3`
 
 ### Praca nad interfejsem
 
-Interfejs React jest w `frontend/`: komponenty Spectrum UI skopiowane do `frontend/components/spectrumui/`, własne podstawowe komponenty w `frontend/components/ui/`, style Tailwind CSS v4 i tokeny wyglądu (kolory, fonty, krzywe ruchu) w `frontend/app.css`. Gotowy build `static/ui.js` i `static/ui.css` jest w repozytorium, więc zwykłe uruchomienie przez FastAPI działa bez Node.js. `npm run build` buduje JavaScript (esbuild) i CSS (Tailwind CLI). Po edycji frontendu użyj:
+Interfejs React jest w `frontend/`: kod podzielony na `app/`, `api/`, `features/` i `shared/` (opis w sekcji „Architektura”), komponenty Spectrum UI skopiowane do `frontend/shared/vendor/spectrumui/`, style Tailwind CSS v4 i tokeny wyglądu w `frontend/styles/app.css`. Gotowy build `static/ui.js` i `static/ui.css` jest w repozytorium, więc zwykłe uruchomienie przez FastAPI działa bez Node.js. `npm run build` buduje JavaScript (esbuild) i CSS (Tailwind CLI). Po edycji frontendu użyj:
 
 ```sh
 npm ci
@@ -124,10 +124,14 @@ app/
     recommendations/   reguły rekomendacji: facts (fakty i progi), retention, agrotechnical, irrigation
     terrain_rules.py   wnioski i rekomendacje z analizy terenu
   data/soilgrids_tiles_pl.json   indeks kafli SoilGrids dla Polski (tryb awaryjny)
-frontend/              komponenty React, style (app.css, Tailwind) i testy prezentacji
-  components/spectrumui/  komponenty Spectrum UI (Apache-2.0, plik LICENSE), dostosowane do aplikacji
-  components/ui/       podstawowe komponenty: przycisk, pola, zakładki, okno, tabela, plakietki stanu
-  report/              zakładki widoku pola
+frontend/              React bez frameworka; każdy feature ma komponenty, hooki i czysty logic.js z testem obok
+  app/                 wejście (main.jsx), szkielet strony, routing w adresie (router.js), lista pól i jej odświeżanie
+  api/                 client.js (limit czasu, błędy po polsku) i endpoints.js: każde wywołanie serwera ma nazwaną funkcję
+  features/            dashboard, report (zakładki widoku pola), add-field, fieldwork, map, soil (model 3D),
+                       weather, onboarding, fields; feature'y nie importują się nawzajem (pilnuje tego architecture.test.js)
+  shared/              format/ (liczby, daty, liczba mnoga), ui/ (podstawowe komponenty), geo/, lib/,
+                       vendor/spectrumui/ (Spectrum UI, Apache-2.0, plik LICENSE; dostosowane do aplikacji)
+  styles/app.css       Tailwind CSS v4 i tokeny wyglądu (kolory, fonty, krzywe ruchu)
 static/                gotowy build React, OpenLayers i zasoby graficzne
 tests/                 testy bez sieci: core/, sources/ (parsowanie odpowiedzi), services/ (ReportBuilder na
                        podstawionych źródłach, worker pól), api/ (routery przez TestClient), ml/
@@ -231,7 +235,7 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 | OpenLayers 10.11.0 | mapa w przeglądarce | BSD-2-Clause (`static/vendor/OL_LICENSE.md`) |
 | React i React DOM 19.3.1 | komponenty i renderowanie UI | MIT ([React](https://github.com/react/react/blob/main/LICENSE), `static/vendor/REACT_LICENSE.txt`) |
 | esbuild 0.28.2 | budowanie frontendu | MIT ([esbuild](https://github.com/evanw/esbuild/blob/main/LICENSE.md)) |
-| Spectrum UI (komponenty z rejestru `spectrumhq.in`, kod skopiowany do `frontend/components/spectrumui/` 21.11.2026) | komponenty interfejsu: sekcje rozwijane, okno/arkusz, przełączniki, suwak, paski, karty liczb, powiadomienia, stany ładowania | Apache-2.0 ([Spectrum UI](https://github.com/arihantcodes/spectrum-ui/blob/main/LICENSE), `frontend/components/spectrumui/LICENSE`; pliki oznaczone jako zmodyfikowane) |
+| Spectrum UI (komponenty z rejestru `spectrumhq.in`, kod skopiowany do `frontend/shared/vendor/spectrumui/` 21.11.2026) | komponenty interfejsu: sekcje rozwijane, okno/arkusz, przełączniki, suwak, paski, karty liczb, powiadomienia, stany ładowania | Apache-2.0 ([Spectrum UI](https://github.com/arihantcodes/spectrum-ui/blob/main/LICENSE), `frontend/shared/vendor/spectrumui/LICENSE`; pliki oznaczone jako zmodyfikowane) |
 | Tailwind CSS 4.3.5 (`tailwindcss`, `@tailwindcss/cli`) | style interfejsu, budowanie `static/ui.css` | MIT ([Tailwind CSS](https://github.com/tailwindlabs/tailwindcss/blob/main/LICENSE)) |
 | tw-animate-css 1.4.0 | klasy animacji wejścia i wyjścia (okno, dymki) | MIT ([tw-animate-css](https://github.com/Wombosvideo/tw-animate-css/blob/main/LICENSE)) |
 | Radix UI 1.x (`@radix-ui/react-accordion`, `-dialog`, `-popover`, `-progress`, `-slider`, `-slot`, `-tabs`, `-tooltip`) | dostępne podstawy komponentów: klawiatura, fokus, role ARIA | MIT ([Radix Primitives](https://github.com/radix-ui/primitives/blob/main/LICENSE)) |

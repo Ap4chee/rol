@@ -32,7 +32,7 @@ Uwagi agronomiczne (terminy żniw, zabiegi w danej fazie) to ocena z praktyki, a
 
 Raport dla pszenicy ma w nagłówku „stan na 22.11.2026”, a pogoda w bilansie kończy się 15.11.2026. Open-Meteo odmawiało (HTTP 429), a NASA POWER ma około tygodnia opóźnienia.
 
-Serwer zwraca `water_status.last_data_day` i wpisuje opóźnienie do ograniczeń, ale frontend tego pola nie używa. Nagłówek raportu ([Report.jsx](../frontend/Report.jsx)) i karta pola na pulpicie ([Dashboard.jsx](../frontend/Dashboard.jsx)) pokazują `analysis_date`.
+Serwer zwraca `water_status.last_data_day` i wpisuje opóźnienie do ograniczeń, ale frontend tego pola nie używa. Nagłówek raportu ([Report.jsx](../frontend/features/report/Report.jsx)) i karta pola na pulpicie ([Dashboard.jsx](../frontend/features/dashboard/Dashboard.jsx)) pokazują `analysis_date`.
 
 Skutek: gdy wczoraj padało, a aplikacja mówi „sucho”, rolnik przestaje jej wierzyć. Ograniczenie jest opisane tylko w zwiniętej sekcji „Czego nie wiemy” w zakładce Źródła.
 
@@ -40,7 +40,7 @@ Poprawka: pokazywać „stan na” według `last_data_day`, a gdy różni się o
 
 ### 2. „Najważniejsze teraz” nie jest na teraz
 
-Karta w podsumowaniu ([Summary.jsx](../frontend/report/Summary.jsx)) bierze pierwszą rekomendację z listy, czyli pierwszą retencyjną. W efekcie:
+Karta w podsumowaniu ([Summary.jsx](../frontend/features/report/Summary.jsx)) bierze pierwszą rekomendację z listy, czyli pierwszą retencyjną. W efekcie:
 
 - 22.11, pszenica posiana we wrześniu: „Zostaw resztki pożniwne jako okrywę gleby”.
 - 15.07, kukurydza z umiarkowanym niedoborem: to samo, choć na liście są „Nie pogłębiaj niedoboru zabiegami” i „Oglądaj pole co kilka dni”.
