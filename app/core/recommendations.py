@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from math import ceil
 
 from app.textfmt import fmt, fmt_date, plural_days
 
@@ -27,6 +28,8 @@ LOW_SOC_G_KG = 12.0                 # ok. 2% próchnicy w warstwie 0–30 cm
 FREQUENT_STRESS_SEASONS = 3         # w tylu z 10 sezonów długi stres = pole podatne
 HIGH_EVAPORATION_SHARE = 0.5        # ponad połowa opadu z okresu bez uprawy odparowała z odkrytej gleby
 MIN_BARE_RAIN_MM = 40.0             # ...i dotyczy to okresu z opadem co najmniej tej wielkości
+SINGLE_DOSE_MM = (20, 30)           # zwykła jednorazowa dawka deszczowania; większa spływa albo przesiąka poniżej korzeni
+ROW_CROPS = ("maize", "potato", "sugar_beet")   # uprawy w szerokich rzędach (spulchnianie międzyrzędzi)
 
 
 @dataclass
@@ -83,6 +86,13 @@ class Rec:
     confidence: str    # wysoka | średnia | niska
     confidence_reason: str
     evidence: dict = field(default_factory=dict)
+    timing: str = "long_term"   # now | after_harvest | long_term (kiedy działanie wykonać; ustawia build)
+
+
+# Działania na najbliższe dni; okrywa po zbiorze zależy od fazy, reszta to plan na kolejne sezony.
+NOW_KEYS = {"cover_already_present", "hold_water_in_ditches", "limit_operations_now", "monitor_field", "save_spring_water",
+            "irrigation_optional", "check_soil_texture", "satellite_divergence"}
+AFTER_HARVEST_KEYS = {"residue_cover", "cover_crop"}
 
 
 @dataclass
@@ -238,8 +248,7 @@ def build(f: Facts) -> Result:
         why = [f"Według bilansu w strefie korzeni brakuje teraz {fmt(f.depletion_mm)} mm wody z {fmt(f.taw_mm)} mm, "
                f"które ta gleba może utrzymać, więc zapas jest wystarczający."]
         if f.seasons_total:
-            why.append(f"W {f.seasons_with_stress} z {f.seasons_total} ostatnich sezonów bilans pokazał w okresie "
-                       "krytycznym co najmniej jeden dzień stresu wodnego.")
+            why.append(_vulnerability_sentence(f))
         why.append("Woda zatrzymana w glebie w okresie z wystarczającym zapasem zmniejsza ryzyko niedoboru w okresie suchym.")
         what = ("Nie zostawiaj gleby odkrytej: po zbiorze zostaw resztki pożniwne albo wysiej międzyplon. "
                 "Ogranicz uprawki, które odsłaniają wilgotną glebę.") if not f.perennial else (
@@ -250,18 +259,21 @@ def build(f: Facts) -> Result:
             "Działanie zapobiegawcze: bilans nie pokazuje teraz niedoboru, a historia działki nie wskazuje częstych susz."))
 
     # ---------- AGROTECHNIKA ----------
-    # Ziemniak wymaga uprawy redlinowej, więc nie proponujemy dla niego siewu bezpośredniego ani uprawy bezorkowej.
-    if not f.perennial and not is_potato and (_is_vulnerable(f) or _soil_is_light(f)):
+    # Dla ziemniaka opis dotyczy formowania redlin bez sugerowania uprawy bezorkowej.
+    if not f.perennial and (_is_vulnerable(f) or _soil_is_light(f)):
         why = []
         if _is_vulnerable(f):
             why.append(_vulnerability_sentence(f))
         if _soil_is_light(f):
             why.append(f"Gleba utrzymuje tylko {fmt(f.awc_mm_per_m)} mm wody dostępnej na metr głębokości.")
         why.append("Każdy dodatkowy przejazd i głębokie spulchnianie odsłania wilgotną glebę i przyspiesza jej wysychanie.")
+        what = ("Zmniejsz liczbę przejazdów i uprawek przed sadzeniem; spulchniaj glebę tylko tak głęboko, jak wymaga "
+                "sadzenie i formowanie redlin." if is_potato else
+                "Zmniejsz liczbę przejazdów i głębokość uprawy przed siewem; rozważ uprawę uproszczoną (bez orki albo "
+                "pasową), jeśli pozwala na to sprzęt i zachwaszczenie.")
         out.agrotechnical.append(Rec(
-            "reduced_tillage", "agrotechnical", "Ogranicz intensywną uprawę roli",
-            "Zmniejsz liczbę przejazdów i głębokość uprawy przed siewem; rozważ uprawę uproszczoną (bez orki albo pasową), "
-            "jeśli pozwala na to sprzęt i zachwaszczenie.", whole_field, " ".join(why), "średnia",
+            "reduced_tillage", "agrotechnical", "Ogranicz intensywną uprawę roli", what, whole_field, " ".join(why), "średnia",
+            "Nie wiemy, jak pole jest uprawiane teraz." if is_potato else
             "Nie wiemy, jak pole jest uprawiane teraz. Jeśli już stosujesz uprawę uproszczoną, pomiń tę pozycję."))
 
     if not f.perennial and f.seasons_total >= 5 and f.seasons_with_long_stress >= max(FREQUENT_STRESS_SEASONS, f.seasons_total // 2):
@@ -274,12 +286,20 @@ def build(f: Facts) -> Result:
             "średnia", "Wynik zakłada, że co roku rosła tu ta sama uprawa w umownych terminach."))
 
     if f.in_season and stressed and f.stage in ("initial", "development", "mid"):
+        if f.stage == "mid":
+            # pełna okrywa: uprawki i nawożenie pogłówne są zwykle już za uprawą
+            what = ("W tej fazie nie wykonuj już zabiegów uprawowych. Ogranicz przejazdy do niezbędnych, żeby nie ugniatać "
+                    "przesuszonej gleby i nie uszkadzać roślin.")
+            fertilizer = ""
+        else:
+            what = ("Odłóż spulchnianie międzyrzędzi i inne uprawki, które odsłaniają wilgotną glebę. " if f.crop_key in ROW_CROPS
+                    else "Odłóż zabiegi, które odsłaniają albo ugniatają wilgotną glebę. ")
+            what += "Pogłówne nawożenie azotem zaplanuj tuż przed zapowiadanym opadem."
+            fertilizer = " Nawóz podany na suchą glebę nie zostanie pobrany."
         out.agrotechnical.append(Rec(
-            "limit_operations_now", "agrotechnical", "Nie pogłębiaj niedoboru zabiegami",
-            "Odłóż uprawki i spulchnianie międzyrzędzi, które odsłaniają wilgotną glebę. Pogłówne nawożenie azotem zaplanuj "
-            "tuż przed zapowiadanym opadem.", whole_field,
+            "limit_operations_now", "agrotechnical", "Nie pogłębiaj niedoboru zabiegami", what, whole_field,
             f"W strefie korzeni brakuje {fmt(f.depletion_mm)} mm wody, o {fmt(f.depletion_mm - f.raw_mm)} mm ponad próg stresu "
-            f"({fmt(f.raw_mm)} mm). Nawóz podany na suchą glebę nie zostanie pobrany.",
+            f"({fmt(f.raw_mm)} mm).{fertilizer}",
             "średnia" if not f.spans_classes else "niska",
             "Wniosek opiera się na bilansie z modelu pogody i mapy gleb" + (
                 "; przedział niepewności gleby obejmuje więcej niż jedną klasę." if f.spans_classes else ".")))
@@ -321,13 +341,14 @@ def build(f: Facts) -> Result:
         to_threshold = max(f.depletion_mm - f.raw_mm, 0.0)
         thresholds = [max(d - r, 0.0) for d, r in f.variants]
         refills = [d for d, _ in f.variants]
-        if f.depletion_mm <= 30.0:
+        low, high = SINGLE_DOSE_MM
+        if f.depletion_mm <= high:
             dose_guidance = (f"Wystarczy jedna dawka do {fmt(f.depletion_mm)} mm (nie więcej niż ubytek, "
                              "żeby nadmiar nie przesiąkł poniżej korzeni).")
         else:
-            doses = max(2, round(f.depletion_mm / 25.0))
+            doses = ceil(f.depletion_mm / ((low + high) / 2))
             dose_word = "dawki" if doses % 10 in (2, 3, 4) and doses % 100 not in (12, 13, 14) else "dawek"
-            dose_guidance = (f"Podziel to na dawki po 20–30 mm (ok. {doses} {dose_word} po 25 mm), żeby woda zdążyła wsiąknąć "
+            dose_guidance = (f"Podziel to na dawki po {low}–{high} mm (ok. {doses} {dose_word} po 25 mm, z ostatnią mniejszą), żeby woda zdążyła wsiąknąć "
                              f"i nie spłynęła; łącznie nie przekraczaj ubytku ({fmt(f.depletion_mm)} mm), bo nadmiar przesiąknie poniżej korzeni.")
         out.irrigation.append(Rec(
             "irrigation_optional", "irrigation", "Nawodnienie, jeśli masz dostęp do wody i instalację",
@@ -366,4 +387,11 @@ def build(f: Facts) -> Result:
             "gruntowa jest płytko.", "Kilka miejsc na polu, w tym obniżenia i wzniesienia.",
             "Bilans i wskaźniki z Sentinel-2 dają różny obraz, a dane nie rozstrzygają, który jest trafny.",
             "wysoka", "Oględziny rozstrzygają rozbieżność, której nie da się wyjaśnić z danych."))
+
+    for rec in [*out.retention, *out.agrotechnical, *out.irrigation, *out.field_checks]:
+        if rec.key in NOW_KEYS:
+            rec.timing = "now"
+        elif rec.key in AFTER_HARVEST_KEYS:
+            # po zbiorze, a poza sezonem (pole już po zbiorze) to sprawa bieżąca
+            rec.timing = "now" if f.stage == "off_season" else "after_harvest"
     return out

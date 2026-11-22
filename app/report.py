@@ -444,14 +444,14 @@ def water_status(c: Computed, soil_assumed: bool) -> WaterStatus:
         pcts = [r.depletion_pct_taw for r in results]
         spans = low.class_key != high.class_key
         uncertainty = (
-            f"Niepewność gleby: dla granic przedziału SoilGrids (5–95%) woda dostępna ogółem wynosi od "
-            f"{fmt(min(r.taw_mm for r in results))} do {fmt(max(r.taw_mm for r in results))} mm, a wyczerpanie od "
-            f"{fmt(min(pcts))}% do {fmt(max(pcts))}% zapasu.")
+            f"Mapa gleb (SoilGrids, 250 m) nie zna dokładnie gleby na tym polu, więc bilans policzono też dla gleby "
+            f"lżejszej i cięższej (przedział 5–95%). Strefa korzeni mieści wtedy od {fmt(min(r.taw_mm for r in results))} "
+            f"do {fmt(max(r.taw_mm for r in results))} mm wody, a ubytek wynosi od {fmt(min(pcts))}% do {fmt(max(pcts))}% zapasu.")
         if spans:
-            uncertainty += (f" Przedział obejmuje więcej niż jedną klasę: od „{low.class_label}” do "
-                            f"„{high.class_label}”. Bez badania gleby na polu nie da się tego rozstrzygnąć.")
+            uncertainty += (f" Wynik zależy od gleby: od „{low.class_label}” do „{high.class_label}”. "
+                            "Rozstrzygnie to sprawdzenie gleby na polu.")
         else:
-            uncertainty += f" W całym przedziale klasa jest ta sama: „{main.class_label}”."
+            uncertainty += f" We wszystkich wariantach wynik jest ten sam: „{main.class_label}”."
     else:
         uncertainty = "SoilGrids nie podał kwantyli dla tej działki, więc przedziału niepewności gleby nie policzono."
 
@@ -520,7 +520,6 @@ def water_status(c: Computed, soil_assumed: bool) -> WaterStatus:
 
 def history_section(c: Computed) -> HistorySection:
     rows = analysis.seasons_history(c.dates, c.crop, c.crop_daily, c.main, HISTORY_YEARS)
-    last = c.dates[-1]
     past = [r for r in rows if r["complete"]][-HISTORY_YEARS:]
     current = next((r for r in rows if not r["complete"]), None)
     if len(past) < 3:
@@ -554,16 +553,14 @@ def history_section(c: Computed) -> HistorySection:
     pct = 100.0 * c.main.depletion_mm / c.main.taw_mm if c.main.taw_mm > 0 else np.zeros(len(c.dates))
     same = analysis.same_day_comparison(c.dates, pct, HISTORY_YEARS)
     section = HistorySection(status=Status.ok, seasons=seasons, seasons_with_stress=len(with_stress),
-                             seasons_total=len(past), text=text)
+                             seasons_with_long_stress=sum(1 for r in past if r["stress_days_critical"] >= LONG_STRESS_DAYS),
+                             long_stress_days=LONG_STRESS_DAYS, seasons_total=len(past), text=text)
+    # porównanie z tym samym dniem w poprzednich latach idzie w polach same_day_* (frontend pokazuje je osobno)
     if same:
         section.same_day_current_pct = round(same["current_pct"], 0)
         section.same_day_median_pct = round(same["median_pct"], 0)
         section.same_day_drier_years = same["drier_years"]
         section.same_day_years = same["years"]
-        text.append(
-            f"Na tle tego samego dnia roku ({last.strftime('%d.%m')}) w {same['years']} poprzednich latach: dziś "
-            f"wyczerpanie zapasu to {fmt(same['current_pct'])}%, mediana {fmt(same['median_pct'])}%; "
-            f"bardziej sucho było w {same['drier_years']} z {same['years']} lat.")
     return section
 
 
@@ -596,7 +593,7 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
                  for w in dry]
         items.append(Cause(
             key="rain_deficit", title="Mało opadu",
-            text="Opad poniżej 75% mediany z 10 lat dla tego samego okresu. " + "; ".join(parts) + ".",
+            text="Spadło mniej niż 75% tego, co zwykle pada w tym samym okresie (mediana z 10 lat). " + "; ".join(parts) + ".",
             evidence={"windows": [w.days for w in dry]}))
     hot = [w for w in windows if w.et0_pct_of_median is not None and w.et0_pct_of_median > ET0_EXCESS_PCT
            and w.et0_mm - w.et0_median_mm >= MIN_DIFFERENCE_MM]
@@ -605,8 +602,8 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
                  for w in hot]
         items.append(Cause(
             key="high_et0", title="Duże parowanie",
-            text="Ewapotranspiracja wskaźnikowa (ET0) powyżej 110% mediany z 10 lat: ciepło, słońce i wiatr "
-                 "szybciej zabierają wodę. " + "; ".join(parts) + ".",
+            text="Ciepło, słońce i wiatr zabierają z gleby i roślin ponad 110% tego, co zwykle w tym samym okresie "
+                 "(parowanie wzorcowe FAO, mediana z 10 lat). " + "; ".join(parts) + ".",
             evidence={"windows": [w.days for w in hot]}))
     if not windows or windows[0].rain_median_mm is None:
         not_assessed.append("Porównanie opadu i ET0 z medianą 10 lat: seria pogodowa jest za krótka.")
@@ -618,18 +615,20 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
     elif awc < LOW_AWC_M3_M3:
         items.append(Cause(
             key="low_soil_capacity", title="Mała pojemność wodna gleby",
-            text=f"Gleba utrzymuje tylko {fmt(awc * 1000)} mm wody dostępnej na każdy metr głębokości "
-                 f"(pojemność polowa {fmt(main_variant.fc_root * 100)}%, punkt więdnięcia {fmt(main_variant.wp_root * 100)}% "
-                 "objętości). Zapas z opadów wyczerpuje się szybko nawet przy przeciętnej pogodzie.",
+            text=f"Gleba utrzymuje tylko {fmt(awc * 1000)} mm wody dostępnej dla roślin na każdy metr głębokości: "
+                 f"po deszczu zatrzymuje wodę równą {fmt(main_variant.fc_root * 100)}% swojej objętości, a ostatnich "
+                 f"{fmt(main_variant.wp_root * 100)}% korzenie już nie pobiorą. Zapas z opadów wyczerpuje się szybko "
+                 "nawet przy przeciętnej pogodzie.",
             evidence={"available_mm_per_m": round(awc * 1000)}))
 
     kc = c.crop_daily.kc[-1]
-    if c.in_season and c.crop_daily.stage[-1] != "late" and np.isfinite(kc) and kc >= 1.0:
+    # w fazie dojrzewania Kc spada od wartości szczytowej, ale zapotrzebowanie przestaje decydować o plonie
+    if c.in_season and c.crop_daily.stage[-1] in ("development", "mid") and np.isfinite(kc) and kc >= 1.0:
         etc = float(c.main.etc_mm[-7:].mean())
         items.append(Cause(
             key="high_demand_stage", title="Faza dużego zapotrzebowania uprawy",
-            text=f"{c.crop.name} jest w fazie: {STAGE_NAMES_PL[c.crop_daily.stage[-1]]} (Kc = {fmt(float(kc), 2)}). "
-                 f"Potrzebuje teraz średnio {fmt(etc, 1)} mm wody na dobę (średnia z 7 dni).",
+            text=f"{c.crop.name} jest w fazie: {STAGE_NAMES_PL[c.crop_daily.stage[-1]]} i zużywa teraz średnio "
+                 f"{fmt(etc, 1)} mm wody na dobę (średnia z 7 dni).",
             evidence={"kc": round(float(kc), 2), "etc_mm_day": round(etc, 1)}))
 
     # Niedobór przeniesiony z minionego sezonu: zapas nie odbudował się po zbiorze.
@@ -656,7 +655,8 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
                   "w zakresie typowym dla ostatnich 10 lat, a faza uprawy nie zwiększa zapotrzebowania.")
         if status.class_key in ("moderate", "severe"):
             reason = ("Bilans pokazuje niedobór, ale żaden z badanych czynników nie przekracza progu "
-                      "(opad < 75% mediany, ET0 > 110% mediany, mała pojemność gleby, faza dużego zapotrzebowania). "
+                      "(opad poniżej 75% zwykłego, parowanie powyżej 110% zwykłego, mała pojemność gleby, "
+                      "faza dużego zapotrzebowania). "
                       "Niedobór narastał stopniowo przez okres dłuższy niż 90 dni.")
     return CausesSection(status=Status.ok, reason=reason, windows=windows, items=items, not_assessed=not_assessed)
 
@@ -726,13 +726,13 @@ def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: 
         return fc
     lo, mid, hi = fc.delta_p10, fc.delta_p50, fc.delta_p90
     if mid <= -satellite_logic.NDMI_DROP:
-        trend = "prawdopodobnie spadnie"
+        fc.trend, trend = "down", "prawdopodobnie spadnie"
     elif mid >= satellite_logic.NDMI_DROP:
-        trend = "prawdopodobnie wzrośnie"
+        fc.trend, trend = "up", "prawdopodobnie wzrośnie"
     else:
         # Gdy model nie wskazuje kierunku, NDMI i tak zwykle się zmienia: zmiana poniżej progu zdarzyła się
         # w 40% takich przypadków na danych niezależnych (README, „Model ML”). Dlatego nie piszemy „nie zmieni się”.
-        trend = "może zmienić się w obie strony"
+        fc.trend, trend = "flat", "może zmienić się w obie strony"
     fc.text.append(
         f"Prognoza modelu ({fc.status}): w dniach {fmt_date(fc.window_from)}–{fmt_date(fc.window_to)} uwilgotnienie roślin "
         f"(NDMI) {trend} względem zdjęcia z {fmt_date(fc.last_scene_date)}: zmiana {signed(mid)}, "
@@ -1194,7 +1194,8 @@ def recommendations_section(facts: rules.Facts) -> Recommendations:
 
     def convert(items: list[rules.Rec]) -> list[Recommendation]:
         return [Recommendation(key=r.key, category=r.category, title=r.title, what=r.what, where=r.where, why=r.why,
-                               confidence=r.confidence, confidence_reason=r.confidence_reason, evidence=r.evidence)
+                               confidence=r.confidence, confidence_reason=r.confidence_reason, evidence=r.evidence,
+                               timing=r.timing)
                 for r in items]
 
     return Recommendations(

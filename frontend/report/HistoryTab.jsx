@@ -1,12 +1,10 @@
-import { dateText, number, seasonMonths } from '../model.js';
-import { Note, Paragraphs, statusFill } from '../ui.jsx';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { dateText, number, seasonMonths, stressSeasons, today } from '../model.js';
+import { Note } from '../ui.jsx';
 import { Card } from '@/components/ui/card';
-import { Meter } from '@/components/ui/meter';
 import { Stat, StatGrid } from '@/components/ui/stat';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { MONTHS, Section } from './shared.jsx';
+import { Explanation, MONTHS, Section } from './shared.jsx';
 
 /** Duża liczba z jednostką: jednostka mniejsza i jaśniejsza (np. 285 mm, 88%), twarda spacja przed jednostką. */
 function measure(value, unit) {
@@ -33,23 +31,18 @@ export function HistoryTab({ report, intro = false }) {
   const last = report.water_status.last_season;
   const critical = seasonMonths(report.crop);
   const seasons = history.seasons ?? [];
+  const stateDay = report.water_status.last_data_day ?? report.analysis_date;
   return <div className="flex flex-col gap-14">
-    {history.same_day_years > 0 && <Section title="Na tle poprzednich lat"
-      lead="Ten sam bilans wodny policzony dla tego samego dnia roku w poprzednich latach.">
-      <SameDay history={history} water={report.water_status} day={report.water_status.last_data_day ?? report.analysis_date}/>
-    </Section>}
-    <Section title="Niedobór wody w poprzednich sezonach">
+    {Number.isFinite(history.same_day_current_pct) && Number.isFinite(history.same_day_median_pct)
+      && Number.isInteger(history.same_day_drier_years) && history.same_day_years > 0
+      && <SameDay history={history} day={stateDay}/>}
+    <Section title="Czy niedobór się powtarza?" lead="Dni niedoboru w okresie krytycznym uprawy, sezon po sezonie.">
       <Note section={history}/>
       {(seasons.length > 0 || critical.length > 0) && <Card className="p-5 md:p-6">
         {seasons.length > 0 && <SeasonChart history={history} seasons={seasons} intro={intro}/>}
         {critical.length > 0 && <CriticalPeriod months={critical} crop={report.crop} className={seasons.length > 0 ? 'mt-7 border-t border-black/[0.07] pt-5' : undefined}/>}
       </Card>}
-      {history.text?.length > 0 && <Accordion type="single" collapsible className="mt-3 border-y border-black/[0.07]">
-        <AccordionItem value="history">
-          <AccordionTrigger>Szczegóły porównania</AccordionTrigger>
-          <AccordionContent className="max-w-[72ch] text-[13.5px]"><Paragraphs lines={history.text}/></AccordionContent>
-        </AccordionItem>
-      </Accordion>}
+      <Explanation lines={history.text}/>
     </Section>
     {last && <Section title={`Miniony sezon ${last.season}`}>
       {/* etykiety mają różną liczbę linii, więc liczby dosuwamy do dołu komórek, żeby stały w jednej linii */}
@@ -63,31 +56,51 @@ export function HistoryTab({ report, intro = false }) {
   </div>;
 }
 
-/** Zapas wody w dniu analizy na tle tego samego dnia w poprzednich latach (pasek: ten dzień, kreska: mediana lat). */
-function SameDay({ history, water, day }) {
-  // backend podaje wyczerpanie zapasu (% wody dostępnej); rolnikowi pokazujemy to, co zostało
-  const now = 100 - history.same_day_current_pct;
+/**
+ * Ten sam dzień roku w poprzednich latach: zapas dziś i zwykle oraz miejsce dzisiejszego dnia w szeregu lat
+ * od najbardziej wilgotnego do najbardziej suchego (serwer podaje, w ilu latach było bardziej sucho).
+ */
+function SameDay({ history, day }) {
+  const n = history.same_day_years;
+  const drier = history.same_day_drier_years;
+  const now = 100 - history.same_day_current_pct;        // serwer podaje wyczerpanie zapasu, rolnik czyta zapas
   const usual = 100 - history.same_day_median_pct;
-  return <Card className="flex flex-wrap items-end gap-x-16 gap-y-6 p-5 md:p-6">
-    <div className={STATS}>
-      <Stat size="lg" label={`Zapas wody ${dateText(day)}`} value={measure(number(now), '%')}
-        hint={`zwykle tego dnia ${number(usual)}%`}/>
-      <Stat size="lg" label="Suchsze lata" hint="mniejszy zapas tego samego dnia"
-        value={measure(number(history.same_day_drier_years), `z ${history.same_day_years}`)}/>
-    </div>
-    <div className="min-w-60 max-w-[440px] flex-1 pb-0.5">
-      <Meter value={now} marker={usual} color={statusFill(water)}
-        label={`Zapas wody: ${number(now)}%, zwykle tego dnia ${number(usual)}%`}/>
-      <p className="num mt-2.5 inline-flex items-center gap-1.5 text-[12.5px] text-neutral-500">
-        <span aria-hidden className="h-3 w-[2px] rounded-full bg-neutral-900"/>zwykle, mediana z {history.same_day_years} lat
-      </p>
-    </div>
-  </Card>;
+  const slot = n - drier;                                  // 0 = najwilgotniej, n = najsuszej
+  const dayMonth = dateText(day).slice(0, 5);
+  const currentDay = day === today();
+  const statement = `Bardziej sucho było w ${drier} z ${n} lat`;
+  const lead = drier === 0 ? `W żadnym z ${n} poprzednich lat ${dayMonth} gleba nie miała mniej wody.`
+    : drier === n ? `W każdym z ${n} poprzednich lat ${dayMonth} gleba miała mniej wody.`
+      : drier <= n / 3 ? 'Suszej niż zwykle o tej porze roku.'
+        : drier >= (2 * n) / 3 ? 'Wilgotniej niż zwykle o tej porze roku.' : 'Typowo jak na tę porę roku.';
+  return <Section title={`${currentDay ? "Dziś" : dayMonth} na tle poprzednich lat`} lead={`Porównanie zapasu wody w glebie z tym samym dniem w ${n} poprzednich latach.`}>
+    <Card className="p-5 md:p-6">
+      <p className="font-display text-[22px] font-semibold leading-tight tracking-tight text-neutral-950">{statement}</p>
+      {lead && <p className="mt-1 text-[14px] text-neutral-600">{lead}</p>}
+      <div role="img" className="mt-6" aria-label={`Bardziej sucho było w ${drier} z ${n} poprzednich lat.`}>
+        {/* lata wilgotniejsze niebieskie, suchsze pomarańczowe, dziś ciemne (kolor nie przesądza o suszy) */}
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${n + 1}, minmax(0, 1fr))` }}>
+          {Array.from({ length: n + 1 }, (_, i) => <span key={i} aria-hidden className={cn('h-7 rounded-[5px]',
+            i === slot ? 'bg-neutral-900 ring-2 ring-neutral-900/20 ring-offset-2' : i < slot ? 'bg-water-200' : 'bg-moderate/35')}/>)}
+        </div>
+        <div aria-hidden className="mt-2 grid whitespace-nowrap text-[11.5px] text-neutral-500" style={{ gridTemplateColumns: `repeat(${n + 1}, minmax(0, 1fr))` }}>
+          <span className="col-start-1 row-start-1">{slot > 1 ? 'wilgotniej' : ''}</span>
+          <span className="row-start-1 text-center font-semibold text-neutral-900" style={{ gridColumnStart: slot + 1 }}>{currentDay ? 'dziś' : dayMonth}</span>
+          <span className="col-end-[-1] row-start-1 text-right">{slot < n - 1 ? 'suszej' : ''}</span>
+        </div>
+      </div>
+      <StatGrid className="mt-6 md:grid-cols-2">
+        <Stat label={currentDay ? "Zapas dziś" : "Zapas w dniu analizy"} value={measure(number(now), '%')}/>
+        <Stat label={`Zwykle ${dayMonth}`} hint={`mediana z ${n} lat`} value={measure(number(usual), '%')}/>
+      </StatGrid>
+    </Card>
+  </Section>;
 }
 
 /** Słupki dni niedoboru w okresie krytycznym, sezon po sezonie (wysokość względem największej wartości). */
 function SeasonChart({ history, seasons, intro }) {
   const max = Math.max(1, ...seasons.map((season) => season.stress_days_critical));
+  const stress = stressSeasons(history);
   const summary = 'Dni niedoboru w okresie krytycznym, sezon po sezonie: '
     + seasons.map((season) => `${season.season}${season.complete ? '' : ' (sezon w trakcie)'}: ${season.stress_days_critical}`
       + (season.severe_days_critical ? `, w tym silnego ${season.severe_days_critical}` : '')).join('; ') + '.';
@@ -96,8 +109,9 @@ function SeasonChart({ history, seasons, intro }) {
   const worst = past.reduce((a, s) => (s.stress_days_critical > (a?.stress_days_critical ?? 0) ? s : a), null);
   return <figure>
     <div className={STATS}>
-      {history.seasons_total ? <Stat size="lg" label="Sezony z niedoborem" hint="ostatnie pełne sezony"
-        value={measure(number(history.seasons_with_stress), `z ${history.seasons_total}`)}/> : null}
+      {history.seasons_total ? <Stat size="lg" label={wrapping(stress.long ? "Sezony z długim niedoborem" : "Sezony z niedoborem")}
+        hint={stress.long ? `co najmniej ${stress.long} dni, pełne sezony` : "ostatnie pełne sezony"}
+        value={measure(number(stress.count), `z ${history.seasons_total}`)}/> : null}
       {typical != null && <Stat size="lg" label="Typowy sezon" hint="mediana dni niedoboru"
         value={measure(number(typical), dni(typical))}/>}
       {worst && <Stat size="lg" label="Najgorszy sezon" value={worst.season}
@@ -105,12 +119,11 @@ function SeasonChart({ history, seasons, intro }) {
     </div>
     <figcaption className="mt-8 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2">
       <span className="text-[13px] font-medium text-neutral-800">Dni niedoboru wody w okresie krytycznym</span>
-      {/* jedna seria nie potrzebuje legendy; druga (silny niedobór) pojawia się tylko, gdy wystąpił */}
-      {seasons.some((season) => season.severe_days_critical > 0) && <SeasonLegend/>}
+      <SeasonLegend long={stress.long} showSevere={seasons.some((season) => season.severe_days_critical > 0)}/>
     </figcaption>
     <div role="img" aria-label={summary} className="mt-2">
       <div className="grid h-52 auto-cols-fr grid-flow-col gap-1 sm:gap-2">
-        {seasons.map((season, i) => <SeasonBar key={season.season} season={season} max={max} intro={intro} delay={Math.round(30 * i ** 0.9)}/>)}
+        {seasons.map((season, i) => <SeasonBar key={season.season} season={season} stressed={stress.isStressed(season)} max={max} intro={intro} delay={Math.round(30 * i ** 0.9)}/>)}
       </div>
       <div className="h-px bg-neutral-300"/>
       <div className="mt-2 grid auto-cols-fr grid-flow-col gap-1 sm:gap-2">
@@ -122,12 +135,12 @@ function SeasonChart({ history, seasons, intro }) {
 }
 
 /** Kolumna sezonu: cały pas kolumny reaguje na kursor i pokazuje dokładną wartość w dymku. */
-function SeasonBar({ season, max, delay, intro }) {
+function SeasonBar({ season, stressed, max, delay, intro }) {
   const days = season.stress_days_critical;
   const severe = Math.min(days, season.severe_days_critical ?? 0);
   const run = season.longest_stress_run_days;
   const height = `max(${days > 0 ? 3 : 2}px, ${100 * days / max}%)`;
-  const fill = !season.stressed ? (days > 0 ? 'bg-neutral-300' : 'bg-neutral-200') : severe === days ? 'bg-moderate-ink' : 'bg-moderate';
+  const fill = !stressed ? (days > 0 ? 'bg-neutral-300' : 'bg-neutral-200') : 'bg-moderate';
   const tip = <>
     <span className="num font-semibold">{days}</span> {dni(days)} niedoboru
     {severe > 0 && <>, w tym <span className="num font-semibold">{severe}</span> silnego</>}
@@ -143,12 +156,12 @@ function SeasonBar({ season, max, delay, intro }) {
         {/* słupki rosną tylko przy pierwszym pokazaniu raportu, nie przy każdym powrocie na zakładkę */}
         <span className={cn('absolute inset-x-0 bottom-0 overflow-hidden rounded-t-[4px]', intro && 'bar-grow', fill)} style={{ height, animationDelay: `${delay}ms` }}>
           {/* silny niedobór: ciemniejsza dolna część słupka, oddzielona 2 px tła */}
-          {severe > 0 && severe < days && <span className="absolute inset-x-0 bottom-0 bg-moderate-ink shadow-[0_-2px_0_var(--color-card)]"
+          {severe > 0 && <span className="absolute inset-x-0 bottom-0 bg-moderate-ink shadow-[0_-2px_0_var(--color-card)]"
             style={{ height: `${100 * severe / days}%` }}/>}
         </span>
         <span className={cn('num absolute -inset-x-2 text-center text-[11px] leading-none',
           intro && 'motion-safe:animate-[chart-fade_360ms_var(--ease-out)_both]',
-          season.stressed ? 'font-medium text-neutral-800' : 'text-neutral-500')}
+          stressed ? 'font-medium text-neutral-800' : 'text-neutral-500')}
           style={{ bottom: `calc(${height} + 6px)`, animationDelay: `${delay + 200}ms` }}>{days}</span>
       </div>
     </div>
@@ -164,10 +177,13 @@ function SeasonLabel({ season }) {
   </span>;
 }
 
-function SeasonLegend() {
-  return <div className="flex items-center gap-4 text-[12px] text-neutral-500">
-    <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-[2px] bg-moderate"/>niedobór</span>
-    <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-[2px] bg-moderate-ink"/>w tym silny</span>
+function SeasonLegend({ long, showSevere }) {
+  return <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-neutral-500">
+    <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-[2px] bg-moderate"/>
+      {long ? `niedobór ${long} dni i dłużej` : 'sezon z niedoborem'}</span>
+    <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-[2px] bg-neutral-300"/>
+      {long ? 'krócej' : 'bez niedoboru'}</span>
+    {showSevere && <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-[2px] bg-moderate-ink"/>w tym silny</span>}
   </div>;
 }
 

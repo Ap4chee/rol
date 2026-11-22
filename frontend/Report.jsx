@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { CropTile, TILE } from './Dashboard.jsx';
 import { FieldworkTab } from './Fieldwork.jsx';
 import { ParcelOutline, Status } from './ui.jsx';
-import { dateText, number, TABS } from './model.js';
+import { dateText, daysBetween, number, TABS } from './model.js';
 import { HistoryTab } from './report/HistoryTab.jsx';
 import { GROUPS, groupActions, Recommendations } from './report/Recommendations.jsx';
 import { PRINT_ORDER, TAB_LABELS } from './report/shared.jsx';
@@ -93,15 +93,16 @@ export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellit
   // numer i obręb zamiast identyfikatora EGiB (pełny identyfikator jest w zakładce Źródła)
   const parcelText = parcel?.number ? [`działka ${parcel.number}`, parcel.region && `obręb ${parcel.region}`].filter(Boolean).join(', ')
     : parcel?.id ?? 'wskazany punkt';
-  const dataDay = water.last_data_day;
-  const dateLabel = dataDay && dataDay !== report.analysis_date
-    ? `dane pogody do ${dateText(dataDay)} (analiza na ${dateText(report.analysis_date)})`
-    : `stan na ${dateText(report.analysis_date)}`;
+  // „stan na” to ostatni dzień z pogodą w bilansie, a nie data analizy: NASA POWER bywa kilka dni do tyłu
+  const stateDay = water.last_data_day ?? report.analysis_date;
+  const lag = daysBetween(stateDay, report.analysis_date);
   const facts = [
     { text: report.crop.name },
     parcel?.area_ha != null && { text: `${number(parcel.area_ha, 2)} ha` },
     { text: parcelText, wrap: true },
-    { text: dateLabel, wrap: true },
+    { text: `stan na ${dateText(stateDay)}` },
+    // dzień opóźnienia to norma przy analizie na dziś (doba jeszcze trwa); dłuższy brak mówimy wprost
+    lag > 1 && { text: `dane pogody są o ${lag} dni wcześniejsze niż data analizy (${dateText(report.analysis_date)})`, warn: true, wrap: true },
   ].filter(Boolean);
   const saveLabel = justSaved ? 'Zapisano' : saved ? 'Zapisz' : 'Zapisz pole';
 
@@ -118,7 +119,7 @@ export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellit
         <p className="text-[13px] leading-relaxed text-neutral-500">
           {facts.map((fact, i) => <Fragment key={i}>
             {i > 0 && <span aria-hidden className="text-neutral-300">{' · '}</span>}
-            <span className={fact.wrap ? undefined : 'whitespace-nowrap'}>{fact.text}</span>
+            <span className={cn(!fact.wrap && 'whitespace-nowrap', fact.warn && 'font-medium text-watch-ink')}>{fact.text}</span>
           </Fragment>)}
         </p>
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-2">

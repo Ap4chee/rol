@@ -16,6 +16,23 @@ export const number = (value, digits = 0) => Number.isFinite(value)
   ? (Math.abs(value) < .5 * 10 ** -digits ? 0 : value).toLocaleString('pl-PL', { maximumFractionDigits: digits }) : '—';
 export const dateText = (iso) => iso ? iso.slice(0, 10).split('-').reverse().join('.') : '—';
 
+/** Liczba dni od `from` do `to` (daty ISO); 0, gdy brakuje którejś z nich. */
+export function daysBetween(from, to) {
+  if (!from || !to) return 0;
+  return Math.round((Date.parse(to.slice(0, 10)) - Date.parse(from.slice(0, 10))) / 86_400_000);
+}
+
+/**
+ * Sezony z długim niedoborem w tej samej definicji co rekomendacje (serwer: `long_stress_days`).
+ * Raporty zapisane przed tą zmianą mają tylko „co najmniej jeden dzień”, więc dla nich zostaje stara definicja.
+ */
+export function stressSeasons(history) {
+  const long = history?.long_stress_days;
+  return long && Number.isFinite(history.seasons_with_long_stress)
+    ? { count: history.seasons_with_long_stress, long, isStressed: (season) => season.stress_days_critical >= long }
+    : { count: history?.seasons_with_stress, long: null, isStressed: (season) => season.stressed };
+}
+
 export function waterPercent(result) {
   if (!result || !Number.isFinite(result.available_mm) || !(result.taw_mm > 0)) return null;
   return Math.min(100, Math.max(0, 100 * result.available_mm / result.taw_mm));
@@ -133,12 +150,20 @@ export function byUrgency(fields) {
   return [...fields].sort((a, b) => rank(a) - rank(b));
 }
 
+// Kiedy wykonać działanie (serwer: `timing`); starsze zapisane raporty go nie mają.
+export const TIMING = { now: 'teraz', after_harvest: 'po zbiorze', long_term: 'na kolejne sezony' };
+
+/** Działanie do wyróżnienia: pierwsze „na teraz” w kolejności grup (retencja pierwsza), potem „po zbiorze”, potem pierwsze. */
+export function firstAction(actions) {
+  return actions.find((action) => action.timing === 'now') ?? actions.find((action) => action.timing === 'after_harvest') ?? actions[0];
+}
+
 export function actionItems(fields) {
   return byUrgency(fields)
     .flatMap((field) => {
       const { retention = [], agrotechnical = [], irrigation = [], field_checks = [] } = field.report?.recommendations ?? {};
       // Retencja ma zawsze pierwszeństwo przed nawadnianiem (kolejność narzucona przez zadanie KOWR).
-      const first = retention[0] ?? agrotechnical[0] ?? irrigation[0] ?? field_checks[0];
+      const first = firstAction([...retention, ...agrotechnical, ...field_checks]) ?? irrigation[0];
       return first ? [{ field, action: first }] : [];
     });
 }

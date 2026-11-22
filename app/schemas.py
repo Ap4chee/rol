@@ -261,7 +261,7 @@ class WaterStatus(BaseModel):
     forecast: list[ForecastPoint] = Field(default=[], description="bilans puszczony dalej po prognozie pogody (tylko analiza na dziś)")
     forecast_reason: str | None = Field(default=None, description="dlaczego nie ma prognozy zapasu")
     forecast_stress_day: Date | None = Field(default=None, description="pierwszy dzień prognozy z zapasem poniżej progu stresu")
-    ml_forecast: MlForecast | None = Field(default=None, description="prognoza zapasu modelem ML na 7 dni (tylko analiza na dziś)")
+    ml_forecast: MlForecast | None = Field(default=None, description="prognoza zapasu modelem ML na 14 dni (tylko analiza na dziś)")
     text: list[str] = []
 
 
@@ -311,7 +311,9 @@ class HistorySection(BaseModel):
     status: Status
     reason: str | None = None
     seasons: list[SeasonStress] = []
-    seasons_with_stress: int | None = None
+    seasons_with_stress: int | None = Field(default=None, description="sezony z co najmniej jednym dniem stresu")
+    seasons_with_long_stress: int | None = Field(default=None, description="sezony ze stresem co najmniej `long_stress_days` dni")
+    long_stress_days: int | None = None
     seasons_total: int | None = None
     same_day_current_pct: float | None = None
     same_day_median_pct: float | None = None
@@ -350,6 +352,7 @@ class NdmiForecast(BaseModel):
     delta_p50: float | None = Field(default=None, description="prognozowana zmiana NDMI (mediana)")
     delta_p10: float | None = Field(default=None, description="dolna granica przedziału 80%")
     delta_p90: float | None = Field(default=None, description="górna granica przedziału 80%")
+    trend: str | None = Field(default=None, description="down | flat | up: kierunek mediany względem progu zmiany NDMI")
     inputs: dict[str, float | None] = Field(default_factory=dict, description="cechy wejściowe modelu")
     text: list[str] = []
 
@@ -391,6 +394,7 @@ class Recommendation(BaseModel):
     confidence: str = Field(description="wysoka | średnia | niska")
     confidence_reason: str
     evidence: dict[str, Any] = {}
+    timing: str = Field(default="long_term", description="now | after_harvest | long_term: kiedy działanie wykonać")
 
 
 class TerrainResponse(BaseModel):

@@ -6,7 +6,7 @@ import { Meter } from '@/components/ui/meter';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { NARROW, useMediaQuery } from '@/lib/media';
 import { cn } from '@/lib/utils';
-import { Section } from './shared.jsx';
+import { Explanation, Section } from './shared.jsx';
 
 // Frakcje uziarnienia: pole warstwy, nazwa, kolor z @theme (app.css).
 const FRACTIONS = [['sand_pct', 'piasek', 'bg-sand'], ['silt_pct', 'pył', 'bg-silt'], ['clay_pct', 'ił', 'bg-clay']];
@@ -30,6 +30,7 @@ export function SoilTab({ report, printing, intro = false }) {
         {regional.length ? <RegionalMoisture layers={regional}/>
           : <Note section={moisture && moisture.status !== 'ok' ? moisture : { status: 'no_data' }}
             fallback="Brak danych o wilgotności warstw w okolicy."/>}
+        <Explanation lines={moisture?.text}/>
       </Section>
     </div>
   </div>;

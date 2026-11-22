@@ -80,10 +80,10 @@ def predict(observations: list, weather, t: date, lat: float | None = None, lon:
     row = feature_row(scenes, ws, t, NAN if lat is None else lat, NAN if lon is None else lon)
     if row is None:
         hi = C.LAST_WINDOW_DAYS[1]
-        last = str(scenes.dates[scenes.accepted[-1]])
+        last = date.fromisoformat(str(scenes.dates[scenes.accepted[-1]]))
         return {"available": False, "reason": (
-            f"ostatnie czyste zdjęcie z {last}, a model wymaga zdjęcia z {hi} dni przed datą analizy "
-            f"albo braki w pogodzie z ostatnich 30 dni")}
+            f"ostatnie czyste zdjęcie pola jest z {last:%d.%m.%Y}, a model potrzebuje zdjęcia "
+            f"z {hi} dni przed datą analizy i pełnej pogody z ostatnich 30 dni")}
     models, card = load(str(model_dir))
     # Tablica numpy w kolejności cech z modelu: aplikacja nie potrzebuje pandas.
     X = np.array([[row.get(k, np.nan) for k in models["features"]]], dtype=float)

@@ -18,6 +18,15 @@ export function Section({ title, lead, aside, children, className }) {
   </section>;
 }
 
+/** Wnioski słowne policzone na serwerze (pole `text` sekcji) jako krótka lista pod liczbami. */
+export function Explanation({ lines, className }) {
+  if (!lines?.length) return null;
+  return <ul className={cn('mt-5 flex max-w-[76ch] list-disc flex-col gap-1.5 pl-5 text-[13.5px] leading-relaxed text-neutral-700 marker:text-neutral-300',
+    className)}>
+    {lines.map((line, i) => <li key={i}>{line}</li>)}
+  </ul>;
+}
+
 export function causeIcon(key) {
   if (key.includes('soil')) return Layers;
   if (key.includes('rain') || key.includes('precip') || key.includes('carry')) return CloudRain;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { actionItems, fieldFromReport, fieldHref, FULL_ID, inputFromReport, oldestDate, readFields, removeField, replaceField, route, sameReportInputs, satelliteMeasurements, seasonMonths, today, upsertField, waterPercent } from './model.js';
+import { actionItems, daysBetween, fieldFromReport, fieldHref, firstAction, FULL_ID, inputFromReport, oldestDate, readFields, removeField, replaceField, route, sameReportInputs, satelliteMeasurements, seasonMonths, stressSeasons, today, upsertField, waterPercent } from './model.js';
 
 test('identyfikatory i zapis pola zachowują działki o nietypowych numerach', () => {
   const id = '022602_1.0003.AR_4.59/2';
@@ -103,4 +103,24 @@ test('dane pola z raportu: działka, punkt, obrys testowy i pole na dziś', () =
   assert.deepEqual(inputFromReport({ ...base, request: { point: { lat: 52, lon: 19 } }, parcel: { id: 'TEST' } }).point, { lat: 52, lon: 19 });
   assert.equal(inputFromReport({ ...base, request: { point: { lat: 52, lon: 19 } }, parcel: { id: 'TEST' } }).test, true);
   assert.equal(inputFromReport({ ...base, generated_at: '2026-07-01T06:00:00Z', request: { parcel_id: 'x' } }).date, null);
+});
+
+test('stan na ostatni dzień z pogodą i jedna definicja sezonów z niedoborem', () => {
+  assert.equal(daysBetween('2026-11-15', '2026-11-22'), 7);
+  assert.equal(daysBetween('2026-03-28', '2026-03-30'), 2);   // zmiana czasu nie psuje liczby dni
+  assert.equal(daysBetween(null, '2026-11-22'), 0);
+  const seasons = [{ stressed: true, stress_days_critical: 3 }, { stressed: true, stress_days_critical: 20 }, { stressed: false, stress_days_critical: 0 }];
+  const now = stressSeasons({ seasons_with_stress: 2, seasons_with_long_stress: 1, long_stress_days: 14 });
+  assert.equal(now.count, 1);
+  assert.deepEqual(seasons.map(now.isStressed), [false, true, false]);
+  const saved = stressSeasons({ seasons_with_stress: 2 });   // raport zapisany przed zmianą
+  assert.equal(saved.count, 2);
+  assert.deepEqual(seasons.map(saved.isStressed), [true, true, false]);
+});
+
+test('wyróżnione działanie to pierwsze „na teraz”, a nie pierwsze z listy', () => {
+  const later = { key: 'residue_cover', timing: 'after_harvest' }, now = { key: 'monitor_field', timing: 'now' };
+  assert.equal(firstAction([later, { key: 'organic_matter', timing: 'long_term' }, now]), now);
+  assert.equal(firstAction([{ key: 'organic_matter', timing: 'long_term' }, later]), later);
+  assert.equal(firstAction([{ key: 'old' }, { key: 'older' }]).key, 'old');   // zapisane raporty bez terminu
 });

@@ -6,7 +6,7 @@ Wszystko liczy się na żywo dla podanej działki i daty. W kodzie nie ma gotowy
 
 ## Uruchomienie (Windows)
 
-Wymagany jest Python 3.12 i dostęp do internetu. Nie potrzeba Dockera, bazy danych ani kluczy API.
+Wymagany jest Python 3.12 i dostęp do internetu. SQLite uruchamia się lokalnie. Nie potrzeba Dockera ani kluczy API.
 
 Najprościej: dwukrotnie kliknij `start.bat`. Skrypt tworzy środowisko, instaluje zależności, startuje serwer i otwiera przeglądarkę na `http://127.0.0.1:8000`. Pierwsze uruchomienie trwa kilka minut (instalacja bibliotek).
 
@@ -18,7 +18,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Potem otwórz `http://127.0.0.1:8000`. Odpowiedzi zewnętrznych usług zapisują się w folderze `cache/`; usunięcie go wymusza pobranie wszystkiego od nowa.
+Potem otwórz `http://127.0.0.1:8000`. Zapisane pola są w `data/fields.sqlite3`. Odpowiedzi zewnętrznych usług zapisują się w folderze `cache/`; usunięcie go wymusza pobranie wszystkiego od nowa.
 
 ### Praca nad interfejsem
 
@@ -52,6 +52,7 @@ Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip ins
 - **Widok pola** w zakładkach: Podsumowanie, Rekomendacje, Prace polowe, Gleba, Pogoda, Teren i woda, Historia, Źródła. Model 3D pokazuje rzeczywisty obrys działki, warstwy gleby z SoilGrids i uprawę w fazie z dnia analizy (tekstury są poglądowe). Widok z góry pokazuje podkłady Geoportalu lub OpenStreetMap oraz drogi spływu.
 
 - **Wskazanie działki**: adres lub miejscowość przybliża zdjęcie lotnicze z granicami działek, na którym można wskazać pole. Można też wyszukać działkę po identyfikatorze albo nazwie obrębu i numerze lub przejść przez województwo, powiat i gminę. Gdy usługa ULDK nie odpowiada, granica pochodzi ze zbiorczej usługi WFS ewidencji GUGiK.
+- **Historia i rekomendacje**: porównanie zapasu w dniu analizy z tym samym dniem w poprzednich latach, sezony z długim niedoborem oraz oznaczenie terminu zaleceń (teraz, po zbiorze lub w kolejnych sezonach).
 - **Uprawy**: pszenica ozima, jęczmień jary, rzepak ozimy, kukurydza, ziemniak, burak cukrowy, użytki zielone.
 - **Data**: dziś albo dowolny dzień z ostatnich 10 lat. Dla daty historycznej do obliczeń nie wchodzi nic późniejszego niż ta data, a porównania z 10 latami sięgają wstecz od niej. Formularz nie pozwala wybrać dnia starszego niż 10 lat ani z przyszłości.
 - **Raport w narzuconej kolejności**:
@@ -243,7 +244,7 @@ Zgodnie ze [specyfikacją](specyfikacja_treningu_ml_kowr.md) model prognozuje zm
 
 [Pełna dokumentacja modelu](docs/model_ndmi.md): dane treningowe, walidacja, wyniki dla lat suszy, eksperymenty, ograniczenia i odtworzenie treningu.
 
-- **Gdzie w raporcie:** sekcja satelitarna, pole `satellite.ndmi_forecast` (opis w [docs/kontrakt_api.md](docs/kontrakt_api.md)): zmiana z przedziałem 80%, okno prognozy, zdjęcie bazowe, cechy wejściowe. Bez danych (poza okresem 01.04–15.10, brak czystego zdjęcia z 14 dni) raport podaje powód.
+- **Gdzie w raporcie:** sekcja satelitarna, pole `satellite.ndmi_forecast` (opis w [docs/kontrakt_api.md](docs/kontrakt_api.md)): zmiana z przedziałem 80%, okno prognozy, zdjęcie bazowe, cechy wejściowe. Prognoza pojawia się w okresie 01.04–15.10. Gdy w tym czasie brakuje czystego zdjęcia lub pogody, karta podaje powód.
 - **Cechy** (47, wszystkie sprzed daty analizy i tylko z danych, które raport i tak pobiera):
   - stan pola: ostatnie NDMI, jego wiek i pokrycie pola, NDVI, mediany reflektancji pasm B8A, B11 i B04;
   - historia zdjęć z 45 dni: trend NDMI i NDVI z poprzedniego zdjęcia, trend z jeszcze wcześniejszego i ich różnica, liczba scen i czystych scen, udział roślinności, gołej gleby i chmur według klas SCL;
@@ -280,13 +281,13 @@ Pełne metryki (według sezonu i miesiąca) są w `kowr_ml/model/20261122_0005_e
 
 Sprawdzenie w aplikacji na prawdziwych działkach (22.11.2026): 4 lokalizacje (580/2, Żuławy, Podkarpacie, punkt koło Poznania) i 9 dat z lat 2018–2026. Prognoza powstała w 20 z 36 przypadków, w pozostałych raport podał powód (brak czystego zdjęcia z 14 dni; punkt koło Poznania nie ma pikseli roślinności w żadnej dacie). Z 11 prognoz, które dało się porównać z późniejszym zdjęciem, 8 zmieściło się w przedziale. Na samej działce 580/2 trafiła 1 z 4: spadek NDMI o 0,24 w lipcu 2022 r. model przewidział jako −0,19 (dolna granica −0,23), a spadku o 0,21 w czerwcu 2023 r. nie przewidział (prognoza −0,06).
 
-## Model ML (eksperymentalny, jeszcze nie w aplikacji): wilgotność gleby 0–100 cm na 7 dni
+## Model ML: prognoza wilgotności gleby 0–100 cm
 
-Model prognozuje wilgotność gleby w strefie 0–100 cm z ERA5-Land na dni t … t+6, czyli na te same dni co linia prognozy zapasu wody na wykresie. Etykieta to zmiana θ [m³/m³] względem ostatniej znanej wartości z dnia t−6, bo ERA5-Land ukazuje się z ok. 5-dniowym opóźnieniem. ERA5-Land to reanaliza dla komórki ok. 9 km, a nie pomiar na działce, więc model nie zna gleby ani uprawy działki.
+Pierwsze dwa eksperymenty oceniały dni t … t+6. W aplikacji działa opisana niżej wersja 3 na 14 dni, współdzieląca horyzont wykresu FAO-56. Etykieta to zmiana θ [m³/m³] względem ostatniej znanej wartości z dnia t−6, bo ERA5-Land ukazuje się z ok. 5-dniowym opóźnieniem. ERA5-Land to reanaliza dla komórki ok. 9 km, a nie pomiar na działce, więc model nie zna gleby ani uprawy działki.
 
 - **Cechy** (θ do t−6, pogoda do t−1, bez prognozy pogody): θ 0–100 cm i 0–7 cm z t−6, zmiana θ w tygodniu przed t−6, wyprzedzenie w dniach, opad i ET0 od t−5 do t−1 oraz te same cechy pogodowe i dzień roku co w modelu NDMI.
 - **Dane:** 20 skupisk z `kowr_ml/config.py`, jedna komórka na skupisko, dni prognozy co 3 dni w latach 2019–2025, 118 140 wierszy. ET0 policzone wzorem FAO-56 (`app/core/et0.py`) z ERA5; dla Kutna koreluje dziennie z ET0 z NASA POWER na poziomie 0,98, a rocznie jest o 5–10% wyższe.
-- **Odtworzenie:** eksport plików `.om` do `kowr_ml/data/era5_land_sm.parquet` i `era5_weather.parquet` (skrypt poza repo, ok. 18 min), potem `python -m kowr_ml.sm_dataset` i `python -m kowr_ml.sm_train` (3,5 min na 24 wątkach CPU). Wynik w `kowr_ml/runs/<id>_sm_<hash>/`.
+- **Odtworzenie:** eksport plików `.om` do `kowr_ml/data/era5_land_sm.parquet` i `era5_weather.parquet` (skrypt poza repo, ok. 18 min), potem `python -m kowr_ml.sm_dataset` i `python -m kowr_ml.sm_train` (3,5 min na 24 wątkach CPU). Aktualny skrypt przygotowuje 14 dni dla treningu v3. Wynik v1 zapisuje się w `kowr_ml/runs/<id>_sm_<hash>/`.
 
 Walidacja (MAE θ w m³/m³; 0,001 m³/m³ to 1 mm wody w warstwie 0–100 cm):
 
@@ -298,7 +299,7 @@ Walidacja (MAE θ w m³/m³; 0,001 m³/m³ to 1 mm wody w warstwie 0–100 cm):
 
 Błąd rośnie z wyprzedzeniem: od ok. 0,003 m³/m³ dla dnia t do 0,007–0,010 dla t+6 (bez zmiany: 0,014–0,015). W grudniu 2025 model był gorszy od prognozy „bez zmiany” (0,010 wobec 0,008), prawdopodobnie przez mróz i śnieg. Model nie przewiduje skutków deszczu z dni t … t+6, bo nie dostaje prognozy pogody. Do wpięcia w wykres brakuje funkcji predykcji, pobierania ERA5-Land dla działki w aplikacji i decyzji, jak pokazać θ obok zapasu w % TAW.
 
-### Wersja 2: z prognozą pogody, glebą i terenem (v1 zostaje bez zmian)
+### Wersja 2: z prognozą pogody, glebą i terenem
 
 v2 ma tę samą etykietę i te same wiersze co v1, ale tylko od 18.01.2023, bo wtedy zaczyna się archiwum prognoz. Dodatkowe cechy:
 - **Prognoza ECMWF IFS** z przebiegu 00 UTC dnia t (open data, `s3://ecmwf-forecasts`, CC BY 4.0 i ECMWF Terms of Use): opad i temperatura 2 m na dni t … t+k oraz wilgotność 0–100 cm z analizy IFS i jej prognozowana zmiana. Wilgotność jest w archiwum dopiero od 02.2024; wcześniej ta cecha jest pusta. Pobrano tylko potrzebne pola (`kowr_ml/ifs.py`, ok. 10 min).
@@ -317,7 +318,7 @@ Prognoza pogody zmniejsza błąd o 14–25%, najbardziej dla dalszych dni: dla t
 
 ### Wersja 3 w aplikacji: wykres „Zapas wody w strefie korzeni”
 
-v2 potrzebuje przy każdej predykcji wilgotności z ERA5-Land z dnia t−6, a ERA5-Land jest tylko w archiwum Open-Meteo, które z sieci hackathonu zwraca 429. Dlatego do aplikacji trafił v3 (`python -m kowr_ml.ifs`, `python -m kowr_ml.sm_dataset`, `python -m kowr_ml.sm2_dataset`, `python -m kowr_ml.sm3_dataset`, `python -m kowr_ml.sm2_train v3`). Etykieta to zmiana wilgotności ERA5-Land od wczoraj, θ(t+k) − θ(t−1), dla k = 0…13: 14 dni, tyle samo co linia bilansu na prognozie pogody. 14, bo tyle pełnych dób prognozy IFS daje na żywo Open-Meteo. Archiwum HRES na AWS kończy się na 240 h (dzień 9), więc dni 10–13 w treningu pochodzą z przebiegu kontrolnego ensemble IFS z tego samego startu (te same pola; `kowr_ml/ifs.py`, `fetch_extension`). Średni opad i temperatura nie skaczą na granicy obu źródeł. Stan gleby model bierze z analizy IFS, a pozostałe cechy to pogoda do t−1, prognoza IFS z dnia t, gleba z SoilGrids, dzień roku i dzień prognozy. Teren pominięto. v1 i v2 zostają w `kowr_ml/runs/` do porównania.
+v2 potrzebuje przy każdej predykcji wilgotności z ERA5-Land z dnia t−6, a ERA5-Land jest tylko w archiwum Open-Meteo, które z sieci hackathonu zwraca 429. Dlatego do aplikacji trafił v3 (`python -m kowr_ml.ifs`, `python -m kowr_ml.static`, `python -m kowr_ml.sm_dataset`, `python -m kowr_ml.sm2_dataset`, `python -m kowr_ml.sm3_dataset`, `python -m kowr_ml.sm2_train v3`). Etykieta to zmiana wilgotności ERA5-Land od wczoraj, θ(t+k) − θ(t−1), dla k = 0…13: 14 dni, tyle samo co linia bilansu na prognozie pogody. 14, bo tyle pełnych dób prognozy IFS daje na żywo Open-Meteo. Archiwum HRES na AWS kończy się na 240 h (dzień 9), więc dni 10–13 w treningu pochodzą z przebiegu kontrolnego ensemble IFS z tego samego startu (te same pola; `kowr_ml/ifs.py`, `fetch_extension`). Średni opad i temperatura nie skaczą na granicy obu źródeł. Stan gleby model bierze z analizy IFS, a pozostałe cechy to pogoda do t−1, prognoza IFS z dnia t, gleba z SoilGrids, dzień roku i dzień prognozy. Teren pominięto. v1 i v2 zostają w `kowr_ml/runs/` do porównania.
 
 | Test (MAE θ, m³/m³) | Wiersze | „Bez zmiany” | Bez prognozy | Bez gleby | **v3** | Przedział 80% |
 |---|---:|---:|---:|---:|---:|---:|

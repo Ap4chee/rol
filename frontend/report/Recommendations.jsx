@@ -4,7 +4,7 @@ import { StatCards } from '@/components/spectrumui/charts/stat-cards';
 import { StatusBadge } from '@/components/ui/status';
 import { cn } from '@/lib/utils';
 import { Note, statusTone } from '../ui.jsx';
-import { number } from '../model.js';
+import { number, TIMING } from '../model.js';
 import { MONTHS, Section } from './shared.jsx';
 
 /** Grupy działań w kolejności narzuconej przez zadanie: najpierw retencja, potem agrotechnika, na końcu nawadnianie. */
@@ -66,7 +66,12 @@ function RecommendationRow({ item, action, group, fact, rest }) {
       <span className="flex min-w-0 flex-1 gap-3.5">
         <ActionImage action={action} group={group}/>
         <span className="min-w-0 pt-0.5">
-          <span className="block text-[15px] font-semibold leading-snug text-neutral-950">{item.title}</span>
+          <span className="block text-[15px] font-semibold leading-snug text-neutral-950">
+            {item.title}
+            {TIMING[item.timing] && <span className={cn('ml-2 inline-block translate-y-[-1px] whitespace-nowrap rounded-full px-2 py-0.5 align-middle text-[11.5px] font-medium',
+              item.timing === 'now' ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/20' : 'bg-neutral-100 text-neutral-600')}>
+              {TIMING[item.timing]}</span>}
+          </span>
           {fact && <span className="mt-1 block text-[13.5px] font-normal leading-relaxed text-neutral-500">{fact}</span>}
         </span>
       </span>

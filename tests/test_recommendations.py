@@ -71,7 +71,8 @@ def test_good_soil_without_stress_history_gets_no_soil_retention_advice():
     # Bez porad glebowych, ale retencja nie jest pusta: zostaje działanie zapobiegawcze z liczbami działki.
     assert keys(result.retention) == ["keep_water_preventive"]
     assert "10 mm" in result.retention[0].why and "150 mm" in result.retention[0].why
-    assert "1 z 10" in result.retention[0].why
+    # ta sama definicja co karta „Sezony z długim niedoborem”: stres co najmniej 14 dni
+    assert "0 z 10" in result.retention[0].why and "14 dni" in result.retention[0].why
     assert result.agrotechnical == []
     assert result.field_checks == []
 
@@ -116,6 +117,35 @@ def test_satellite_divergence_and_missing_soil_become_field_checks():
     assert "organic_matter" not in keys(result.retention)   # bez danych o glebie nie ma rekomendacji glebowej
 
 
+def test_irrigation_gives_single_dose_and_number_of_doses_not_whole_deficit():
+    what = build(replace(BASE, depletion_mm=119.0, raw_mm=60.0, variants=[(119.0, 60.0)])).irrigation[0].what
+    assert "Jednorazowo nie podawaj więcej niż 119" not in what
+    assert "20–30 mm" in what and "5 dawek po 25 mm" in what      # 119 / 25 w górę
+    small = build(replace(BASE, depletion_mm=28.0, raw_mm=20.0, variants=[(28.0, 20.0)])).irrigation[0].what
+    assert "jedna dawka do 28 mm" in small
+
+
+def test_potato_is_planted_and_has_no_stubble():
+    potato = build(replace(BASE, crop_key="potato", crop_name="Ziemniak", harvest_day=date(2018, 8, 12),
+                           next_sowing_day=date(2019, 4, 20), bare_period_days=251))
+    texts = " ".join(r.title + " " + r.what for r in [*potato.retention, *potato.agrotechnical])
+    assert "ścierniskowy" not in texts and "bez orki" not in texts
+    assert "sadź w najwcześniejszym" in texts and "redlin" in texts
+    cover = next(r for r in potato.retention if r.key == "cover_crop")
+    assert "sadzenia" in cover.why
+
+
+def test_full_canopy_gets_no_tillage_or_fertilizer_advice():
+    mid = next(r for r in build(replace(BASE, crop_key="maize", stage="mid")).agrotechnical if r.key == "limit_operations_now")
+    assert "międzyrzędzi" not in mid.what and "nawożenie" not in mid.what
+    early = next(r for r in build(replace(BASE, crop_key="maize", stage="development")).agrotechnical
+                 if r.key == "limit_operations_now")
+    assert "międzyrzędzi" in early.what and "nawożenie" in early.what
+    wheat = next(r for r in build(replace(BASE, crop_key="winter_wheat", stage="development")).agrotechnical
+                 if r.key == "limit_operations_now")
+    assert "międzyrzędzi" not in wheat.what
+
+
 def test_grassland_gets_no_bare_soil_or_tillage_rules():
     facts = replace(BASE, crop_key="grassland", crop_name="Użytki zielone", perennial=True, harvest_day=None,
                     next_sowing_day=None, bare_period_days=None, bare_rain_mm=None, bare_evaporation_mm=None)
@@ -124,20 +154,10 @@ def test_grassland_gets_no_bare_soil_or_tillage_rules():
     assert "reduced_tillage" not in keys(result.agrotechnical)
 
 
-def test_potato_uses_planting_wording_and_skips_no_till():
-    facts = replace(BASE, crop_key="potato", crop_name="Ziemniak", harvest_day=date(2018, 9, 10),
-                    next_sowing_day=date(2019, 4, 20), bare_period_days=221)
-    result = build(facts)
-    assert "reduced_tillage" not in keys(result.agrotechnical)
-    cover = next(r for r in result.retention if r.key == "cover_crop")
-    assert "ścierniskowy" not in cover.what and "sadzenia" in cover.why
-    choice = next(r for r in result.agrotechnical if r.key == "crop_choice")
-    assert "sadź" in choice.what and "siej" not in choice.what
-
-
-def test_large_depletion_irrigation_splits_into_20_30_mm_doses():
-    facts = replace(BASE, depletion_mm=119.0, raw_mm=60.0, taw_mm=150.0, variants=[(119.0, 60.0)])
-    rec = build(facts).irrigation[0]
-    assert "20–30 mm" in rec.what
-    assert "5 dawek po 25 mm" in rec.what
-    assert "Jednorazowo nie podawaj więcej niż 119 mm" not in rec.what
+def test_timing_puts_current_actions_first_and_cover_after_harvest():
+    result = build(BASE)    # jęczmień w środku sezonu z niedoborem
+    timing = {r.key: r.timing for r in [*result.retention, *result.agrotechnical, *result.irrigation, *result.field_checks]}
+    assert timing["monitor_field"] == "now" and timing["irrigation_optional"] == "now"
+    assert timing["cover_crop"] == "after_harvest" and timing["organic_matter"] == "long_term"
+    after = build(replace(BASE, in_season=False, stage="off_season", analysis_day=date(2018, 11, 20)))
+    assert next(r for r in after.retention if r.key == "cover_crop").timing == "now"

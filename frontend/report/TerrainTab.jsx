@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Stat, StatGrid } from '@/components/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
-import { CauseList, Section } from './shared.jsx';
+import { CauseList, Explanation, Section } from './shared.jsx';
 
 const SLOPE_LABELS = ['Średni spadek', 'Najbardziej strome 10%'];
 // Komórki liczb: etykieta może zająć dwie linie (wąska kolumna obok mapy), liczby i tak stoją w jednej linii na dole.
@@ -54,19 +54,9 @@ export function TerrainTab({ report, terrain, control }) {
         </div>
       </Section>
     </div>
-    <Section title="Rzeki w okolicy">
+    <Section title="Rzeki w okolicy" lead="Najbliższy wodowskaz IMGW-PIB: czy susza dotyczy też wód w okolicy pola.">
       <Note section={hydro}/>
-      {hydro.status === 'ok' && <Rivers hydro={hydro}/>}
-      {(hydro.text?.length > 0 || hydro.years?.length > 0) && <Accordion type="multiple" className="mt-4 border-y border-black/[0.07]">
-        {hydro.text?.length > 0 && <AccordionItem value="details">
-          <AccordionTrigger className="py-3.5 text-[14px]">Szczegóły o rzekach</AccordionTrigger>
-          <AccordionContent className="max-w-[72ch] text-[13.5px]"><Paragraphs lines={hydro.text}/></AccordionContent>
-        </AccordionItem>}
-        {hydro.years?.length > 0 && <AccordionItem value="years">
-          <AccordionTrigger className="py-3.5 text-[14px]">Pomiary z 10 lat</AccordionTrigger>
-          <AccordionContent><HydrologyTable hydro={hydro}/></AccordionContent>
-        </AccordionItem>}
-      </Accordion>}
+      {hydro.status === 'ok' ? <Rivers hydro={hydro}/> : <Explanation lines={hydro.text}/>}
     </Section>
   </div>;
 }
@@ -91,14 +81,23 @@ function Rivers({ hydro }) {
   const flow = hydro.metric === 'flow';
   const digits = flow ? 2 : 0;
   const compared = Number.isFinite(hydro.years_higher) && Number.isFinite(hydro.years_compared);
-  return <StatGrid className="md:grid-cols-3">
-    <Stat className="col-span-2 md:col-span-1" size="sm" label="Wodowskaz" value={hydro.station_name ?? '—'}
-      hint={[hydro.river, `${number(hydro.station_distance_km)} km`].filter(Boolean).join(' · ')}/>
-    <Stat label={flow ? 'Przepływ teraz' : 'Stan wody teraz'} value={measure(number(hydro.current_value, digits), hydro.unit ?? '')}
-      hint={`zwykle ${number(hydro.median_value, digits)} ${hydro.unit ?? ''}`}/>
-    <Stat size="sm" label="Na tle 10 lat" value={<span className="block leading-snug">{hydro.class_label ?? '—'}</span>}
-      hint={compared ? `więcej wody było w ${hydro.years_higher} z ${hydro.years_compared} lat` : null}/>
-  </StatGrid>;
+  return <>
+    <StatGrid className="md:grid-cols-3">
+      <Stat className="col-span-2 md:col-span-1" size="sm" label="Wodowskaz" value={hydro.station_name ?? '—'}
+        hint={[hydro.river, `${number(hydro.station_distance_km)} km`].filter(Boolean).join(' · ')}/>
+      <Stat label={flow ? 'Przepływ teraz' : 'Stan wody teraz'} value={measure(number(hydro.current_value, digits), hydro.unit ?? '')}
+        hint={`zwykle ${number(hydro.median_value, digits)} ${hydro.unit ?? ''}`}/>
+      <Stat size="sm" label="Na tle 10 lat" value={<span className="block leading-snug">{hydro.class_label ?? '—'}</span>}
+        hint={compared ? `więcej wody było w ${hydro.years_higher} z ${hydro.years_compared} lat` : null}/>
+    </StatGrid>
+    <Explanation lines={hydro.text}/>
+    {hydro.years?.length > 0 && <Accordion type="single" collapsible className="mt-4 border-y border-black/[0.07]">
+      <AccordionItem value="years">
+        <AccordionTrigger className="py-3.5 text-[14px]">Pomiary z 10 lat</AccordionTrigger>
+        <AccordionContent><HydrologyTable hydro={hydro}/></AccordionContent>
+      </AccordionItem>
+    </Accordion>}
+  </>;
 }
 
 /** Średnie z tych samych 7 dni w kolejnych latach; ostatni wiersz (pogrubiony) to stan teraz. */
