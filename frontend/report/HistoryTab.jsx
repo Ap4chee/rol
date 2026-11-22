@@ -1,9 +1,9 @@
 import { dateText, number, seasonMonths, stressSeasons, today } from '../model.js';
 import { Note } from '../ui.jsx';
-import { Card } from '@/components/ui/card';
-import { Stat, StatGrid } from '@/components/ui/stat';
-import { Tooltip } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { Card } from '@/shared/ui/card';
+import { Stat, StatGrid } from '@/shared/ui/stat';
+import { Tooltip } from '@/shared/ui/tooltip';
+import { cn } from '@/shared/lib/cn';
 import { Explanation, MONTHS, Section } from './shared.jsx';
 
 /** Duża liczba z jednostką: jednostka mniejsza i jaśniejsza (np. 285 mm, 88%), twarda spacja przed jednostką. */

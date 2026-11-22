@@ -1,7 +1,7 @@
 import { CloudRain, Droplet, Layers, Mountain, Thermometer, Waves } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { SectionHeader } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
+import { SectionHeader } from '@/shared/ui/card';
+import { cn } from '@/shared/lib/cn';
 
 export const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
 export const TAB_LABELS = { podsumowanie: 'Podsumowanie', rekomendacje: 'Rekomendacje', prace: 'Prace polowe', gleba: 'Gleba',

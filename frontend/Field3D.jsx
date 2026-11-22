@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries as mergeRaw } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Maximize2, Minimize2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { cn } from '@/shared/lib/cn';
 import { balanceText, layersWord, number, soilProfile } from './model.js';
 
 const FIELD_SIZE = 10;     // dłuższy bok działki w jednostkach sceny

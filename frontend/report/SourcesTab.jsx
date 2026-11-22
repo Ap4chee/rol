@@ -1,9 +1,9 @@
 import { CalendarDays } from 'lucide-react';
 import { dateText, number } from '../model.js';
 import { Paragraphs, statusTone } from '../ui.jsx';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { StatusBadge, StatusDot } from '@/components/ui/status';
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
+import { StatusBadge, StatusDot } from '@/shared/ui/status';
+import { Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 import { Section } from './shared.jsx';
 
 // Stan źródła → opis i ton plakietki.

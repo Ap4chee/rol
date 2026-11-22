@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Callout } from '@/components/ui/callout';
-import { Eyebrow } from '@/components/ui/card';
-import { Spinner } from '@/components/ui/spinner';
-import { StatusDot } from '@/components/ui/status';
-import { cn } from '@/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Callout } from '@/shared/ui/callout';
+import { Eyebrow } from '@/shared/ui/card';
+import { Spinner } from '@/shared/ui/spinner';
+import { StatusDot } from '@/shared/ui/status';
+import { cn } from '@/shared/lib/cn';
 import { fieldsCount, fieldTeryt, LEVELS, unitRole } from './fieldsMap.js';
 import { fieldHref, number } from './model.js';
 import { bordersLayer, ortoSource, parcelStyle } from './ParcelMap.jsx';

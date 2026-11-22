@@ -2,12 +2,12 @@ import { RefreshCw } from 'lucide-react';
 import { ParcelMap } from '../ParcelMap.jsx';
 import { dateText, number } from '../model.js';
 import { Note, Paragraphs } from '../ui.jsx';
-import { SkeletonReveal } from '@/components/spectrumui/skeleton-reveal';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
-import { Stat, StatGrid } from '@/components/ui/stat';
-import { Caption, Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
+import { SkeletonReveal } from '@/shared/vendor/spectrumui/skeleton-reveal';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
+import { Button } from '@/shared/ui/button';
+import { Spinner } from '@/shared/ui/spinner';
+import { Stat, StatGrid } from '@/shared/ui/stat';
+import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 import { CauseList, Explanation, Section } from './shared.jsx';
 
 const SLOPE_LABELS = ['Średni spadek', 'Najbardziej strome 10%'];

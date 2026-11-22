@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { CalendarDays, CircleHelp, LayoutDashboard, MapIcon, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Tooltip } from '@/shared/ui/tooltip';
+import { cn } from '@/shared/lib/cn';
 
 // Geometria (pasek 248 px / zwinięty 68 px, odstęp boczny 12 px): ikony, znak marki i przycisk zwijania mają środek
 // w tym samym miejscu w obu stanach, więc przy zwijaniu nic nie skacze, chowają się tylko podpisy.

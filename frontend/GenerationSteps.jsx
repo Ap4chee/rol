@@ -1,6 +1,6 @@
 import { Check, CloudRain, Droplets, Layers, ListChecks, MapPin, Minus, Satellite, Waves } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { Spinner } from '@/shared/ui/spinner';
+import { cn } from '@/shared/lib/cn';
 
 // Etapy liczenia raportu w kolejności, w jakiej powstaje (serwer: `progress` pola, app/report.py).
 // Pogoda, gleba, wody i zdjęcia pobierają się równolegle, więc kilka etapów może trwać naraz.

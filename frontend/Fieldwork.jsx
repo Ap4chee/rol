@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, Check, CircleHelp, CloudRain, Layers, Minus, Plus, TriangleAlert, Wind, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Eyebrow } from '@/components/ui/card';
-import { TONE } from '@/components/ui/status';
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
-import { Tooltip } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Eyebrow } from '@/shared/ui/card';
+import { TONE } from '@/shared/ui/status';
+import { Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
+import { Tooltip } from '@/shared/ui/tooltip';
+import { cn } from '@/shared/lib/cn';
 import { ART_SHADOW, CROP_IMAGES, weatherIcon } from './Dashboard.jsx';
 import { dayName, fieldworkQuery, mainObstacle, OPERATIONS, shortDate, windowText } from './fieldwork.js';
 import { dateText, fieldTabHref, number, today } from './model.js';

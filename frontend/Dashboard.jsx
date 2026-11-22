@@ -1,16 +1,16 @@
 import { useEffect, useId, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight, ChevronLeft, ChevronRight, CloudRain, Droplet, Droplets, Layers, LoaderCircle, Pencil, Plus, Sprout, Trash2, Waves } from 'lucide-react';
-import { SPRING_LAYOUT, SPRING_PRESS } from '@/lib/ease';
-import { Button } from '@/components/ui/button';
-import { Card, Eyebrow } from '@/components/ui/card';
-import { Label, NativeSelect } from '@/components/ui/field';
-import { Meter } from '@/components/ui/meter';
-import { Segmented } from '@/components/ui/segmented';
-import { StatusBadge, StatusDot, TONE } from '@/components/ui/status';
-import { NumberTicker } from '@/components/spectrumui/number-ticker';
-import { SkeletonReveal } from '@/components/spectrumui/skeleton-reveal';
-import { cn } from '@/lib/utils';
+import { SPRING_LAYOUT, SPRING_PRESS } from '@/shared/lib/ease';
+import { Button } from '@/shared/ui/button';
+import { Card, Eyebrow } from '@/shared/ui/card';
+import { Label, NativeSelect } from '@/shared/ui/field';
+import { Meter } from '@/shared/ui/meter';
+import { Segmented } from '@/shared/ui/segmented';
+import { StatusBadge, StatusDot, TONE } from '@/shared/ui/status';
+import { NumberTicker } from '@/shared/vendor/spectrumui/number-ticker';
+import { SkeletonReveal } from '@/shared/vendor/spectrumui/skeleton-reveal';
+import { cn } from '@/shared/lib/cn';
 import { actionItems, byUrgency, dateText, fieldHref, fieldTabHref, number, today, waterPercent } from './model.js';
 import { api, Note, ParcelOutline, Status, statusFill, statusInk, statusTone } from './ui.jsx';
 

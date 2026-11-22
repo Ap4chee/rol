@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Callout } from '@/components/ui/callout';
-import { Segmented } from '@/components/ui/segmented';
-import { Switch } from '@/components/ui/switch';
+import { Button } from '@/shared/ui/button';
+import { Callout } from '@/shared/ui/callout';
+import { Segmented } from '@/shared/ui/segmented';
+import { Switch } from '@/shared/ui/switch';
 
 const BASE_LAYERS = [{ value: 'orto', label: 'Zdjęcie lotnicze' }, { value: 'osm', label: 'Mapa' }];
 

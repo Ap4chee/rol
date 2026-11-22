@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { ForecastDays } from '../Dashboard.jsx';
 import { dateText, number, today } from '../model.js';
 import { Note } from '../ui.jsx';
-import { Card } from '@/components/ui/card';
-import { Meter } from '@/components/ui/meter';
-import { Stat } from '@/components/ui/stat';
-import { Caption, Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
+import { Card } from '@/shared/ui/card';
+import { Meter } from '@/shared/ui/meter';
+import { Stat } from '@/shared/ui/stat';
+import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 import { CauseList, Section } from './shared.jsx';
 
 // przyczyny pogodowe: opad, przeniesiony zapas, parowanie, upał, zapotrzebowanie uprawy

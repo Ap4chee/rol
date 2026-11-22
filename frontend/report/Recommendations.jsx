@@ -1,8 +1,8 @@
 import { MapPin } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { StatCards } from '@/components/spectrumui/charts/stat-cards';
-import { StatusBadge } from '@/components/ui/status';
-import { cn } from '@/lib/utils';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
+import { StatCards } from '@/shared/vendor/spectrumui/charts/stat-cards';
+import { StatusBadge } from '@/shared/ui/status';
+import { cn } from '@/shared/lib/cn';
 import { Note, statusTone } from '../ui.jsx';
 import { number, TIMING } from '../model.js';
 import { MONTHS, Section } from './shared.jsx';

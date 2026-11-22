@@ -1,7 +1,7 @@
 import { useId } from 'react';
-import { Callout } from '@/components/ui/callout';
-import { StatusBadge, TONE } from '@/components/ui/status';
-import { cn } from '@/lib/utils';
+import { Callout } from '@/shared/ui/callout';
+import { StatusBadge, TONE } from '@/shared/ui/status';
+import { cn } from '@/shared/lib/cn';
 
 // Stan oceny wody → ton (kolory w app.css) i opisy.
 const TONES = { none: 'ok', watch: 'watch', moderate: 'moderate', severe: 'severe' };

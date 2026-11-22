@@ -1,5 +1,5 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ChartEmpty, useHoverIndexKeys } from '@/components/spectrumui/charts/chart-engine';
+import { ChartEmpty, useHoverIndexKeys } from '@/shared/vendor/spectrumui/charts/chart-engine';
 import { dateText, number } from './model.js';
 
 const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];

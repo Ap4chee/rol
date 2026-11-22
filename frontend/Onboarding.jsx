@@ -2,10 +2,10 @@ import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState } 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { animate, AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ArrowRight, Check, Droplet, Layers, MapIcon, MapPin, Menu, Plus, Printer, Search, X } from 'lucide-react';
-import { EASE_OUT } from '@/lib/ease';
-import { Button } from '@/components/ui/button';
-import { StatusBadge } from '@/components/ui/status';
-import { cn } from '@/lib/utils';
+import { EASE_OUT } from '@/shared/lib/ease';
+import { Button } from '@/shared/ui/button';
+import { StatusBadge } from '@/shared/ui/status';
+import { cn } from '@/shared/lib/cn';
 import { markSeen, nextTour, placeCard, readSeen, scrollDelta, seenAfter, spotlightRect, unionRect } from './onboarding.js';
 
 // Samouczek w dwóch częściach: powitanie na pulpicie (co robi aplikacja i od czego zacząć) oraz objaśnienie

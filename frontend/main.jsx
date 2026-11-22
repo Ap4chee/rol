@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Menu, Pencil, Plus, Trash2 } from 'lucide-react';
-import { LoadingState } from '@/components/spectrumui/loading-state';
+import { LoadingState } from '@/shared/vendor/spectrumui/loading-state';
 import {
   ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle, ResponsiveModalTrigger,
-} from '@/components/spectrumui/responsive-modal';
-import { Button } from '@/components/ui/button';
-import { Callout } from '@/components/ui/callout';
-import { Dialog } from '@/components/ui/dialog';
-import { MoreMenu } from '@/components/ui/menu';
-import { ToastProvider, useToast } from '@/components/ui/toaster';
-import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
+} from '@/shared/vendor/spectrumui/responsive-modal';
+import { Button } from '@/shared/ui/button';
+import { Callout } from '@/shared/ui/callout';
+import { Dialog } from '@/shared/ui/dialog';
+import { MoreMenu } from '@/shared/ui/menu';
+import { ToastProvider, useToast } from '@/shared/ui/toaster';
+import { Tooltip, TooltipProvider } from '@/shared/ui/tooltip';
 import { AddFieldForm } from './AddField.jsx';
 import { Dashboard, JobBadge } from './Dashboard.jsx';
 import { FieldworkPage } from './Fieldwork.jsx';

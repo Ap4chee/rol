@@ -1,11 +1,11 @@
 import { Field3D } from '../Field3D.jsx';
 import { balanceText, dateText, number, soilProfile } from '../model.js';
 import { Note } from '../ui.jsx';
-import { Card } from '@/components/ui/card';
-import { Meter } from '@/components/ui/meter';
-import { Caption, Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
-import { NARROW, useMediaQuery } from '@/lib/media';
-import { cn } from '@/lib/utils';
+import { Card } from '@/shared/ui/card';
+import { Meter } from '@/shared/ui/meter';
+import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
+import { NARROW, useMediaQuery } from '@/shared/lib/media';
+import { cn } from '@/shared/lib/cn';
 import { Explanation, Section } from './shared.jsx';
 
 // Frakcje uziarnienia: pole warstwy, nazwa, kolor z @theme (app.css).
