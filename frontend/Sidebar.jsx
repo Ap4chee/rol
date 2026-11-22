@@ -72,7 +72,6 @@ export function Sidebar({ page, compact, onToggle, onNavigate, onAdd }) {
       </ul>
     </nav>
     <div className="mt-auto flex flex-col gap-3 pt-8">
-      {!compact && <p className={cn('eyebrow whitespace-nowrap pl-3.5', reveal && REVEAL)}>Bilans wody · dane otwarte</p>}
       {/* zwijanie tylko na komputerze; przycisk stoi w tym samym miejscu w obu stanach, więc można od razu cofnąć */}
       <div className="hidden pl-1.5 md:block">
         <Tooltip label={toggleLabel} side="right">

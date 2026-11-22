@@ -3,19 +3,15 @@ import { ArrowRight, ChevronRight, CircleAlert, Info, RefreshCw } from 'lucide-r
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
-import { Segmented } from '@/components/ui/segmented';
 import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
 import { StatCards } from '@/components/spectrumui/charts/stat-cards';
 import { SkeletonReveal } from '@/components/spectrumui/skeleton-reveal';
-import { NARROW, useMediaQuery } from '@/lib/media';
 import { cn } from '@/lib/utils';
-import { Field3D } from '../Field3D.jsx';
-import { ParcelMap } from '../ParcelMap.jsx';
 import { WaterChart } from '../WaterChart.jsx';
 import { Note, Sparkline, statusFill, statusInk } from '../ui.jsx';
 import { dateText, number, satelliteMeasurements, waterPercent } from '../model.js';
-import { GROUPS, groupActions } from './Recommendations.jsx';
+import { GROUPS, groupActions, Irrigation } from './Recommendations.jsx';
 import { CauseList, Section, TAB_LABELS } from './shared.jsx';
 
 const WATER = 'var(--color-water-500)';
@@ -56,7 +52,8 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
   const first = actions[0];
   const [context, statement] = splitHeadline(water.headline ?? 'Brakuje danych do oceny');
 
-  return <div className={cn('flex flex-col gap-8', intro && 'animate-rise [animation-delay:70ms] motion-reduce:animate-none')}>
+  // na szerokim ekranie ocena z lewej, najważniejsze działanie z prawej (pod oceną informacja o pewności wyniku)
+  return <div className={cn('grid gap-8 md:grid-cols-2 md:items-center md:gap-x-12', intro &&'animate-rise [animation-delay:70ms] motion-reduce:animate-none')}>
     <div>
       <h2 className="eyebrow">Sytuacja wodna</h2>
       {context && <p className="mt-3 text-[15px] font-medium text-neutral-600">{context}</p>}
@@ -96,24 +93,9 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
     </Card>}
 
     {limited && <button type="button" onClick={() => onTab('zrodla')}
-      className="press -my-1 inline-flex items-center gap-1.5 self-start rounded-md py-1 text-[13px] text-neutral-500 hover:text-neutral-900">
+      className="press -my-1 inline-flex items-center gap-1.5 self-start justify-self-start rounded-md py-1 text-[13px] text-neutral-500 hover:text-neutral-900">
       <Info aria-hidden className="size-4"/>Ograniczona pewność wyniku<ArrowRight aria-hidden className="size-3.5"/>
     </button>}
-  </div>;
-}
-
-/** Model 3D pola z glebą albo zdjęcie lotnicze z drogami spływu. Do wydruku zawsze model 3D. */
-function FieldView({ report, terrain, printing, intro }) {
-  const [view, setView] = useState('3d');
-  const narrow = useMediaQuery(NARROW);   // na telefonie niższa scena: model jest wąski, pełne 420 px to pusta przestrzeń
-  const viewSwitch = <Segmented className="no-print" label="Widok działki" value={view} onChange={setView}
-    options={[{ value: '3d', label: 'Pole i gleba' }, { value: 'map', label: 'Zdjęcie lotnicze' }]}/>;
-  // przełącznik widoku i „Złóż warstwy” w jednym pasku nad modelem
-  return <div className="min-w-0">
-    {view === '3d' || printing
-      ? <Field3D report={report} cropArea={report.test_crop_area} height={narrow ? 300 : 420} toolbar={viewSwitch} intro={intro}/>
-      : <><div className="mb-2">{viewSwitch}</div>
-        <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/></>}
   </div>;
 }
 
@@ -129,7 +111,6 @@ function factCards(report) {
   const rain = report.causes.windows?.find((w) => w.days === 30);
   const climat = water.climatic_water_balance;
   const history = report.history;
-  const need = report.irrigation_need;
 
   const rainDays = rain && series.length >= 30 ? series.slice(-30) : [];
   const rainSeries = rainDays.length === 30 && rainDays.every((d) => Number.isFinite(d.rain_mm));
@@ -167,10 +148,6 @@ function factCards(report) {
       progress: !segments && history.seasons_total ? history.seasons_with_stress / history.seasons_total : undefined,
       color: 'var(--color-moderate)', caption: 'ostatnie pełne sezony',
     },
-    {
-      label: 'Nawadnianie w typowym sezonie', value: need?.typical_mm ?? null, unit: 'mm', format: (v) => number(v), delta: false,
-      caption: need?.dry_mm != null ? `w suchym roku ${mm(need.dry_mm)}` : null,
-    },
   ];
 }
 
@@ -191,7 +168,7 @@ function WaterReserve({ report, intro }) {
           : <Note section={water}/>}
         {forecastNote}
       </>}
-    <StatCards className="mt-3" columns={2} intro={intro} cards={factCards(report)}/>
+    <StatCards className="mt-3" columns={3} intro={intro} cards={factCards(report)}/>
   </Section>;
 }
 
@@ -294,16 +271,15 @@ function Greenness({ satellite, failed, retry, canRetry, printing }) {
 // ---------- podsumowanie ----------
 
 /**
- * Zakładka „Podsumowanie”: ocena i model pola, zapas wody z liczbami, przyczyny i zieloność roślin.
+ * Zakładka „Podsumowanie”: ocena, zapas wody z liczbami, przyczyny i zieloność roślin.
  * `intro`: wejście (ocena, karty liczb) tylko przy pierwszym pokazaniu raportu, nie przy powrocie na zakładkę.
  */
 export function Summary({ report, terrain, satellite, sat, limited, onTab, printing, intro = false }) {
   return <div className="flex flex-col gap-14">
-    <div className="grid gap-10 md:grid-cols-12 md:items-center md:gap-12">
-      <div className="md:col-span-5"><Verdict report={report} terrain={terrain} limited={limited} onTab={onTab} intro={intro}/></div>
-      <div className="min-w-0 md:col-span-7"><FieldView report={report} terrain={terrain} printing={printing} intro={intro}/></div>
-    </div>
+    {/* bez modelu 3D i mapy: te są w zakładkach Gleba i Teren i woda, tu same informacje */}
+    <Verdict report={report} terrain={terrain} limited={limited} onTab={onTab} intro={intro}/>
     <WaterReserve report={report} intro={intro}/>
+    <Irrigation report={report} terrainActions={terrain?.recommendations ?? []} intro={intro}/>
     <div className="grid gap-14 md:grid-cols-12 md:gap-12">
       <div className="min-w-0 md:col-span-7"><Causes report={report} terrain={terrain} onTab={onTab}/></div>
       <div className="min-w-0 md:col-span-5"><Greenness satellite={satellite} failed={sat.failed} retry={sat.retry}

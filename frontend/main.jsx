@@ -76,7 +76,7 @@ function NotFound({ onAdd }) {
 }
 
 function Footer() {
-  return <footer className="no-print mx-auto w-full max-w-[1180px] px-4 md:px-8 lg:px-10">
+  return <footer className="no-print mx-auto w-full max-w-[1600px] px-4 md:px-8 lg:px-10">
     <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-black/[0.06] py-5 text-[12.5px] leading-snug">
       <p className="font-medium text-neutral-700">Asystent wody</p>
       <p className="text-neutral-500">Wynik jest szacunkiem z modeli i otwartych danych.</p>
@@ -209,7 +209,7 @@ function App() {
 
     <div className="print-plain flex min-h-[calc(100svh_-_var(--app-header))] min-w-0 flex-col overflow-x-clip bg-white md:my-2 md:mr-2 md:min-h-[calc(100svh_-_1rem)] md:rounded-2xl md:border md:border-black/[0.06] md:shadow-hairline print:min-h-0!">
       <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col focus:outline-none">
-        <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-4 py-6 md:px-8 md:py-10 lg:px-10 print:max-w-none! print:p-0!">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-4 py-6 md:px-8 md:py-10 lg:px-10 print:max-w-none! print:p-0!">
           {message && <Callout tone="danger" role="alert" className="no-print mb-6">{message}</Callout>}
           {shared === 'loading' ? <SharedLoading/> : <>
             {shared && <Callout tone="danger" role="alert" title="Nie udało się otworzyć raportu z linku" className="mb-6">{shared}</Callout>}

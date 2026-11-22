@@ -179,13 +179,21 @@ function cropModel(key, stage, month) {
 const layerDepth = (cm) => .18 + cm * .009;   // grubość warstwy w scenie (cienkie warstwy też widoczne)
 const GAP = .3;                                // odstęp między rozłożonymi warstwami
 
-/** `cropArea`: opcjonalna geometria GeoJSON (EPSG:4326) części działki z uprawą; bez niej rośliny rosną na całej działce. */
-/** `toolbar`: element po lewej w pasku nad modelem (np. przełącznik widoku); `intro`: wejście tylko przy pierwszym pokazaniu. */
-export function Field3D({ report, height = 420, cropArea = null, toolbar = null, intro = false }) {
+/**
+ * `cropArea`: opcjonalna geometria GeoJSON (EPSG:4326) części działki z uprawą; bez niej rośliny rosną na całej działce.
+ * `toolbar`: element po lewej w pasku nad modelem (np. przełącznik widoku); `intro`: wejście tylko przy pierwszym pokazaniu.
+ * `still`: miniatura (karta pola) — scena w stanie końcowym renderowana raz do obrazka, kontekst WebGL od razu zwalniany,
+ * bez obracania, dymków i podpisu (przeglądarka trzyma tylko kilkanaście kontekstów WebGL naraz).
+ */
+export function Field3D({ report, height = 420, cropArea = null, toolbar = null, intro = false, still = false }) {
   const mount = useRef(null);
   const state = useRef({ exploded: true });
   const [exploded, setExploded] = useState(true);
   const [hovered, setHovered] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [live, setLive] = useState(false);   // miniatura pod kursorem myszy: żywa scena (tylko jeden kontekst WebGL naraz)
+  const thumb = useRef(null);
+  const down = useRef(null);
   const box = useRef(null);
   const profile = soilProfile(report);   // to samo znaczenie warstw i zasięgu co w tabeli gleby
   const { layers } = profile;
@@ -199,7 +207,7 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
 
   useEffect(() => {
     const el = mount.current;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = still || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const model = cropModel(crop.key, crop.stage_key, month);
     const shapeInfo = parcelShape(report.parcel?.geometry);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -210,7 +218,6 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
     renderer.toneMappingExposure = 1.05;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 1.5));
@@ -391,6 +398,18 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
     fit();
     sun.position.set(6, center.y + 16, 8);
     sun.target.position.copy(center);
+    const dispose = () => {
+      scene.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose?.(); });
+      renderer.dispose();
+    };
+    if (still && !live) {
+      renderer.render(scene, camera);
+      setSnapshot(renderer.domElement.toDataURL('image/png'));
+      dispose();
+      renderer.forceContextLoss();
+      return undefined;
+    }
+    el.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.copy(center);
     controls.enableDamping = true;
@@ -460,17 +479,35 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
       renderer.render(scene, camera);
     };
     loop();
+    // obrazek chowany dopiero po pierwszej klatce sceny, żeby karta nie mrugnęła pustym polem
+    if (thumb.current) thumb.current.style.visibility = 'hidden';
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
       controls.dispose();
       renderer.domElement.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('pointerleave', onLeave);
-      scene.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose?.(); });
-      renderer.dispose();
+      dispose();
+      if (still) renderer.forceContextLoss();
+      if (thumb.current) thumb.current.style.visibility = '';
       el.removeChild(renderer.domElement);
     };
-  }, [report.generated_at, height]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [report.generated_at, height, live]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // miniatura: obrazek; pod kursorem myszy żywa scena do obracania (dotyk zostaje przy obrazku, żeby nie blokować przewijania).
+  // Karta jest linkiem: kliknięcie kończące przeciąganie nie otwiera pola.
+  if (still) {
+    return <div ref={mount} style={{ height }} className="relative cursor-grab active:cursor-grabbing"
+      onPointerEnter={(e) => e.pointerType === 'mouse' && setLive(true)}
+      onPointerLeave={() => setLive(false)}
+      onPointerDown={(e) => { down.current = [e.clientX, e.clientY]; }}
+      onClick={(e) => {
+        const [x, y] = down.current ?? [e.clientX, e.clientY];
+        if (Math.hypot(e.clientX - x, e.clientY - y) > 4) e.preventDefault();
+      }}>
+      {snapshot && <img ref={thumb} src={snapshot} alt="" className="absolute inset-0 size-full object-contain animate-in fade-in duration-300"/>}
+    </div>;
+  }
 
   function toggle() {
     state.current.exploded = !state.current.exploded;

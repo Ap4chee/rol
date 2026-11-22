@@ -1,9 +1,9 @@
-import { ClipboardCheck, MapPin } from 'lucide-react';
+import { ClipboardCheck, Droplets, MapPin, ShowerHead, Tractor } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Card } from '@/components/ui/card';
-import { usePrinting } from '@/lib/printing';
+import { StatCards } from '@/components/spectrumui/charts/stat-cards';
+import { StatusBadge } from '@/components/ui/status';
 import { cn } from '@/lib/utils';
-import { Note } from '../ui.jsx';
+import { Note, statusTone } from '../ui.jsx';
 import { number } from '../model.js';
 import { MONTHS, Section } from './shared.jsx';
 
@@ -19,12 +19,6 @@ export function groupActions(recommendations, terrainActions, category) {
   return [...(recommendations?.[category] ?? []), ...terrainActions.filter((item) => item.category === category)];
 }
 
-const IMAGES = {
-  residue_cover: 'mulcz.jpg', cover_crop: 'miedzyplon.jpg', organic_matter: 'mulcz.jpg',
-  buffer_strip_watercourse: 'zadrzewienia.jpg', reduced_tillage: 'mulcz.jpg',
-  buffer_strip_flow_path: 'zadrzewienia.jpg', protect_depression: 'zaglebienie.jpg',
-};
-const CONFIDENCE = { wysoka: 3, 'średnia': 2, niska: 1 };
 // wejście grup przy pierwszym pokazaniu zakładki: nierówne odstępy
 const ENTER_MS = [0, 50, 90, 120];
 
@@ -32,141 +26,155 @@ function enter(intro, step) {
   return intro ? { className: 'animate-rise motion-reduce:animate-none', style: { animationDelay: `${ENTER_MS[step]}ms` } } : {};
 }
 
-/** Pewność jako trzy kropki obok słowa (szybciej czytelna na liście kart). */
-function ConfidenceDots({ level }) {
-  if (!level) return null;
-  return <span aria-hidden className="inline-flex gap-[3px]">
-    {[1, 2, 3].map((i) => <span key={i} className={cn('size-[5px] rounded-full', i <= level ? 'bg-neutral-700' : 'bg-neutral-200')}/>)}
-  </span>;
+const GROUP_ICONS = { retention: Droplets, agrotechnical: Tractor, irrigation: ShowerHead };
+
+// shortcut: zdanie kończy się na [.!?] przed wielką literą („ok. 56 dni” zostaje w środku); krótki powód z backendu byłby pewniejszy
+const SENTENCE_END = /(?<=[.!?])\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])/;
+
+/** Pierwsze zdanie uzasadnienia, którego nie pokazał już wyższy wiersz (kilka działań bywa skutkiem tego samego faktu). */
+function pickFact(why, shown) {
+  const sentences = (why ?? '').split(SENTENCE_END).filter(Boolean);
+  const fact = sentences.find((sentence) => !shown.has(sentence)) ?? sentences[0];
+  shown.add(fact);
+  return { fact, rest: sentences.filter((sentence) => sentence !== fact) };
 }
 
-function RecommendationCard({ item, printing }) {
-  const image = IMAGES[item.key];
-  return <Card className="overflow-hidden">
-    {image && <img src={`/design/${image}`} alt="" loading={printing ? 'eager' : 'lazy'} decoding="async"
-      className="h-28 w-full bg-neutral-100 object-cover"/>}
-    <div className="p-5 pb-4">
-      <h4 className="font-sans text-[15px] font-semibold leading-snug tracking-tight text-neutral-950">{item.title}</h4>
-      <p className="mt-2 text-[14px] leading-relaxed text-neutral-700">{item.what}</p>
-      {item.where && <p className="mt-3 flex gap-2 text-[13px] leading-snug text-neutral-500">
-        <MapPin aria-hidden className="mt-px size-4 shrink-0 text-neutral-400" strokeWidth={2}/>{item.where}</p>}
-    </div>
-    <Accordion type="single" collapsible className="border-t border-black/[0.06]">
-      <AccordionItem value="why">
-        {/* pierścień fokusu do środka: karta przycina to, co wystaje (zaokrąglone rogi zdjęcia) */}
-        <AccordionTrigger className="px-5 py-3 text-[13px] focus-visible:ring-inset">
-          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-            <span>Dlaczego na tym polu</span>
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-              <span aria-hidden className="text-neutral-400">·</span>pewność {item.confidence}
-              <ConfidenceDots level={CONFIDENCE[item.confidence]}/>
-            </span>
-          </span>
-        </AccordionTrigger>
-        <AccordionContent className="px-5 pb-4 pr-5 text-[13.5px]">
-          <p className="text-neutral-700">{item.why}</p>
-          {item.confidence_reason && <p className="mt-2 text-[12.5px] leading-relaxed text-neutral-500">{item.confidence_reason}</p>}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
-  </Card>;
-}
-
-/** Liczba z etykietą; etykiety mogą się zawinąć, liczby w rzędzie i tak stoją na jednej linii (dół komórki). */
-function Figure({ label, value, hero }) {
-  return <div className="flex min-w-0 flex-col justify-between">
-    <p className="text-[12.5px] leading-snug text-neutral-500">{label}</p>
-    <p className={cn('num mt-1.5 font-medium leading-none tracking-tight text-neutral-950', hero ? 'text-[26px]' : 'text-[20px]')}>
-      {Number.isFinite(value) ? <>{number(value)}<span className="ml-1 text-[0.6em] font-normal tracking-normal text-neutral-500">mm</span></> : '—'}
-    </p>
-  </div>;
-}
-
-/** Ile wody trzeba by dodać w sezonie (netto) i jak rozkłada się to na miesiące w typowym roku. */
-function IrrigationNeed({ need, crop, intro }) {
-  if (!need) return null;
-  if (need.status !== 'ok') return <Note section={need} className="mt-4"/>;
-  const monthly = need.monthly ?? [];
-  const max = Math.max(1, ...monthly.map((m) => m.mm));
-  return <Card className="mt-5 p-5 md:p-6">
-    <div className="grid gap-8 md:grid-cols-12 md:items-end md:gap-10">
-      <div className="md:col-span-5">
-        <h4 className="font-sans text-[15px] font-semibold leading-snug tracking-tight text-neutral-950">
-          Ile wody potrzebuje {crop.name.toLowerCase()} w sezonie</h4>
-        <div className="mt-4 grid grid-cols-3 gap-4">
-          <Figure label="ten sezon do dziś" value={need.so_far_mm}/>
-          <Figure label="typowy sezon" value={need.typical_mm} hero/>
-          <Figure label="suchy rok" value={need.dry_mm}/>
-        </div>
-        <p className="mt-4 text-[12.5px] leading-relaxed text-neutral-500">
-          Ilość netto, dawki po {number(need.dose_mm ?? 25)} mm, gdy zapas spada poniżej progu stresu.</p>
+/** Działanie jako wiersz: tytuł i jeden fakt z danych pola; jak to zrobić i pełne uzasadnienie po rozwinięciu. */
+function RecommendationRow({ item, group, fact, rest }) {
+  const Icon = GROUP_ICONS[group];
+  return <AccordionItem value={item.key}>
+    {/* pierścień fokusu do środka: lista przycina to, co wystaje */}
+    <AccordionTrigger className="items-start gap-3.5 px-4 py-4 font-sans focus-visible:ring-inset md:px-5">
+      <span className="flex min-w-0 flex-1 gap-3.5">
+        <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+          <Icon className="size-4" strokeWidth={2}/></span>
+        <span className="min-w-0 pt-0.5">
+          <span className="block text-[15px] font-semibold leading-snug text-neutral-950">{item.title}</span>
+          {fact && <span className="mt-1 block text-[13.5px] font-normal leading-relaxed text-neutral-500">{fact}</span>}
+        </span>
+      </span>
+    </AccordionTrigger>
+    <AccordionContent className="space-y-3 pb-5 pl-[62px] pr-5 text-[13.5px] md:pl-[66px]">
+      <div>
+        <p className="font-semibold text-neutral-900">Jak to zrobić</p>
+        <p className="mt-1 max-w-[68ch] text-neutral-700">{item.what}</p>
+        {item.where && <p className="mt-2 flex gap-1.5 text-[13px] text-neutral-500">
+          <MapPin aria-hidden className="mt-px size-4 shrink-0 text-neutral-400" strokeWidth={2}/>{item.where}</p>}
       </div>
-      {monthly.some((m) => m.mm > 0) && <div className="min-w-0 md:col-span-7">
-        <p className="text-[13px] text-neutral-500">Typowo w miesiącach (mm)</p>
-        <div className="mt-3 grid h-40 auto-cols-fr grid-flow-col gap-1.5" role="img"
-          aria-label={`Typowa potrzeba nawadniania w miesiącach: ${monthly.map((m) => `${MONTHS[m.month - 1]} ${number(m.mm)} mm`).join(', ')}`}>
-          {monthly.map((m) => <div key={m.month} className="flex min-w-0 flex-col items-center gap-1.5">
-            <div className="relative flex w-full flex-1 items-end justify-center pt-5">
-              <div className="relative w-full max-w-9" style={{ height: `${Math.max(2, (100 * m.mm) / max)}%` }}>
-                <div className={cn('absolute inset-0 rounded-t-[5px] bg-water-400', intro && 'bar-grow')}/>
-                {m.mm >= 1 && <span className="num absolute inset-x-0 bottom-full mb-1 text-center text-[11px] font-medium leading-none text-neutral-700">
-                  {number(m.mm)}</span>}
-              </div>
-            </div>
-            <span className="text-[11px] leading-none text-neutral-500">{MONTHS[m.month - 1]}</span>
-          </div>)}
-        </div>
-      </div>}
-    </div>
-  </Card>;
+      <div>
+        <p className="font-semibold text-neutral-900">Skąd to wiemy</p>
+        {rest.length > 0 && <p className="mt-1 max-w-[68ch] text-neutral-700">{rest.join(' ')}</p>}
+        {item.confidence && <p className="mt-1 max-w-[68ch] text-[12.5px] leading-relaxed text-neutral-500">
+          Pewność {item.confidence}.{item.confidence_reason ? ` ${item.confidence_reason}` : ''}</p>}
+      </div>
+    </AccordionContent>
+  </AccordionItem>;
+}
+
+/** Czy nawadniać teraz: wskazane, gdy raport ma działanie z grupy nawadniania; inaczej powód z `irrigation_note`. */
+function irrigationVerdict(recommendations, items, water) {
+  if (recommendations?.status !== 'ok') return { label: 'Brak oceny', tone: 'unknown',
+    detail: recommendations?.reason ?? 'Brakuje danych do zaleceń.' };
+  if (!items.length) return { label: 'Teraz niepotrzebne', tone: 'ok', detail: recommendations.irrigation_note };
+  const evidence = items[0].evidence ?? {};
+  return { label: 'Teraz wskazane', tone: statusTone(water),
+    detail: Number.isFinite(evidence.to_threshold_mm)
+      ? `Do progu stresu brakuje ok. ${number(evidence.to_threshold_mm)} mm, do pełnego zapasu ${number(evidence.full_refill_mm)} mm `
+        + '(1 mm = 10 m³ na hektar). Najpierw działania zatrzymujące wodę, nawadnianie jako uzupełnienie.'
+      : items[0].title };
+}
+
+const WATER = 'var(--color-water-500)';
+const dosesWord = (n) => n === 1 ? 'dawka'
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'dawki' : 'dawek';
+
+/** Dwie karty jak w „Zapasie wody”: typowy sezon ze słupkami miesięcy i bieżący sezon (poza sezonem: ile sezonów wymagało wody). */
+function needCards(need) {
+  const typical = {
+    label: 'Nawadnianie w typowym sezonie', value: need.typical_mm ?? null, unit: 'mm', format: (v) => number(v), delta: false,
+    color: WATER, caption: need.dry_mm != null ? `w suchym roku ${number(need.dry_mm)} mm` : null,
+    bars: need.monthly?.length ? need.monthly.map((m) => ({ label: MONTHS[m.month - 1], value: m.mm })) : undefined,
+  };
+  if (need.so_far_mm != null) return [typical, {
+    label: 'Nawadnianie w tym sezonie', value: need.so_far_mm, unit: 'mm', format: (v) => number(v), delta: false, color: WATER,
+    caption: `do dziś, ${need.so_far_events} ${dosesWord(need.so_far_events)}`,
+    progress: need.typical_mm ? Math.min(1, need.so_far_mm / need.typical_mm) : undefined,
+  }];
+  const needed = need.seasons_compared - need.seasons_without;
+  return [typical, {
+    label: 'Sezony z potrzebą nawadniania', value: need.seasons_compared ? needed : null, unit: `z ${need.seasons_compared}`,
+    format: (v) => number(v), delta: false, color: WATER, caption: 'ostatnie pełne sezony',
+    progress: need.seasons_compared ? needed / need.seasons_compared : undefined,
+  }];
+}
+
+/**
+ * Nawadnianie na pierwszym ekranie: plakietka „czy teraz” (z rekomendacji) z powodem i karty z potrzebą w sezonie (netto).
+ */
+export function Irrigation({ report, terrainActions, intro }) {
+  const items = groupActions(report.recommendations, terrainActions, 'irrigation');
+  const { label, tone, detail } = irrigationVerdict(report.recommendations, items, report.water_status);
+  const need = report.irrigation_need;
+  return <Section lead={detail} title={<span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    Nawadnianie<StatusBadge tone={tone}>{label}</StatusBadge></span>}>
+    {need && (need.status === 'ok' ? <>
+      <StatCards columns={2} intro={intro} cards={needCards(need)}/>
+      <p className="mt-3 text-[12.5px] leading-relaxed text-neutral-500">
+        Ilość netto, która ma trafić do gleby{need.dose_mm ? `: dawki po ${number(need.dose_mm)} mm` : ''}, gdy zapas spada poniżej
+        progu stresu. Do wydajności instalacji trzeba doliczyć jej straty.</p>
+    </> : <Note section={need}/>)}
+  </Section>;
+}
+
+const actionsWord = (n) => n === 1 ? 'działanie'
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'działania' : 'działań';
+
+/** Odpowiedź na „co robić?” w jednym zdaniu, zanim pojawią się szczegóły. */
+function answer(data, groups) {
+  if (data.status !== 'ok') return undefined;
+  const total = groups.reduce((n, group) => n + group.items.length, 0);
+  const head = total ? `Do zrobienia: ${total} ${actionsWord(total)}${total > 1 ? ', od najważniejszego' : ''}.`
+    : 'Raport nie wskazuje działań dla tego pola.';
+  return groups.at(-1).items.length ? head : `${head} Nawadnianie nie jest teraz potrzebne.`;
 }
 
 /**
  * Rekomendacje w stałej kolejności (retencja → agrotechnika → nawadnianie), z działaniami z analizy terenu
- * dopisanymi do swoich grup, i lista oględzin pola. `intro`: wejście grup przy pierwszym pokazaniu raportu.
+ * dopisanymi do swoich grup, i lista oględzin pola. Grupy bez działań to jeden wiersz, żeby nie udawały kroków.
+ * `intro`: wejście grup przy pierwszym pokazaniu raportu.
  */
 export function Recommendations({ report, terrainActions, intro = false }) {
-  const printing = usePrinting();
   const data = report.recommendations;
+  const groups = GROUPS.map((group) => ({ ...group, items: groupActions(data, terrainActions, group.key) }));
+  const shown = new Set();
   const checks = [...new Map([
     ...(data.field_checks ?? []), ...terrainActions.filter((item) => item.category === 'field_check'),
   ].map((item) => [item.key, item])).values()];
   const checksMotion = enter(intro, 3);
 
-  return <Section title="Co robić?"
-    lead="Działania w kolejności: najpierw zatrzymanie wody na polu, potem zabiegi agrotechniczne, na końcu nawadnianie.">
+  return <Section title="Co robić?" lead={answer(data, groups)}>
     <Note section={data}/>
-    <ol className="mt-6">
-      {GROUPS.map((group, i) => {
-        const items = groupActions(data, terrainActions, group.key);
-        const irrigation = group.key === 'irrigation';
-        const last = i === GROUPS.length - 1;
-        const empty = data.status !== 'ok' ? 'Na tym etapie brakuje danych do zaleceń.'
-          : irrigation ? data.irrigation_note || 'Raport nie wskazuje potrzeby nawadniania.' : 'Raport nie wskazuje działań w tej grupie.';
+    <div className="mt-6 max-w-6xl space-y-8">
+      {groups.map(({ key, title, items }, i) => {
+        const irrigation = key === 'irrigation';
+        const note = irrigation ? data.irrigation_note : null;
         const motion = enter(intro, i);
-        return <li key={group.key} className={cn('relative pl-11 md:pl-12', !last && 'pb-12', motion.className)} style={motion.style}>
-          {!last && <span aria-hidden className="absolute bottom-0 left-[13.5px] top-10 w-px bg-black/[0.08]"/>}
-          <span aria-hidden className={cn('num absolute left-0 top-0 grid size-7 place-items-center rounded-full border border-black/[0.1] bg-white text-[12.5px] font-semibold shadow-hairline',
-            items.length ? 'text-neutral-800' : 'text-neutral-400')}>{i + 1}</span>
-          <div className="flex min-h-7 flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h3 className="font-sans text-[16px] font-semibold tracking-tight text-neutral-950">{group.title}</h3>
-            {items.length > 0 && <span className="num rounded-full bg-black/[0.05] px-2 py-0.5 text-[12px] font-medium leading-none text-neutral-600">{items.length}</span>}
-          </div>
-          <div className="mt-4">
-            {items.length > 0
-              ? <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {/* klucz z pozycją: działanie z terenu może mieć ten sam klucz co działanie z raportu */}
-                {items.map((item, n) => <RecommendationCard key={`${item.key}-${n}`} item={item} printing={printing}/>)}
-              </div>
-              : <p className="text-[14px] leading-relaxed text-neutral-500">{empty}</p>}
-            {irrigation && items.length > 0 && data.irrigation_note
-              && <p className="mt-3 text-[13.5px] leading-relaxed text-neutral-500">{data.irrigation_note}</p>}
-            {irrigation && <IrrigationNeed need={report.irrigation_need} crop={report.crop} intro={intro}/>}
-          </div>
-        </li>;
+        return <div key={key} className={motion.className} style={motion.style}>
+          {items.length > 0 ? <>
+            <h3 className="font-sans text-[16px] font-semibold tracking-tight text-neutral-950">{title}</h3>
+            <Accordion type="multiple" className="surface mt-3 overflow-hidden">
+              {/* klucz z pozycją: działanie z terenu może mieć ten sam klucz co działanie z raportu */}
+              {items.map((item, n) => <RecommendationRow key={`${item.key}-${n}`} item={{ ...item, key: `${item.key}-${n}` }} group={key}
+                {...pickFact(item.why, shown)}/>)}
+            </Accordion>
+            {note && <p className="mt-3 text-[13.5px] leading-relaxed text-neutral-500">{note}</p>}
+          </> : <p className="text-[14px] leading-relaxed text-neutral-500">
+            <span className="font-semibold text-neutral-800">{title}.</span>{' '}
+            {data.status !== 'ok' ? 'Brakuje danych do zaleceń.' : note || 'Bez zaleceń dla tego pola.'}</p>}
+        </div>;
       })}
-    </ol>
-    {checks.length > 0 && <div className={cn('mt-14', checksMotion.className)} style={checksMotion.style}>
+    </div>
+    {checks.length > 0 && <div className={cn('mt-14 max-w-6xl', checksMotion.className)} style={checksMotion.style}>
       <h3 className="font-sans text-[16px] font-semibold tracking-tight text-neutral-950">Co sprawdzić na polu</h3>
       <ul className="surface mt-4 divide-y divide-black/[0.06]">
         {checks.map((item) => <li key={item.key} className="flex gap-3.5 p-4 md:px-5">

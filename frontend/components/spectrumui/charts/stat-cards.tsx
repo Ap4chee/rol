@@ -53,6 +53,8 @@ export type StatCardData = {
   segments?: StatCardSegment[];
   /** Podpisy pod pierwszym i ostatnim odcinkiem. */
   segmentEnds?: [string, string];
+  /** Małe słupki zamiast wykresu, z podpisem pod każdym (np. miesiące); wartości w jednostce karty. */
+  bars?: { label: string; value: number }[];
 };
 
 // kaskada przy wejściu: nierówne odstępy, najwyżej kilka kroków
@@ -69,7 +71,7 @@ function StatCard({
   reduce: boolean;
   intro: boolean;
 }) {
-  const { label, series, goodWhen = 'up', deltaLabel = 'od początku', caption, progress, segments, unit } = card;
+  const { label, series, goodWhen = 'up', deltaLabel = 'od początku', caption, progress, segments, bars, unit } = card;
   const format = card.format ?? ((v: number) => formatCount(v, 1));
   const [hover, setHover] = React.useState<number | null>(null);
   const sparkRef = React.useRef<HTMLDivElement | null>(null);
@@ -96,7 +98,7 @@ function StatCard({
   const color = card.color ?? (good ? UP : DOWN);
   const animate = intro && !reduce;
   const delay = STAGGER_MS[Math.min(index, STAGGER_MS.length - 1)];
-  const hasSpark = known && !segments?.length && progress == null && n >= 2;
+  const hasSpark = known && !segments?.length && !bars?.length && progress == null && n >= 2;
 
   const displayValue = useTweenNumber(shown, {
     duration: 260,
@@ -177,6 +179,33 @@ function StatCard({
             <span>{card.segmentEnds[1]}</span>
           </div>
         ) : null}
+      </div>
+    );
+  } else if (known && bars?.length) {
+    const top = Math.max(1, ...bars.map((bar) => bar.value));
+    const text = (bar: { label: string; value: number }) => `${bar.label} ${format(bar.value)}${unit ? ` ${unit}` : ''}`;
+    visual = (
+      <div
+        role="img"
+        aria-label={`${label}: ${bars.map(text).join(', ')}`}
+        className="flex w-[44%] max-w-52 shrink-0 flex-col justify-end gap-1.5"
+        style={animate ? { animation: `spectrum-mc-fade 500ms ease-out ${delay + 150}ms both` } : undefined}
+      >
+        <div className="flex h-12 items-end gap-[3px]">
+          {bars.map((bar, i) => (
+            <span
+              key={i}
+              title={text(bar)}
+              className="min-w-0 flex-1 rounded-t-[3px]"
+              style={{ height: `${Math.max(6, (100 * bar.value) / top)}%`, background: bar.value >= 1 ? color : TRACK }}
+            />
+          ))}
+        </div>
+        <div aria-hidden className="flex gap-[3px] font-mono text-[10px] leading-none text-neutral-400">
+          {bars.map((bar, i) => (
+            <span key={i} className="min-w-0 flex-1 overflow-hidden text-center">{bar.label}</span>
+          ))}
+        </div>
       </div>
     );
   } else if (known && progress != null) {
@@ -327,7 +356,8 @@ function StatCard({
 const COLUMN_CLASS: Record<number, string> = {
   1: 'grid-cols-1',
   2: 'grid-cols-1 sm:grid-cols-2',
-  3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+  // 3 w rzędzie dopiero, gdy każda karta ma ok. 460 px (węższe są zbyt gęste); mierzone szerokością sekcji, nie okna
+  3: 'grid-cols-1 sm:grid-cols-2 @min-[88rem]:grid-cols-3',
   4: 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4',
 };
 
@@ -352,7 +382,7 @@ export function StatCards({
   const reduce = usePrefersReducedMotion();
 
   return (
-    <div className={cn('w-full', seriesVarsClassName, className)}>
+    <div className={cn('@container w-full', seriesVarsClassName, className)}>
       <Keyframes />
       <ChartState
         status={status}
