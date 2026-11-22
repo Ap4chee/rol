@@ -104,6 +104,7 @@ def test_four_classes_relative_to_raw_and_taw():
 
 def test_refill_at_raw_keeps_depletion_below_raw_and_counts_doses():
     import numpy as np
+
     from app.core.water_balance import run_water_balance
     n = 60
     rain, et0, kc = np.zeros(n), np.full(n, 5.0), np.full(n, 1.0)
@@ -118,6 +119,7 @@ def test_refill_at_raw_keeps_depletion_below_raw_and_counts_doses():
 
 def test_fixed_dose_repeats_until_below_raw():
     import numpy as np
+
     from app.core.water_balance import run_water_balance
     n = 40
     r = run_water_balance(np.zeros(n), np.full(n, 5.0), np.ones(n), np.ones(n, dtype=bool), taw_mm=100, p_table=.5,
@@ -128,6 +130,7 @@ def test_fixed_dose_repeats_until_below_raw():
 
 def test_root_depth_grows_from_sowing_to_mid_season_and_is_absent_off_season():
     from datetime import date, timedelta
+
     from app.core.crops import CROPS, ROOT_DEPTH_MIN_M, root_depth_on, season_for_harvest_year
     maize = CROPS["maize"]
     season = season_for_harvest_year(maize, 2025)

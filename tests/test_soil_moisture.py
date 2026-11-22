@@ -47,6 +47,7 @@ def test_parse_drops_fill_values():
 
 def test_typical_band_uses_only_previous_years_and_skips_warmup():
     import numpy as np
+
     from app.core.analysis import typical_band
     start_day = date(2014, 1, 1)
     dates = [start_day + timedelta(days=i) for i in range((date(2025, 7, 15) - start_day).days + 1)]
@@ -60,6 +61,7 @@ def test_typical_band_uses_only_previous_years_and_skips_warmup():
 
 def test_typical_for_forecast_days_after_series_end():
     import numpy as np
+
     from app.core.analysis import typical_for
     start_day = date(2014, 1, 1)
     dates = [start_day + timedelta(days=i) for i in range((date(2025, 7, 15) - start_day).days + 1)]

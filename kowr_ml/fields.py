@@ -40,9 +40,6 @@ def candidate_squares(lat: float, lon: float) -> list:
 
 
 def cropland_fraction(squares: list, lat: float, lon: float) -> np.ndarray:
-    import rasterio
-    from rasterio.features import rasterize
-    from rasterio.windows import from_bounds
 
     minx = min(s.bounds[0] for s in squares); miny = min(s.bounds[1] for s in squares)
     maxx = max(s.bounds[2] for s in squares); maxy = max(s.bounds[3] for s in squares)

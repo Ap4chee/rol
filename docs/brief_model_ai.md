@@ -47,7 +47,7 @@ Model nie może być czarną skrzynką ML. Nie ma pomiarów wilgotności z dzia�
                 │ D. Atrybucja przyczyn (porównanie z biegiem typowym)    │──► udział czynników w deficycie
                 └──────────────────────────┬──────────────────────────────┘
                                            ▼
-                E. Reguły rekomendacji (poza modelem; tabela działań w outputs/podsumowanie_kowr_retencja.md)
+                E. Reguły rekomendacji (poza modelem; tabela działań w docs/podsumowanie_retencja.md)
 ```
 
 - **A (fizyka)** daje wyjaśnialność i działa w każdym miejscu w Polsce bez treningu.
@@ -101,7 +101,7 @@ Rekomendacje (sekcje ③–⑤ raportu) to **reguły na tych wyjściach**, nie w
 Start symulacji to 1 rok przed oknem 10 lat (rozgrzewka stanu).
 
 **B. Korekta ML.** Jeden `HistGradientBoostingRegressor` z `loss="quantile"` dla kwantyli 0,1, 0,5 i 0,9:
-- **Cel:** ΔNDMI w horyzoncie 7–14 dni, zgodnie z [specyfikacja_treningu_ml_kowr.md](../specyfikacja_treningu_ml_kowr.md) (etykiety z archiwum S2, bez sond).
+- **Cel:** ΔNDMI w horyzoncie 7–14 dni, zgodnie z [docs/ml/specyfikacja_treningu.md](ml/specyfikacja_treningu.md) (etykiety z archiwum S2, bez sond).
 - **Cechy:** stan z A (zapas, Ks, deficyt narastający), anomalia wilgotności ERA5-Land, ostatnie NDMI/NDVI i ich wiek, uprawa, faza, dzień roku, cechy gleby i spadku.
 - **Co daje w aplikacji:** (1) prognoza reakcji roślin, (2) gdy obserwowane NDMI rozjeżdża się z tym, co przewiduje bilans, model **obniża pewność** i raport mówi to wprost. Nie zastępuje bilansu.
 
@@ -158,7 +158,7 @@ Wyniki tych porównań trafiają do README jako „sposób weryfikacji wyników�
 | Pogoda 11 lat, 1 komórka | 1–3 s | cache po komórce; Open-Meteo bywa limitowane (429), więc archiwum warto mieć wcześniej pobrane dla siatki PL |
 | SoilGrids | 1–5 s z API albo < 1 s z lokalnego wycinka | REST API jest wolne i limitowane, więc lepiej pobrać rastry PL wcześniej (WebDAV) i opisać to w README |
 | NMT dla działki | 2–4 s | WCS, mały wycinek |
-| Sentinel-2 | 6–10 s | pomiar w [dobor_technologii_ml_kowr.md](../dobor_technologii_ml_kowr.md); dla krzywej 10-letniej potrzebny cache lub mniejsze próbkowanie |
+| Sentinel-2 | 6–10 s | pomiar w [dobor_technologii_ml_kowr.md](ml/dobor_technologii.md); dla krzywej 10-letniej potrzebny cache lub mniejsze próbkowanie |
 | A + C + D + B | < 1 s | numpy, ok. 4000 dni × 5 przebiegów |
 
 Źródła pobieramy równolegle. Sekcje raportu pokazujemy, gdy są gotowe.

@@ -3,7 +3,7 @@ z wstawionymi wartościami, w układzie: co zrobić, gdzie, dlaczego, jak pewny 
 
 Kolejność narzucona przez zadanie KOWR: retencja → agrotechnika → nawadnianie (na końcu i tylko wtedy,
 gdy niedobór pozostaje). Lista działań pochodzi z materiałów KOWR („Podstawy naukowe”, tabela 12 działań
-w outputs/podsumowanie_kowr_retencja.md): retencja glebowa (międzyplony, resztki pożniwne, materia organiczna)
+w docs/podsumowanie_retencja.md): retencja glebowa (międzyplony, resztki pożniwne, materia organiczna)
 i krajobrazowa (strefy buforowe, zbiorniki, oczka, mokradła, zadrzewienia, spowalnianie odpływu), działania
 agrotechniczne (ograniczenie intensywnej uprawy, dobór uprawy i terminów, monitorowanie), nawadnianie opcjonalne.
 Reguły zależne od ukształtowania terenu są w app/core/terrain_rules.py, bo teren liczy się osobno.

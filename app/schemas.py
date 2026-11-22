@@ -6,7 +6,8 @@ Jednostki są w nazwach pól (`_mm`, `_pct`, `_ha`, `_m`). Współrzędne w odpo
 """
 from __future__ import annotations
 
-from datetime import date as Date, datetime as DateTime
+from datetime import date as Date
+from datetime import datetime as DateTime
 from enum import Enum
 from typing import Any
 
@@ -61,7 +62,7 @@ class CropTimelineInput(BaseModel):
         return with_season_dates(CROPS[self.crop.value], self.sowing_date, self.harvest_date, self.next_sowing_date)
 
     @model_validator(mode="after")
-    def _validate_timeline(self) -> "CropTimelineInput":
+    def _validate_timeline(self) -> CropTimelineInput:
         self.crop_with_timeline()
         return self
 
@@ -73,7 +74,7 @@ class ReportRequest(CropTimelineInput):
     date: Date = Field(description="dzień analizy; dane późniejsze niż ta data nie wchodzą do obliczeń")
 
     @model_validator(mode="after")
-    def _one_of_parcel_or_point(self) -> "ReportRequest":
+    def _one_of_parcel_or_point(self) -> ReportRequest:
         if bool(self.parcel_id) == bool(self.point):
             raise ValueError("Podaj identyfikator działki albo punkt na mapie (dokładnie jedno z dwojga).")
         return self
@@ -614,7 +615,7 @@ class FieldInput(CropTimelineInput):
     test: bool = Field(default=False, description="tryb testowy frontendu: raport dla punktu, obrys rysuje frontend")
 
     @model_validator(mode="after")
-    def _one_of_parcel_or_point(self) -> "FieldInput":
+    def _one_of_parcel_or_point(self) -> FieldInput:
         if bool(self.parcel_id) == bool(self.point):
             raise ValueError("Podaj identyfikator działki albo punkt na mapie (dokładnie jedno z dwojga).")
         return self

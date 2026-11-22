@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
-SOIL_ASSETS_DIR = ROOT / "outputs" / "assety_gleby" / "webp"
+SOIL_ASSETS_DIR = ROOT / "docs" / "assets" / "gleba" / "webp"
 CACHE_DIR = Path(os.environ.get("KOWR_CACHE_DIR", ROOT / "cache"))
 # dane użytkowników (zapisane pola); w odróżnieniu od cache/ nie wolno ich kasować
 DATA_DIR = Path(os.environ.get("KOWR_DATA_DIR", ROOT / "data"))

@@ -4,10 +4,10 @@ Jury uruchamia prototyp na nieznanych działkach i datach, więc ten skrypt spra
 do raportu na zimnym cache (osobny katalog KOWR_CACHE_DIR na przypadek). Dla każdego przypadku wypisuje
 czas, statusy sekcji i źródła, które nie dały danych. Błędy procesu i raporty powyżej 30 s są oznaczone.
 
-  python scripts/sweep_poland.py                 # wszystkie przypadki, 2 naraz
-  python scripts/sweep_poland.py --workers 1     # po kolei (czasy bez wpływu równoległości)
-  python scripts/sweep_poland.py --out wynik.jsonl
-  python scripts/sweep_poland.py --cached-parcels  # działki z cache/uldk, gdy ULDK ma awarię
+  python scripts/dev/sweep_poland.py                 # wszystkie przypadki, 2 naraz
+  python scripts/dev/sweep_poland.py --workers 1     # po kolei (czasy bez wpływu równoległości)
+  python scripts/dev/sweep_poland.py --out wynik.jsonl
+  python scripts/dev/sweep_poland.py --cached-parcels  # działki z cache/uldk, gdy ULDK ma awarię
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 TODAY = date.today()
 SECTIONS = ("water_status", "satellite", "history", "causes", "soil", "terrain", "hydrology", "recommendations")
 SLOW_S = 30.0

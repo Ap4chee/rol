@@ -256,6 +256,8 @@
 .fields-map-base { filter: grayscale(0.85) contrast(0.92) brightness(1.04); }
 /* mapa pól bez tła i ramki: kontury sąsiednich jednostek wygaszają się przy krawędziach, więc mapa zlewa się ze stroną */
 .fields-map { background: transparent; box-shadow: none; }
+/* w formularzu mapa stoi w ramce obok wyszukiwarki (jak ParcelMap po wyszukaniu adresu), a nie luzem na tle */
+.fields-map.fields-map-picker { background: var(--color-neutral-50); box-shadow: inset 0 0 0 1px var(--color-border); }
 .fields-map .ol-layer {
   mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent),
     linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 28px), transparent);

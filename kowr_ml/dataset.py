@@ -12,7 +12,6 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 
-import numpy as np
 import pandas as pd
 
 from . import config as C

@@ -94,7 +94,7 @@ def usda_texture_class(sand_pct: float, silt_pct: float, clay_pct: float) -> str
     return "loam"  # punkty dokładnie na granicach klas
 
 
-# Polskie nazwy klas USDA i klucz ilustracji warstwy (outputs/assety_gleby/README.md: pięć ilustracji mineralnych).
+# Polskie nazwy klas USDA i klucz ilustracji warstwy (docs/assets/gleba/README.md: pięć ilustracji mineralnych).
 USDA_LABELS_PL: dict[str, tuple[str, str]] = {
     "sand": ("piasek", "sand"),
     "loamy sand": ("piasek gliniasty", "sand"),

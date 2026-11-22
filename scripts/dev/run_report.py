@@ -1,8 +1,8 @@
 """Raport z wiersza poleceń, do sprawdzania na prawdziwych danych bez przeglądarki.
 
 Przykłady:
-  python scripts/run_report.py --parcel 060910_2.0011.580/2 --crop winter_wheat
-  python scripts/run_report.py --point 17.05,52.40 --crop spring_barley --date 2018-07-15 --json
+  python scripts/dev/run_report.py --parcel 060910_2.0011.580/2 --crop winter_wheat
+  python scripts/dev/run_report.py --point 17.05,52.40 --crop spring_barley --date 2018-07-15 --json
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.report import build_report, today_warsaw  # noqa: E402
 from app.schemas import Point, ReportRequest  # noqa: E402

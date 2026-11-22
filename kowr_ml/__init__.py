@@ -1,4 +1,4 @@
-"""Trening i predykcja modelu zmiany NDMI pola w horyzoncie 7–14 dni (specyfikacja_treningu_ml_kowr.md).
+"""Trening i predykcja modelu zmiany NDMI pola w horyzoncie 7–14 dni (docs/ml/specyfikacja_treningu.md).
 
 Etapy (każdy zapisuje Parquet i pomija to, co już ma; katalog danych: KOWR_ML_DATA, domyślnie kowr_ml/data):
   fields.py   – pola pilotażowe z ESA WorldCover 2021 (klasa 40, grunty orne) -> fields.parquet

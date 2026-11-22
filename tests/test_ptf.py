@@ -61,7 +61,7 @@ def test_organic_matter_from_carbon():
     (82, 12, 6, "loamy sand"),
     (65, 25, 10, "sandy loam"),
     (40, 40, 20, "loam"),
-    (33.7, 48.2, 18.1, "loam"),       # działka 580/2, warstwa 0–5 cm (wzorzec z outputs/)
+    (33.7, 48.2, 18.1, "loam"),       # działka 580/2, warstwa 0–5 cm (wzorzec z tests/fixtures/)
     (20, 65, 15, "silt loam"),
     (8, 87, 5, "silt"),
     (60, 13, 27, "sandy clay loam"),

@@ -5,8 +5,8 @@ Wzorzec z docs/specyfikacja ML dla działki 060910_2.0011.580/2:
   19.06.2025  S2C_T34UEB_20250619T093506_L2A   0/11          odrzucona
   21.06.2025  S2A_T34UEB_20250621T093144_L2A  11/11          NDMI 0,54090
 
-  python scripts/check_sentinel.py                       # wzorzec 580/2, okno do 21.06.2025
-  python scripts/check_sentinel.py 060910_2.0011.580/2 2018-07-15
+  python scripts/checks/check_sentinel.py                       # wzorzec 580/2, okno do 21.06.2025
+  python scripts/checks/check_sentinel.py 060910_2.0011.580/2 2018-07-15
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.report import today_warsaw  # noqa: E402
 from app.sources import parcels, sentinel  # noqa: E402

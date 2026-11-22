@@ -8,7 +8,7 @@ i zapisujemy w EPSG:4326 (GeoJSON, lon/lat):
 Każda jednostka ma kod TERYT (`kod`: WW, WWPP albo WWPPGGT), nazwę i punkt etykiety (`lp`, lon/lat).
 
 Uruchomienie (pobiera ok. 220 MB GML do cache/prg przy pierwszym razie):
-    python scripts/build_admin_map.py
+    python scripts/dev/build_admin_map.py
 """
 import json
 import sys
@@ -23,7 +23,7 @@ from pyproj import Transformer
 from shapely.geometry import MultiPolygon, Polygon, mapping
 from shapely.ops import polylabel
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "cache" / "prg"
 OUT = ROOT / "static" / "mapa"
 WFS = ("https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries"

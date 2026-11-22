@@ -6,7 +6,7 @@ czyta ten sam wycinek pasma B8A i wypisuje medianę DN oraz reflektancję liczon
 (`app.sources.sentinel._scene_from_item`). Zgodna reflektancja w obu kolekcjach = offset stosowany poprawnie.
 
 Przykład:
-  python scripts/check_sentinel_offset.py --point 22.36,51.09 --window 2023-06-01/2023-06-30
+  python scripts/checks/check_sentinel_offset.py --point 22.36,51.09 --window 2023-06-01/2023-06-30
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.sources.sentinel import COLLECTIONS, GDAL_OPTIONS, STAC_URL, _scene_from_item  # noqa: E402
 

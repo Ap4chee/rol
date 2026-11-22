@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
@@ -18,11 +18,12 @@ import numpy as np
 from fastapi import HTTPException
 from shapely.geometry import Point as ShapelyPoint
 
+from app import terrain_service
 from app.config import HISTORY_YEARS, SATELLITE_INLINE_BUDGET_S, TIMEOUT_SOIL_TOTAL_S, USER_AGENT, WARMUP_DAYS
 from app.core import analysis, satellite_logic
 from app.core import hydrology as hydro_calc
-from app.core import soil_moisture as moisture_calc
 from app.core import recommendations as rules
+from app.core import soil_moisture as moisture_calc
 from app.core.crops import (
     GROWTH_TEMP_THRESHOLD_C,
     STAGE_NAMES_PL,
@@ -37,6 +38,7 @@ from app.core.crops import (
 )
 from app.core.ptf import USDA_LABELS_PL, usda_texture_class
 from app.core.soil import SoilVariant, assumed_variant, build_variants, layer_water
+from app.core.water_assessment import WaterAssessment, assess
 from app.core.water_balance import (
     CLASS_KEYS,
     CLASS_LABELS_IN_SEASON,
@@ -46,7 +48,6 @@ from app.core.water_balance import (
     total_available_water_mm,
     total_evaporable_water_mm,
 )
-from app.core.water_assessment import WaterAssessment, assess
 from app.schemas import (
     BalanceVariant,
     Cause,
@@ -63,13 +64,13 @@ from app.schemas import (
     MlForecast,
     MlForecastPoint,
     MonthAmount,
+    NdmiForecast,
     ParcelInfo,
     Point,
     Recommendation,
     Recommendations,
     ReportRequest,
     ReportResponse,
-    NdmiForecast,
     SatelliteObservation,
     SatelliteSection,
     SeasonStress,
@@ -84,10 +85,19 @@ from app.schemas import (
     WaterStatus,
     WeatherWindow,
 )
-from app import terrain_service
-from app.sources import NoData, SourceError, egib_wfs, imgw_hydro, mphp, parcels, sentinel, soilgrids, weather
+from app.sources import (
+    NoData,
+    SourceError,
+    egib_wfs,
+    ifs_forecast,
+    imgw_hydro,
+    mphp,
+    parcels,
+    sentinel,
+    soilgrids,
+    weather,
+)
 from app.sources import soil_moisture as moisture_source
-from app.sources import ifs_forecast
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -229,7 +239,7 @@ async def fetch_soil_safe(client: httpx.AsyncClient, geometry) -> tuple[soilgrid
                       *[f"Nieudana próba – {a}" for a in data.attempts]]
     except NoData as exc:
         info.status, info.reason, info.impact = Status.no_data, str(exc), SOIL_ASSUMED_IMPACT
-    except asyncio.TimeoutError:
+    except TimeoutError:
         info.status, info.impact = Status.error, SOIL_ASSUMED_IMPACT
         info.reason = f"SoilGrids nie odpowiedział w {TIMEOUT_SOIL_TOTAL_S:.0f} s."
     except (SourceError, RuntimeError) as exc:
@@ -1037,7 +1047,7 @@ async def fetch_hydrology_safe(client: httpx.AsyncClient, lon: float, lat: float
         info.notes += result.notes
     except NoData as exc:
         info.status, info.reason, info.impact = Status.no_data, str(exc), HYDRO_NO_IMPACT
-    except asyncio.TimeoutError:
+    except TimeoutError:
         info.status, info.impact = Status.error, HYDRO_NO_IMPACT
         info.reason = f"Dane IMGW nie przyszły w {TIMEOUT_HYDRO_TOTAL_S:.0f} s."
     except (SourceError, RuntimeError) as exc:
@@ -1060,7 +1070,7 @@ async def fetch_watercourse_safe(client: httpx.AsyncClient,
     try:
         result, info.from_cache = await asyncio.wait_for(
             mphp.fetch_nearest_watercourse(client, geometry), TIMEOUT_WATERCOURSE_S)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         info.status, info.impact = Status.error, WATERCOURSE_NO_IMPACT
         info.reason = f"Mapa cieków nie odpowiedziała w {TIMEOUT_WATERCOURSE_S:.0f} s."
     except (SourceError, RuntimeError) as exc:
@@ -1214,7 +1224,7 @@ def _no_weather_report(request: ReportRequest, parcel: parcels.Parcel | None, so
     dependent = "Wymaga bilansu wodnego, a ten nie powstał z powodu braku pogody."
     crop = request.crop_with_timeline()
     return ReportResponse(
-        generated_at=datetime.now(timezone.utc), elapsed_s=round(time.perf_counter() - started, 2),
+        generated_at=datetime.now(UTC), elapsed_s=round(time.perf_counter() - started, 2),
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
         crop=CropInfo(key=request.crop, name=crop.name, in_season=False),
         summary=[reason],
@@ -1393,7 +1403,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
         summary.append(f"Najważniejsze działanie: {first.title.lower()}.")
 
     return ReportResponse(
-        generated_at=datetime.now(timezone.utc), elapsed_s=round(time.perf_counter() - started, 2),
+        generated_at=datetime.now(UTC), elapsed_s=round(time.perf_counter() - started, 2),
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
         crop=crop_info(computed, request), summary=summary,
         water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,

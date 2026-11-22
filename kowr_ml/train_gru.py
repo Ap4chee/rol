@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import numpy as np
 import pandas as pd
@@ -147,7 +147,7 @@ def main(argv: list[str]) -> None:
         metrics["tests"][name] = {"rows": int(mask.sum()), "gru_mae_rows": float(np.mean(np.abs(p[:, 1] - yy))),
                                   "zero_mae_rows": float(np.mean(np.abs(yy))),
                                   "interval_80_coverage_raw": float(np.mean((yy >= lo) & (yy <= hi)))}
-    run = C.RUNS_DIR / (argv[0] if argv else "gru_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M"))
+    run = C.RUNS_DIR / (argv[0] if argv else "gru_" + datetime.now(UTC).strftime("%Y%m%d_%H%M"))
     run.mkdir(parents=True, exist_ok=True)
     (run / "metrics_gru.json").write_text(json.dumps(metrics, indent=2))
     print(json.dumps(metrics, indent=2))

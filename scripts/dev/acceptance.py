@@ -3,7 +3,7 @@
 Każdy przebieg to osobny proces z własnym katalogiem pamięci podręcznej (zmienna KOWR_CACHE_DIR)
 i ewentualnie wymuszoną awarią (KOWR_FAIL). Wypisuje czasy źródeł i statusy sekcji.
 
-  python scripts/acceptance.py
+  python scripts/dev/acceptance.py
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 CASES = [
     ("pusty cache: 580/2, pszenica ozima, dziś", ["--parcel", "060910_2.0011.580/2", "--crop", "winter_wheat"], ""),
     ("pusty cache: punkt w Wielkopolsce, jęczmień jary, 2018-07-15",

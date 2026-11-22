@@ -14,7 +14,7 @@ import logging
 import sqlite3
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
@@ -72,7 +72,7 @@ def _saved(row: sqlite3.Row) -> SavedField:
         id=row["id"], name=row["name"], input=FieldInput.model_validate_json(row["input"]), job=row["job"],
         error=row["error"], report=json.loads(row["report"]) if row["report"] else None,
         progress=dict(_progress[row["id"]]) if row["job"] == "running" and row["id"] in _progress else None,
-        refreshed_at=datetime.fromtimestamp(row["refreshed_at"], timezone.utc) if row["refreshed_at"] else None)
+        refreshed_at=datetime.fromtimestamp(row["refreshed_at"], UTC) if row["refreshed_at"] else None)
 
 
 def list_fields() -> list[SavedField]:

@@ -19,7 +19,6 @@ import asyncio
 import json
 import math
 import os
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -349,7 +348,7 @@ async def fetch_tiles(grid: CellGrid) -> tuple[dict[str, np.ndarray], bool]:
     check_forced_failure("soil_vrt")
     try:
         values = await asyncio.wait_for(asyncio.to_thread(_read_tiles_blocking, grid, REDUCED_LAYERS), TILES_TIMEOUT_S)
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise SourceError(f"kafle SoilGrids: brak odpowiedzi w {TILES_TIMEOUT_S:.0f} s") from exc
     except (NoData, SourceError):
         raise

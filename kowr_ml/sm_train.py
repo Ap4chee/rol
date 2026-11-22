@@ -11,7 +11,7 @@ import hashlib
 import itertools
 import json
 import platform
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import joblib
 import numpy as np
@@ -147,7 +147,7 @@ def main() -> None:
     # Model do aplikacji: te same hiperparametry, dopasowany na wszystkich danych.
     final = fit_set(df, params, SM_FEATURES, SM_SEASONAL_FEATURES, TARGET)
     final_adjust = interval_adjustment(df, params, SM_FEATURES, TARGET)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M") + "_sm_" + hashlib.sha1(
+    run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M") + "_sm_" + hashlib.sha1(
         json.dumps(params, sort_keys=True).encode()).hexdigest()[:6]
     run = C.RUNS_DIR / run_id
     run.mkdir(parents=True, exist_ok=True)

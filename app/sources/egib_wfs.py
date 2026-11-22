@@ -24,10 +24,10 @@ from xml.sax.saxutils import escape
 
 import httpx
 from pyproj import Transformer
+from shapely import transform as shapely_transform
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry import Point as ShapelyPoint
 from shapely.geometry.base import BaseGeometry
-from shapely import transform as shapely_transform
 
 from app.config import check_forced_failure
 from app.sources import NoData, SourceError

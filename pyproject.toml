@@ -1,0 +1,17 @@
+# Ustawienia narzędzi deweloperskich. Zależności aplikacji są w requirements.txt,
+# narzędzia do testów i lintera w requirements-dev.txt.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["kowr_ml/data", "node_modules", "static"]
+
+[tool.ruff.lint]
+# E/F: błędy i nieużyte importy, I: kolejność importów, B: typowe pułapki, UP: nowsza składnia.
+select = ["E", "F", "I", "B", "UP"]
+# B008: Query() w domyślnych argumentach to standardowy wzorzec FastAPI.
+# B905: zip bez strict jest w obliczeniach celowy (serie o tej samej długości z jednego źródła).
+ignore = ["E501", "B008", "B905", "UP042"]

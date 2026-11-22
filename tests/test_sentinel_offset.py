@@ -6,7 +6,7 @@ przy pikselach po korekcie), więc dla tej kolekcji offset zawsze wynosi 0. Wart
 sceny w obu kolekcjach (3.06.2023, kafel 34UEB, mediana z okna ok. 4 × 4 km koło Niedrzwicy Kościelnej):
 B8A 5362 DN w `sentinel-2-c1-l2a` i 4362 DN w `sentinel-2-l2a`, B11 2827 i 1827 DN, B04 1651 i 651 DN,
 oraz z dwóch kafli tego samego przelotu z 10.05.2022 koło Inowrocławia (B11 1911 DN z flagą `false`, 1908 DN
-z flagą `true`). Sprawdzenie na żywo: `scripts/check_sentinel_offset.py`.
+z flagą `true`). Sprawdzenie na żywo: `scripts/checks/check_sentinel_offset.py`.
 """
 from types import SimpleNamespace
 

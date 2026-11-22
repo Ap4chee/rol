@@ -1,6 +1,6 @@
 """SoilGrids: komórki siatki pod działką, średnia ważona powierzchnią, warianty gleby. Bez sieci.
 
-Wzorzec: outputs/soilgrids_niedrzwica_koscielna_580_2.json (dwie komórki 250 m, wagi ok. 16% i 84%,
+Wzorzec: tests/fixtures/soilgrids_niedrzwica_koscielna_580_2.json (dwie komórki 250 m, wagi ok. 16% i 84%,
 warstwa 0–5 cm: piasek 33,7%, pył 48,2%, ił 18,1%).
 """
 import json
@@ -11,6 +11,7 @@ import pytest
 from shapely.geometry import Point, shape
 
 from app.core.soil import build_variants
+from app.sources import NoData
 from app.sources.soilgrids import (
     DEPTHS,
     NODATA,
@@ -21,9 +22,8 @@ from app.sources.soilgrids import (
     tile_for_cell,
     weighted_mean,
 )
-from app.sources import NoData
 
-REFERENCE = json.loads((Path(__file__).resolve().parent.parent / "outputs"
+REFERENCE = json.loads((Path(__file__).resolve().parent / "fixtures"
                         / "soilgrids_niedrzwica_koscielna_580_2.json").read_text(encoding="utf-8"))
 PARCEL = shape(REFERENCE["parcel"]["geometry_wgs84"])
 

@@ -21,7 +21,7 @@ import hashlib
 import json
 import os
 import platform
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
@@ -184,7 +184,7 @@ def main() -> None:
     # Model do aplikacji: wszystkie dane. Poprawki przedziału z prognoz spoza foldu.
     final = fit_set(df)
     adjust_low, adjust_high = interval_adjustments(y, raw[0], raw[1])
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M") + "_" + hashlib.sha1(
+    run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M") + "_" + hashlib.sha1(
         json.dumps({"params": PARAMS, "features": FEATURES}, sort_keys=True).encode()).hexdigest()[:6]
     run = C.RUNS_DIR / run_id
     run.mkdir(parents=True, exist_ok=True)

@@ -1,10 +1,10 @@
 """Sprawdzenie analizy spływu na prawdziwym modelu terenu.
 
-Wzorzec dla 060910_2.0011.580/2 (outputs/splyw_wody_dzialka_580_2.png): 4 punkty dopływu, 4 punkty odpływu,
+Wzorzec dla 060910_2.0011.580/2 (docs/assets/splyw_wody_dzialka_580_2.png): 4 punkty dopływu, 4 punkty odpływu,
 największy odpływ 1,63 ha przy południowo-wschodniej granicy, wysokości na działce 202,45–203,65 m.
 
-  python scripts/check_terrain.py                      # pobiera NMT z WCS GUGiK (kilkanaście do kilkudziesięciu sekund)
-  python scripts/check_terrain.py 060910_2.0011.580/2 plik.tif   # liczy na wcześniej pobranym wycinku
+  python scripts/checks/check_terrain.py                      # pobiera NMT z WCS GUGiK (kilkanaście do kilkudziesięciu sekund)
+  python scripts/checks/check_terrain.py 060910_2.0011.580/2 plik.tif   # liczy na wcześniej pobranym wycinku
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import terrain_rules  # noqa: E402
 from app.geo import reproject  # noqa: E402

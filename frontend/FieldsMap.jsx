@@ -326,7 +326,8 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
   </nav>;
 
   const mapView = <div className="relative min-w-0">
-    <div ref={target} tabIndex={0} className="map-canvas fields-map" style={picker ? undefined : { height: 'clamp(360px, 68svh, 760px)' }}
+    <div ref={target} tabIndex={0} className={cn('map-canvas fields-map', picker && 'fields-map-picker')}
+      style={picker ? undefined : { height: 'clamp(360px, 68svh, 760px)' }}
       aria-label={picker ? 'Mapa wyboru działki: wybierz województwo, powiat i gminę, potem kliknij swoje pole'
         : 'Mapa pól: kliknij zielone województwo, powiat albo gminę, żeby przybliżyć'}/>
     {tip && <div aria-hidden className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg bg-white/95 px-2.5 py-1.5 text-[12.5px] leading-tight shadow-raised ring-1 ring-black/[0.06] backdrop-blur-md"
@@ -334,7 +335,10 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
       <span className="block font-medium text-neutral-900">{tip.title}</span>
       <span className="block text-neutral-500">{tip.text}</span>
     </div>}
-    {shown === null && !error && <div role="status" className="absolute right-2.5 top-2.5 flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-[12.5px] text-neutral-600 shadow-raised ring-1 ring-black/[0.05] backdrop-blur-md">
+    {/* w formularzu okruszki stoją na mapie w tym samym miejscu co pasek podkładu w ParcelMap, więc mapa zaczyna się równo z wyszukiwarką */}
+    {picker && <div className="no-print absolute right-2.5 top-2.5 z-10 max-w-[calc(100%-4.5rem)] rounded-xl bg-white/90 px-3 py-1.5 shadow-raised ring-1 ring-black/[0.05] backdrop-blur-md">
+      {breadcrumb}</div>}
+    {shown === null && !error && <div role="status" className={cn(picker ? 'top-14' : 'top-2.5', 'absolute right-2.5 flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-[12.5px] text-neutral-600 shadow-raised ring-1 ring-black/[0.05] backdrop-blur-md')}>
       <Spinner/> Wczytuję granice…</div>}
     <ul aria-label="Legenda mapy" className="pointer-events-none absolute bottom-2.5 left-2.5 flex items-center gap-3 rounded-lg bg-white/90 px-2.5 py-1.5 text-[12px] text-neutral-600 ring-1 ring-black/[0.05] backdrop-blur-md">
       {depth === 3 ? <li className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-brand-700 ring-2 ring-white"/>
@@ -346,7 +350,6 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
   </div>;
 
   if (picker) return <div>
-    <div className="mb-1">{breadcrumb}</div>
     {mapView}
     <p className="no-print mt-2 text-[13px] text-neutral-500">{depth === 3 ? 'Przybliż mapę i kliknij swoje pole.'
       : `Kliknij ${['województwo', 'powiat', 'gminę'][depth]}, w której leży pole, albo wyszukaj działkę po numerze.`}</p>

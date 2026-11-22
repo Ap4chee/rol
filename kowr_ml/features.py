@@ -168,7 +168,7 @@ class FieldScenes:
     red: np.ndarray
 
     @classmethod
-    def from_columns(cls, dates, total_px, veg_px, bare_px, cloud_px, valid_fraction, ndmi, ndvi, nir, swir, red) -> "FieldScenes":
+    def from_columns(cls, dates, total_px, veg_px, bare_px, cloud_px, valid_fraction, ndmi, ndvi, nir, swir, red) -> FieldScenes:
         """Porządkuje sceny po dacie i zostawia jedną na dzień: najpierw z NDMI, potem z większym pokryciem."""
         d = np.asarray(dates, dtype="datetime64[D]")
         cols = [np.asarray(c, dtype=float) for c in (total_px, veg_px, bare_px, cloud_px, valid_fraction, ndmi, ndvi, nir, swir, red)]

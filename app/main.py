@@ -4,7 +4,8 @@ from __future__ import annotations
 import asyncio
 import mimetypes
 from contextlib import asynccontextmanager
-from datetime import date as Date, datetime
+from datetime import date as Date
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -12,10 +13,10 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
+from app import fields, terrain_service
 from app.config import SATELLITE_DEFERRED_BUDGET_S, SOIL_ASSETS_DIR, STATIC_DIR, USER_AGENT
 from app.core import fieldwork
 from app.core.crops import CROPS
-from app import fields, terrain_service
 from app.report import MIN_ANALYSIS_DATE, _parcel_info, build_report, today_warsaw
 from app.schemas import (
     AddressMatch,
@@ -242,7 +243,7 @@ async def terrain(parcel_id: str = Query(min_length=5, max_length=80)) -> Terrai
     return await terrain_service.get(parcel)
 
 
-# Ilustracje warstw gleby (umowne, dobierane po klasie uziarnienia; opis w outputs/assety_gleby/README.md).
+# Ilustracje warstw gleby (umowne, dobierane po klasie uziarnienia; opis w docs/assets/gleba/README.md).
 if SOIL_ASSETS_DIR.is_dir():
     app.mount("/soil-assets", StaticFiles(directory=SOIL_ASSETS_DIR), name="soil-assets")
 

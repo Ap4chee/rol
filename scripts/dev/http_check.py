@@ -1,7 +1,7 @@
 """Sprawdzenie działającego serwera przez HTTP: raport, a potem dociągane części (satelita, teren).
 
-  python scripts/http_check.py 060910_2.0011.580/2 winter_wheat 2026-11-21
-  python scripts/http_check.py 301103_2.0017.119/2 spring_barley 2018-07-15 http://127.0.0.1:8000
+  python scripts/dev/http_check.py 060910_2.0011.580/2 winter_wheat 2026-11-21
+  python scripts/dev/http_check.py 301103_2.0017.119/2 spring_barley 2018-07-15 http://127.0.0.1:8000
 """
 from __future__ import annotations
 

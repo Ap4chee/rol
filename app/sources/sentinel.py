@@ -1,6 +1,6 @@
 """Sentinel-2 L2A przez Earth Search STAC: mediana NDVI i NDMI po pikselach z roślinnością na działce.
 
-Zasady jak w specyfikacji modelu ML (outputs/specyfikacja_treningu_ml_kowr.md, rozdz. 3):
+Zasady jak w specyfikacji modelu ML (docs/ml/specyfikacja_treningu.md, rozdz. 3):
 - piksele liczone po środkach (`all_touched=False`), ważne tylko te z klasą SCL 4 (roślinność),
 - progi: co najmniej 6 pikseli i 65% pokrycia działki,
 - reflektancja = DN · scale + offset, a skala i offset pochodzą z `raster:bands` sceny
@@ -9,7 +9,7 @@ Zasady jak w specyfikacji modelu ML (outputs/specyfikacja_treningu_ml_kowr.md, r
   przesunięcie 1000 DN już odjęte w pikselach, choć `raster:bands` nadal podaje offset −0,1. Dla tej kolekcji
   offset = 0. Flaga `earthsearch:boa_offset_applied` tego nie rozstrzyga: z 1570 scen z 2022 r. (70 obszarów
   w Polsce) 92 miały `false`, a ich piksele też były już po korekcie (91 z 92 dawało reflektancję o 0,1 za niską).
-  Sprawdzone 22.11.2026 na tej samej scenie w obu kolekcjach (`scripts/check_sentinel_offset.py`, 3.06.2023,
+  Sprawdzone 22.11.2026 na tej samej scenie w obu kolekcjach (`scripts/checks/check_sentinel_offset.py`, 3.06.2023,
   kafel 34UEB: B8A 5108 DN w c1 i 4108 DN w l2a) oraz na sąsiednich kaflach tego samego przelotu (10.05.2022:
   B11 1911 DN z flagą `false` i 1908 DN z flagą `true`). Bez tego NDMI wychodzi zawyżone o ok. 0,2, a NDVI
   zwykle nie powstaje (czerwień ujemna),

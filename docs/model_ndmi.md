@@ -3,7 +3,7 @@
 Stan na 22.11.2026. Dokument zbiera wszystko o modelu ML w aplikacji: co robi, na czym go uczono, jak wypada,
 co sprawdzono po drodze, czego nie wdrożono i jak to odtworzyć. Skrót jest w [README](../README.md) (sekcja
 „Model ML”), kontrakt pola w raporcie w [kontrakt_api.md](kontrakt_api.md), założenia w
-[specyfikacji](../specyfikacja_treningu_ml_kowr.md).
+[specyfikacji](ml/specyfikacja_treningu.md).
 
 ## 1. W skrócie
 
@@ -253,7 +253,7 @@ ustawienie (learning rate 0,1, 700 iteracji) odpowiada ok. 1400 iteracjom przy 0
   W danych treningowych 2022: wiersze bez NDVI 4,5% → 0%, NDMI powyżej 0,8: 1157 → 4.
 - Zakres: głównie sezon 2022, bo nowsza kolekcja ma dla niego po 2 sceny na obszar. Lata 2017–2021 są
   poprawne (sprawdzone na 2324 scenach).
-- Kod i testy: `app/sources/sentinel.py`, `tests/test_sentinel_offset.py`, `scripts/check_sentinel_offset.py`.
+- Kod i testy: `app/sources/sentinel.py`, `tests/test_sentinel_offset.py`, `scripts/checks/check_sentinel_offset.py`.
   Klucze pamięci podręcznej zdjęć dostały nową wersję, więc stare wpisy nie wracają do raportu.
 
 ## 11. Czego nie wdrożono
@@ -326,7 +326,7 @@ W repozytorium:
 | `kowr_ml/predict.py` | predykcja z obserwacji aplikacji |
 | `kowr_ml/train_gru.py` | porównawcza sieć GRU |
 | `tests/test_ml_features.py`, `tests/test_sentinel_offset.py` | testy cech, predykcji i offsetu |
-| `scripts/check_sentinel_offset.py` | sprawdzenie offsetu na żywo |
+| `scripts/checks/check_sentinel_offset.py` | sprawdzenie offsetu na żywo |
 
 Poza gitem, na komputerze, na którym prowadzono prace (`kowr_ml/data/`, ok. 400 MB):
 

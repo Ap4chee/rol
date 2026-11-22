@@ -1,6 +1,6 @@
 # Dobór technologii do treningu ML (KOWR)
 
-Dotyczy [specyfikacji treningu ML](specyfikacja_treningu_ml_kowr.md). Stan na 21.11.2026.
+Dotyczy [specyfikacji treningu ML](specyfikacja_treningu.md). Stan na 21.11.2026.
 
 **Werdykt:** jeden pakiet w Pythonie 3.12, bez chmury, bazy danych i orkiestratora. Rastry czytamy bezpośrednio z COG przez `rasterio`, sceny wyszukujemy przez `pystac-client`, tabele trzymamy w Parquet (`pandas` + `pyarrow`), model to `HistGradientBoostingRegressor` ze `scikit-learn`. Ten sam pakiet importuje backend aplikacji, żeby predykcja liczyła cechy tym samym kodem co trening.
 

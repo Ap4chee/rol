@@ -412,28 +412,67 @@ export function AddFieldForm({ initial, fields, onCancel, onSubmit }) {
     </div>
   </div>;
 
-  return <form ref={form} onSubmit={submit} className="mt-5 lg:mt-1">
-    <ol aria-label="Kroki formularza" className="mb-5 grid max-w-md grid-cols-2 gap-3 sm:mb-6">
-      {STEPS.map((label, index) => <li key={label} aria-current={step === index ? 'step' : undefined}
-        className={cn('flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] font-medium',
-          'transition-colors duration-200 ease-[var(--ease-out)] motion-reduce:transition-none',
-          step === index ? 'border-brand-200 bg-brand-50 text-brand-900' : 'border-border text-neutral-600')}>
-        <span aria-hidden className={cn('grid size-6 shrink-0 place-items-center rounded-full text-xs tabular-nums',
-          'transition-colors duration-200 motion-reduce:transition-none',
-          step >= index ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-neutral-500')}>
-          {step > index ? <Check className="size-3.5"/> : index + 1}
-        </span>
-        {label}
-      </li>)}
-    </ol>
+  // Przewodnik pod wyszukiwarką: trzy kroki wskazania pola, odhaczane w miarę postępu.
+  const found = Boolean(location || parcel || point || savedParcelId);
+  const chosen = Boolean(parcel || point || savedParcelId);
+  const guide = [
+    { label: 'Znajdź miejsce', text: 'Wpisz adres albo numer działki, albo kliknij województwo na mapie.', done: found },
+    { label: 'Wskaż pole na mapie', text: 'Kliknij swoją działkę na zdjęciu lotniczym.', done: chosen },
+    { label: 'Sprawdź i przejdź dalej', text: 'Zobaczysz numer działki i powierzchnię.', done: false },
+  ];
+  const guideAt = guide.findIndex((item) => !item.done);
+
+  return <form ref={form} onSubmit={submit} className="mt-4 lg:mt-0">
+    <div className="mb-5 flex flex-col gap-4 sm:mb-6 md:flex-row md:items-end md:justify-between md:gap-8">
+      <div key={`head-${step}`} className={cn('min-w-0', direction && 'animate-in fade-in-0 duration-200 ease-[var(--ease-out)] motion-reduce:animate-none')}>
+        <p className="eyebrow">Krok {step + 1} z {STEPS.length}</p>
+        <h2 ref={stepHeading} tabIndex={-1} className="mt-1 font-display text-[22px] font-semibold tracking-tight outline-none sm:text-[24px]">
+          {step === 0 ? 'Gdzie jest pole?' : 'Co rośnie na polu?'}
+        </h2>
+        <p className="mt-1 text-[13.5px] leading-snug text-neutral-500">
+          {step === 0 ? 'Wyszukaj adres lub numer działki, a potem kliknij pole na mapie.'
+            : 'Wybierz uprawę. Terminy sezonu są opcjonalne.'}
+        </p>
+      </div>
+      {/* postęp: dwa odcinki z podpisami; bieżący i ukończone wypełnione */}
+      <ol aria-label="Kroki formularza" className="grid w-full shrink-0 grid-cols-2 gap-2 md:w-80">
+        {STEPS.map((label, index) => <li key={label} aria-current={step === index ? 'step' : undefined} className="min-w-0">
+          <span aria-hidden className="block h-1 overflow-hidden rounded-full bg-neutral-200">
+            <span className={cn('block h-full origin-left rounded-full bg-brand-600 transition-transform duration-300 ease-[var(--ease-out)] motion-reduce:transition-none',
+              step >= index ? 'scale-x-100' : 'scale-x-0')}/>
+          </span>
+          <span className={cn('mt-2 flex items-center gap-1.5 text-[12.5px] font-medium',
+            step === index ? 'text-brand-900' : step > index ? 'text-neutral-700' : 'text-neutral-400')}>
+            {step > index ? <Check aria-hidden className="size-3.5 text-brand-600"/> : <span className="num">{index + 1}.</span>}
+            <span className="truncate">{label}</span>
+          </span>
+        </li>)}
+      </ol>
+    </div>
     <div key={step} className={cn(direction && 'animate-in fade-in-0 duration-200 ease-[var(--ease-out)] motion-reduce:animate-none',
       direction === 'forward' && 'slide-in-from-right-2', direction === 'back' && 'slide-in-from-left-2')}>
-      <h2 ref={stepHeading} tabIndex={-1} className="mb-4 font-display text-[21px] font-semibold tracking-tight outline-none">
-        {step === 0 ? 'Gdzie jest pole?' : 'Co rośnie na polu?'}
-      </h2>
-      {step === 0 && <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)]">
-        <div className="surface min-w-0 p-4 sm:p-5">{finder}</div>
-        <div ref={mapPanel} className="min-w-0">
+      {step === 0 && <div className="grid gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <div className="surface flex min-w-0 flex-col p-4 sm:p-5">
+          <div>{finder}</div>
+          <ol aria-label="Jak wskazać pole" className="mt-6 hidden border-t border-black/[0.06] pt-5 lg:mt-auto lg:block">
+            {guide.map((item, index) => <li key={item.label} className="relative flex gap-3 pb-4 last:pb-0">
+              {index < guide.length - 1 && <span aria-hidden className={cn('absolute left-3 top-7 bottom-0 w-px -translate-x-1/2',
+                item.done ? 'bg-brand-300' : 'bg-neutral-200')}/>}
+              <span aria-hidden className={cn('relative grid size-6 shrink-0 place-items-center rounded-full text-[11.5px] font-semibold transition-colors duration-200 motion-reduce:transition-none',
+                item.done ? 'bg-brand-700 text-white' : index === guideAt ? 'bg-brand-50 text-brand-800 ring-1 ring-inset ring-brand-300'
+                  : 'bg-neutral-100 text-neutral-500')}>
+                {item.done ? <Check className="size-3.5" strokeWidth={2.5}/> : <span className="num">{index + 1}</span>}
+              </span>
+              <span className="min-w-0 pt-0.5">
+                <span className={cn('block text-[13px] font-medium leading-5', item.done || index === guideAt ? 'text-neutral-900' : 'text-neutral-500')}>
+                  {item.label}{item.done && <span className="sr-only"> (zrobione)</span>}</span>
+                <span className="block text-[12.5px] leading-snug text-neutral-500">{item.text}</span>
+              </span>
+            </li>)}
+          </ol>
+        </div>
+        {/* jedna wysokość mapy przed i po wyszukaniu adresu, żeby przejście FieldsMap → ParcelMap nie skakało */}
+        <div ref={mapPanel} className="min-w-0 [&_.map-canvas]:h-[clamp(300px,56vh,540px)]">
           {location ? <ParcelMap parcel={parcel} point={point} location={location} onPick={pick}/>
             : <FieldsMap fields={fields} parcel={parcel} point={point} onPick={pick}/>}
         </div>

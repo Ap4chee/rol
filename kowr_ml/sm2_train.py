@@ -14,7 +14,7 @@ import hashlib
 import json
 import platform
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import joblib
 import numpy as np
@@ -25,8 +25,8 @@ from . import config as C
 from .sm2_dataset import FC_FEATURES, SM2_FEATURES
 from .sm3_dataset import SM3_FEATURES, SM3_SEASONAL_FEATURES, SOIL_FEATURES, WEATHER_FEATURES
 from .sm_dataset import BIG_DRY, SM_FEATURES, SM_LAG_DAYS, SM_SEASONAL_FEATURES
-from .static import STATIC_FEATURES
 from .sm_train import QUANTILES, fit_set, interval_adjustment, make_model, metrics_block, predict_set, tune
+from .static import STATIC_FEATURES
 
 VARIANTS = {
     "v2": {
@@ -88,7 +88,7 @@ def main(variant: str = "v2") -> None:
 
     final = fit_set(df, params, features, seasonal, target)
     final_adjust = interval_adjustment(df, params, features, target)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M") + f"_{v['suffix']}_" + hashlib.sha1(
+    run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M") + f"_{v['suffix']}_" + hashlib.sha1(
         json.dumps(params, sort_keys=True).encode()).hexdigest()[:6]
     run = C.RUNS_DIR / run_id
     run.mkdir(parents=True, exist_ok=True)
