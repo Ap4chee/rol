@@ -99,10 +99,6 @@ def analyse_parcel(geometry_4326: BaseGeometry, dem: np.ndarray, transform, buff
     line_features = []
     for cells, area_m2 in result.lines:
         line = LineString([xy(r, c) for r, c in cells]).simplify(cell_m, preserve_topology=False)
-        # bufor jest tylko po to, żeby policzyć zlewnię dopływającą z zewnątrz; rolnik widzi cieki na swojej działce
-        line = line.intersection(geom)
-        if line.is_empty or line.length < cell_m:
-            continue
         lonlat = reproject(line, "EPSG:2180", "EPSG:4326")
         area_ha = area_m2 / 10_000.0
         line_features.append({"type": "Feature", "geometry": mapping(lonlat),
