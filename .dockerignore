@@ -1,0 +1,28 @@
+# Kontekst budowy obrazu: tylko to, czego potrzebuje Dockerfile.
+.git
+.gitignore
+.gitattributes
+.claude
+.venv
+.pytest_cache
+**/__pycache__
+**/*.pyc
+node_modules
+.env
+
+# dane robocze tworzone w czasie działania
+cache
+data
+
+# ML: dane i przebiegi treningowe (setki MB); do działania wystarczy kowr_ml/models
+kowr_ml/data
+kowr_ml/runs
+
+# dokumentacja, testy, skrypty pomocnicze
+docs
+tests
+scripts
+*.md
+!static/**/*.md
+start.bat
+deploy.ps1

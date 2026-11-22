@@ -1,0 +1,29 @@
+# Pliki pomijane przy wysyłce źródeł do Cloud Build (`gcloud run deploy --source .`).
+# Składnia jak .gitignore. Lista musi zgadzać się z .dockerignore.
+.gcloudignore
+.git
+.gitignore
+.gitattributes
+.claude
+/.venv/
+.pytest_cache
+**/__pycache__
+**/*.pyc
+/node_modules/
+.env
+
+# dane robocze tworzone w czasie działania (ukośnik na początku: tylko w katalogu głównym,
+# bo app/data/soilgrids_tiles_pl.json jest potrzebny do działania)
+/cache/
+/data/
+
+# ML: dane i przebiegi treningowe (setki MB); do działania wystarczy kowr_ml/models
+kowr_ml/data/
+kowr_ml/runs/
+
+# dokumentacja, testy, skrypty pomocnicze
+/docs/
+/tests/
+/scripts/
+/start.bat
+/deploy.ps1

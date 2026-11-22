@@ -2,7 +2,7 @@
 
 Liczone tymi samymi funkcjami co w aplikacji dla działki, żeby przy predykcji cechy powstawały tak samo:
 gleba z SoilGrids (app/sources/soilgrids.fetch_soil) i pedotransfer Saxtona–Rawlsa (app/core/soil.build_variants),
-teren z NMT GUGiK 1 m (app/sources/terrain.fetch_dem) i spadek po wygładzeniu 5 m (app/core/flow.slope_percent).
+teren z NMT GUGiK 1 m (app/sources/nmt_geotiff.fetch_dem) i spadek po wygładzeniu 5 m (app/core/flow.slope_percent).
 Działka umowna: kwadrat 200 × 200 m (EPSG:2180) w środku skupiska. Teren jest w tabeli, ale v3 go nie używa.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from app.core.flow import slope_percent
 from app.infra.geo import reproject
 from app.sources import NoData, SourceError
 from app.sources.soilgrids import fetch_soil
-from app.sources.terrain import fetch_dem
+from app.sources.nmt_geotiff import fetch_dem
 from kowr_ml.pipeline import config as C
 from kowr_ml.runtime.soil_moisture import SOIL_FEATURES, soil_features
 

@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-const ROOT = new URL('.', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const IMPORT = /^import\s[^'"]*['"]([^'"]+)['"]/gm;
 
 function files(dir) {

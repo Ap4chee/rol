@@ -43,6 +43,32 @@ Jeśli pod `http://127.0.0.1:8000` widzisz inny interfejs niż ktoś z zespołu,
 
 Na Linuxie lub macOS użyj `python3 -m venv .venv`, `.venv/bin/python -m pip install -r requirements.txt` i `.venv/bin/python -m uvicorn app.main:app`.
 
+### Docker i Google Cloud Run
+
+`Dockerfile` buduje obraz w dwóch etapach: najpierw frontend (`npm ci`, `npm run build`, czyli `static/ui.js` i `static/ui.css` ze źródeł w `frontend/`), potem serwer na Pythonie 3.12. Do obrazu trafia kod `app/`, modele z `kowr_ml/models/` oraz `static/` (w tym ilustracje gleby w `static/gleba/`). Dane treningowe, `cache/`, `data/`, dokumentacja i testy zostają poza obrazem (`.dockerignore`, `.gcloudignore`). Serwer słucha na porcie z `$PORT` (domyślnie 8080).
+
+Lokalnie:
+
+```sh
+docker build -t kowr .
+docker run --rm -p 8080:8080 kowr
+```
+
+Wdrożenie na Cloud Run, gdy masz gcloud CLI (`winget install Google.CloudSDK`, potem `gcloud init`) i projekt GCP z włączonym billingiem:
+
+```powershell
+.\deploy.ps1 -Project <id-projektu>                 # region europe-central2 (Warszawa), usługa "kowr"
+.\deploy.ps1 -Project <id> -Region europe-west1 -Service kowr-demo
+```
+
+Skrypt włącza API Cloud Run, Cloud Build i Artifact Registry, wysyła źródła do Cloud Build (lokalny Docker nie jest potrzebny) i wypisuje publiczny adres HTTPS. Pierwsze wdrożenie trwa 5–10 minut. Ustawienia usługi i ich powody:
+
+- `--max-instances 1`: zapisane pola są w SQLite na dysku instancji, a worker raportów działa w tym samym procesie. Kilka instancji miałoby rozjechane listy pól.
+- `--no-cpu-throttling` i `--min-instances 1`: worker przelicza pola w tle także między zapytaniami, a pierwsze wejście jury nie czeka na zimny start. Instancja działa wtedy cały czas i jest rozliczana za cały czas działania, nie tylko za zapytania (2 vCPU, 2 GiB).
+- `--timeout 300`: pobieranie NMT z GUGiK potrafi trwać do 180 s.
+
+Ograniczenie: dysk Cloud Run jest ulotny. Restart lub nowe wdrożenie kasuje zapisane pola (`data/`) i pamięć podręczną (`cache/`). Raporty liczą się od nowa z danych na żywo, więc wynik się nie zmienia, ale lista pól na pulpicie wraca do pustej.
+
 ## Funkcje
 
 - **Pulpit**: liczba pól w każdym stanie wody, pola ułożone od najpilniejszego, najbliższe działania z zapisanych analiz i przewijana prognoza pogody do 16 dni dla wybranego pola. Pola zapisują się na serwerze, a ich raporty liczy worker w tle: zaraz po dodaniu pola i potem raz na dobę. Karta pola pokazuje stan liczenia (kręcąca się plakietka „Liczę raport” / „Odświeżam raport”, błąd z powodem) i godzinę ostatniego odświeżenia.
@@ -99,7 +125,8 @@ app/
     weather.py         Open-Meteo Archive → NASA POWER → dobór ostatnich dni z Open-Meteo Forecast; prognoza do 16 dni
     soilgrids.py       SoilGrids: WCS → REST → kafle GeoTIFF, średnia ważona komórek 250 m
     sentinel.py        Sentinel-2 L2A z Earth Search STAC: maska SCL, NDVI, NDMI
-    terrain.py         wycinek NMT GUGiK 1 m z WCS
+    terrain.py         wycinek NMT GUGiK 1 m wokół działki (analiza spływu jest w core/terrain_analysis.py)
+    nmt_geotiff.py     arkusze NMT GUGiK z opendata.geoportal.gov.pl, lokalnie jako GeoTIFF
     imgw_hydro.py      wodowskazy IMGW-PIB: bieżące pomiary i archiwum dobowe przepływów
     mphp.py            najbliższy ciek z mapy MPHP10k (Wody Polskie) przez WMS GetFeatureInfo
     soil_moisture.py   NASA POWER: wilgotność gleby w 3 warstwach (MERRA-2), 11 lat
@@ -184,7 +211,7 @@ Wszystkie dane są bezpłatne. Żadne źródło nie wymaga klucza ani konta. War
 | Satelita | Sentinel-2 L2A z Earth Search STAC (Element 84), kolekcje `sentinel-2-c1-l2a` i `sentinel-2-l2a`: pasma B04, B8A, B11 i maska SCL, okno 45 dni przed datą, archiwum od 2017 r. | na żywo; czytane są tylko bloki rastra pod działką | Dane Copernicus Sentinel: dostęp bezpłatny, pełny i otwarty. Raport zawiera zmodyfikowane dane Copernicus Sentinel. Earth Search: bezpłatny katalog bez opublikowanych limitów |
 | Grunty orne (tylko trening modelu ML) | ESA WorldCover 10 m 2021 v200, klasa 40 (grunty orne): wybór 2531 pól pilotażowych 80 × 80 m w 20 skupiskach | jednorazowo przy budowie zbioru treningowego (21.11.2026), aplikacja z tego nie korzysta | CC BY 4.0; atrybucja: „© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium” (esa-worldcover.org, sprawdzone 21.11.2026) |
 | Wilgotność gleby i pogoda (tylko trening modelu wilgotności) | ERA5-Land 0,1° (godzinowa wilgotność warstw 0–7, 7–28, 28–100 cm) i ERA5 0,25° (opad, temperatura, punkt rosy, promieniowanie, wiatr) z otwartych plików Open-Meteo w `s3://openmeteo` (AWS Open Data), 20 punktów, 10.2018–12.2025 | jednorazowo, 22.11.2026, aplikacja z tego nie korzysta | CC BY 4.0 (README repozytorium open-meteo/open-data, sprawdzone 22.11.2026). Pliki nie mają limitu zapytań API |
-| Teren | NMT GUGiK 1 m przez WCS (`DTM_PL-KRON86-NH_TIFF`), wycinek z buforem 200 m wokół działki | na żywo, osobny endpoint | Brak opłat, dowolne wykorzystanie |
+| Teren | NMT GUGiK 1 m (PL-EVRF2007-NH): arkusz wskazany przez skorowidz WFS pobierany bezpośrednio z opendata.geoportal.gov.pl, zapisany w `cache/nmt/` jako GeoTIFF; wycinek z buforem 200 m wokół działki | na żywo przy pierwszym użyciu arkusza, osobny endpoint | Brak opłat, dowolne wykorzystanie |
 | Hydrologia (rzeki) | IMGW-PIB, API danych publicznych (`api/data/hydro/`, zapas `hydro2/`): czynne wodowskazy ze współrzędnymi, ostatni stan wody [cm] i przepływ [m³/s]. Archiwum danych dobowych (`dane_hydrologiczne/dobowe/`): stan i przepływ z każdego dnia, lata hydrologiczne do 2025 (do 31.10.2025) | na żywo: lista wodowskazów (pamięć podręczna 3 h) i pliki archiwum tylko dla 7 dni wokół daty analizy w każdym z 11 lat (pliki niezmienne, raz pobrane zostają na dysku) | Bezpłatne; regulamin IMGW-PIB wymaga podania źródła („Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy”) i informacji o przetworzeniu danych, oba zdania są w raporcie. Według regulaminu nieodpłatne użycie obejmuje cele prywatne, a w każdym celu dane o wysokiej wartości (rozporządzenie wykonawcze KE 2023/138); użycie w działalności gospodarczej poza tym wymaga umowy z IMGW-PIB. Przed wdrożeniem przez KOWR trzeba to potwierdzić z IMGW-PIB (regulamin sprawdzony 21.11.2026 na danepubliczne.imgw.pl/regulations) |
 | Hydrologia (cieki przy działce) | MPHP10k (Wody Polskie, ISOK), warstwa `HY.Network` z publicznego WMS `wody.isok.gov.pl/wss/INSPIRE/INSPIRE_HY_10k_2019_WMS`: najbliższy ciek i jego nazwa do 800 m od granicy działki. WFS z wektorami wymaga logowania, więc geometrię bierzemy z odpowiedzi GetFeatureInfo w JSON (dwa zapytania: zgrubne okno i doprecyzowanie wokół najbliższego punktu; serwer obcina BUFFER do 25 px). Rowów melioracyjnych w tej warstwie często nie ma | na żywo, pamięć podręczna 30 dni | Usługa: „Brak warunków dostępu i użytkowania”, „Brak ograniczeń w publicznym dostępie” (GetCapabilities, sprawdzone 22.11.2026); zbiór na dane.gov.pl: CC BY 4.0 |
 
@@ -201,7 +228,7 @@ Przygotowane wcześniej i zapisane w repozytorium:
 | `app/core/crops.py` | współczynniki Kc, długości faz, głębokość korzeni i p z FAO-56 (tab. 11, 12, 22), przepisane z tekstu na fao.org | 21.11.2026 |
 | `app/core/ptf.py` | równania Saxtona i Rawlsa (2006, tab. 1) oraz REW z FAO-56 tab. 19 | 21.11.2026 |
 | `app/data/soilgrids_tiles_pl.json` | położenie 63 kafli SoilGrids nad Polską, wyciągnięte z pliku VRT ISRIC; używane tylko w trybie awaryjnym. Nie zawiera wartości gleby | 21.11.2026 |
-| `docs/assets/gleba/webp/` | umowne ilustracje warstw gleby (wygenerowane narzędziem AI, patrz niżej) | 21.11.2026 |
+| `static/gleba/` (źródła i opis w `docs/assets/gleba/`) | umowne ilustracje warstw gleby (wygenerowane narzędziem AI, patrz niżej) | 21.11.2026 |
 | `static/vendor/` | OpenLayers 10.11.0 i czcionki | 21.11.2026 |
 | `static/mapa/` | granice 16 województw, 380 powiatów i 2479 gmin z PRG GUGiK (WFS `AdministrativeBoundaries`, warstwy A01–A03), uproszczone do mapy pól (tolerancja 2 km / 500 m / 200 m), EPSG:4326; odtwarzalne skryptem `scripts/dev/build_admin_map.py`. Do pokazania na mapie, nie do obliczeń | 22.11.2026 |
 | `kowr_ml/models/soil_moisture/20261122_0426_sm3_fceabc/` | model wilgotności gleby v3 na 14 dni używany przez wykres zapasu (`model.joblib`, 6,4 MB), karta i metryki. Dane treningowe: ERA5-Land, ERA5 i archiwum prognoz ECMWF IFS z lat 2023–2025 (dni 0–9 z HRES, 10–13 z przebiegu kontrolnego ensemble), SoilGrids, pobrane 22.11.2026 | 22.11.2026 |
@@ -396,7 +423,7 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 - **Historia 10 sezonów** zakłada tę samą uprawę co roku.
 - **Przedział niepewności gleby jest szeroki**, bo kwantyle SoilGrids opisują 90-procentowy przedział predykcji; na lekkich glebach wynik często obejmuje dwie klasy.
 - **Satelita**: wskaźniki liczone dla trzech scen z 45 dni; przy zachmurzeniu albo małej działce (mniej niż 6 pikseli 20 m) sekcja podaje brak danych. Łącze do archiwum scen (AWS us-west-2) bywało bardzo wolne, wtedy wynik dochodzi po raporcie.
-- **Teren**: wynik czysto topograficzny. Wysokości z WCS różniły się od arkusza NMT użytego we wzorcu o 0,3–0,5 m (inna wersja danych), a liczba punktów na granicy zależy od progu łączenia. Model terenu pobieramy na żywo z WCS GUGiK, który przy większych działkach bywa bardzo wolny; po przekroczeniu limitu czasu raport zostaje bez dróg spływu i rekomendacji terenowych i mówi to wprost.
+- **Teren**: wynik czysto topograficzny. Liczba punktów na granicy zależy od progu łączenia. Usługa WCS NMT GUGiK przestała odpowiadać (22.11.2026), więc pobieramy cały arkusz NMT (ok. 36 MB ASCII GRID, 20–30 s) z opendata.geoportal.gov.pl przy pierwszej działce na nim; kolejne działki z tego arkusza liczą się z lokalnego GeoTIFF-a w 1–2 s. Bierzemy najnowszy rocznik skorowidza z oczkiem 1 m. Gdy pobranie się nie uda, raport zostaje bez dróg spływu i rekomendacji terenowych i mówi to wprost.
 - **Zakres dat pilnuje formularz, nie API.** `POST /api/report` odrzuca datę z przyszłości, ale przyjmuje dzień starszy niż 10 lat. Raport wtedy powstaje, a sekcja satelitarna podaje brak zdjęć (archiwum Sentinel-2 L2A zaczyna się w 2017 r.).
 - **Hydrologia**: stan rzeki pochodzi z najbliższego wodowskazu IMGW (do 40 km) i opisuje całą zlewnię powyżej niego, nie wodę na polu; zbiorniki i zrzuty mogą go zmieniać. Archiwum IMGW kończy się 31.10.2025, a bieżący pomiar dotyczy tylko dnia dzisiejszego, więc dla dat od 01.11.2025 do wczoraj raport podaje brak danych hydrologicznych. Bieżący pomiar to pojedynczy odczyt, porównywany ze średnimi z 7 dni. Brak danych o odległości od cieków i o wodzie gruntowej (patrz tabela źródeł).
 - **FAO-56**: tabele pochodzą z wydania z 1998 r. dostępnego na fao.org. Materiał KOWR cytuje wydanie poprawione z 2025 r.; nie porównaliśmy tabel między wydaniami.
@@ -408,7 +435,7 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 
 ## Skala, limity, aktualizacje i koszty
 
-- **Zapytania w prototypie:** jeden raport na pustej pamięci podręcznej to: 1 zapytanie ULDK, 2–3 zapytania o pogodę, 1 zapytanie o wodowskazy IMGW i do 20 plików archiwum IMGW (0,15–1,9 MB, tylko przy pierwszym użyciu), 54 małe zapytania WCS o glebę, 2 zapytania STAC i kilkadziesiąt odczytów fragmentów scen, 1 zapytanie WCS o teren.
+- **Zapytania w prototypie:** jeden raport na pustej pamięci podręcznej to: 1 zapytanie ULDK, 2–3 zapytania o pogodę, 1 zapytanie o wodowskazy IMGW i do 20 plików archiwum IMGW (0,15–1,9 MB, tylko przy pierwszym użyciu), 54 małe zapytania WCS o glebę, 2 zapytania STAC i kilkadziesiąt odczytów fragmentów scen, do 9 zapytań o skorowidz NMT (roczniki 2018–2026) i 1 arkusz NMT (ok. 36 MB, tylko przy pierwszym użyciu arkusza).
 - **Radzenie sobie z limitami i dostępnością źródeł:** wszystkie źródła wywoływane są równolegle z jawnymi limitami czasu (`app/config.py`), mechanizmami zapasowymi (ULDK → WFS EGiB/PRG, Open-Meteo → NASA POWER, SoilGrids WCS → REST → GeoTIFF) i pamięcią podręczną na dysku (pogoda po komórce 0,01° i zakresie dat, gleba po oknie 250 m, satelita po działce i scenie, teren po działce, archiwa IMGW na stałe, lista wodowskazów przez 3 h).
 - **Aktualizacja danych i czas odpowiedzi przy większym ruchu:** dane statyczne lub wolnozmienne (NMT 1 m dla Polski, SoilGrids 250 m, granice działek z eksportu EGiB Parquet) w wdrożeniu ogólnokrajowym należy utrzymywać jako lokalną kopię odświeżaną cyklicznie (rocznie / kwartalnie). Pogodę (siatka dla Polski) i wodowskazy IMGW wystarczy pobierać centralnie w zadaniu harmonogramowym (raz dziennie / co godzinę) do wspólnej bazy lub pamięci podręcznej, a analizę Sentinel-2 i ciężkie obliczenia NMT wykonywać w kolejce zadań (workerach). Przy takim podziale czas odpowiedzi dla działki spada z 11–15 s do ok. 1–3 s nawet przy wielu jednoczesnych użytkownikach.
 - **Przewidywane koszty infrastruktury przy rozwoju (szacunek dla wdrożenia krajowego):**

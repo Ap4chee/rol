@@ -1,2 +1,4 @@
 # Pliki wsadowe Windows muszą mieć końce linii CRLF (inaczej etykiety goto bywają gubione).
 *.bat text eol=crlf
+# Dockerfile jest budowany na Linuksie (Cloud Build), więc zawsze LF.
+Dockerfile text eol=lf
