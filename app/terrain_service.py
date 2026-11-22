@@ -23,7 +23,7 @@ NO_TERRAIN_IMPACT = ("Bez modelu terenu raport nie ocenia spadku ani dróg spły
 def _source(status: Status, reason: str | None = None, elapsed_s: float | None = None, notes: list[str] | None = None,
             from_cache: bool = False) -> SourceInfo:
     return SourceInfo(
-        key="terrain", name="Numeryczny model terenu GUGiK (NMT, WCS)", status=status, reason=reason,
+        key="terrain", name="Numeryczny model terenu GUGiK (NMT, arkusze GeoTIFF)", status=status, reason=reason,
         impact=None if status == Status.ok else NO_TERRAIN_IMPACT, resolution="siatka 1 m, układ PL-1992 (EPSG:2180)",
         data_date="stan zasobu GUGiK w dniu pobrania (pomiary lotnicze z różnych lat)",
         license="dane państwowego zasobu geodezyjnego udostępniane bezpłatnie",

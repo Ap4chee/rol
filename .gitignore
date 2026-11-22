@@ -15,3 +15,9 @@ node_modules/
 # dane i przebiegi treningu ML (duże, odtwarzalne skryptami kowr_ml)
 kowr_ml/data/
 kowr_ml/runs/
+
+# nagranie prezentacji (skrypty, klipy, lektor) trzymamy poza repo
+demo-video/
+*.mp4
+*.webm
+*.mov

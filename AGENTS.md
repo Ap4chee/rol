@@ -52,7 +52,7 @@ Dane muszą być bezpłatne i legalne. Zwycięzca przenosi prawa do kodu na KOWR
 | Satelita | Sentinel-2 L2A przez Earth Search STAC (`sentinel-2-c1-l2a`) |
 | Pogoda | Open-Meteo (archiwum ERA5 i prognoza), IMGW-PIB |
 | Gleba | ISRIC SoilGrids, IUNG-PIB |
-| Teren | NMT GUGiK (WCS) |
+| Teren | NMT GUGiK (arkusze z opendata.geoportal.gov.pl, skorowidz WFS) |
 | Hydrologia, susza | Hydroportal ISOK, Monitoring Suszy IUNG, EDO |
 
 Zasady:
