@@ -18,7 +18,8 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import terrain_rules  # noqa: E402
-from app.geo import reproject  # noqa: E402
+from app.core.terrain_analysis import analyse_parcel  # noqa: E402
+from app.infra.geo import reproject  # noqa: E402
 from app.sources import parcels, terrain  # noqa: E402
 
 
@@ -32,10 +33,11 @@ async def main() -> None:
             with rasterio.open(sys.argv[2]) as ds:
                 dem, transform = ds.read(1).astype(float), ds.transform
             _bounds, buffer_m = terrain.window_bounds(reproject(parcel.geometry, "EPSG:4326", "EPSG:2180"))
-            analysis = terrain.analyse_parcel(parcel.geometry, dem, transform, buffer_m)
+            analysis = analyse_parcel(parcel.geometry, dem, transform, buffer_m)
         else:
             t0 = time.perf_counter()
-            analysis = await terrain.terrain_for_parcel(client, parcel.geometry)
+            window = await terrain.fetch_parcel_dem(client, parcel.geometry)
+            analysis = analyse_parcel(parcel.geometry, window.dem, window.transform, window.buffer_m)
             print(f"pobranie i analiza: {time.perf_counter() - t0:.1f} s")
     facts = analysis.facts
     print(f"{parcel.id}: komórka {analysis.cell_m} m, bufor {analysis.buffer_m} m, pobranie {analysis.fetch_s} s, "

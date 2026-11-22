@@ -73,28 +73,45 @@ Jeden proces FastAPI serwuje API oraz skompilowany frontend React (komponenty Sp
 
 ```
 app/
-  main.py              endpointy HTTP i pliki statyczne, start workera raportów
-  fields.py            pola zapisane na serwerze (SQLite) i worker: raport po dodaniu pola, potem raz na dobę
-  report.py            orkiestracja: pobranie źródeł równolegle, obliczenia, teksty wniosków
-  schemas.py           kontrakt API (pydantic)
-  terrain_service.py   teren liczony w tle, pamięć podręczna po działce
-  cache.py, config.py, geo.py, textfmt.py
-  sources/             pobieranie danych (zwykłe importowalne funkcje, do użycia także przy treningu ML)
+  main.py              fabryka aplikacji: serwisy, routery, worker pól w lifespan, pliki statyczne
+  config.py            ścieżki, limity czasu, granice Polski, lata historii
+  api/                 warstwa HTTP bez logiki: deps.py (klient HTTP, dzisiejszy dzień, serwisy z app.state),
+                       errors.py (błędy domenowe → kody HTTP w jednym miejscu), validators.py (parametry zapytań)
+    routers/           report, parcels, fields, forecast, fieldwork, satellite, terrain
+  services/            orkiestracja
+    report_builder.py  ReportBuilder: źródła → bilans → sekcje w narzuconej kolejności
+    source_gatherer.py SourceGatherer: wszystkie źródła równolegle z limitami czasu; SourceBundle z wynikami i opisem braków
+    field_worker.py    FieldWorker: pola rolnika, kolejka i worker (raport po dodaniu pola, potem raz na dobę)
+    terrain_jobs.py    TerrainJobs: teren liczony w tle, pamięć podręczna po działce
+    fieldwork_planner.py plan prac polowych z bieżącej prognozy
+    ml_bridge.py       jedyne miejsce importujące kowr_ml; typowane wyniki, błędy modelu trafiają do logu
+  persistence/
+    field_repository.py FieldRepository: pola i ostatnie raporty w SQLite (data/fields.sqlite3)
+  presentation/        wyniki obliczeń → schematy API i polskie zdania raportu
+    textfmt.py         liczby i daty po polsku
+    sections/          jedna sekcja raportu na moduł: water_status, causes, history, satellite, forecast, soil,
+                       soil_moisture, hydrology, irrigation, recommendations, limitations, summary, sources_info, terrain
+  schemas/             kontrakt API (pydantic) podzielony według obszaru; `from app.schemas import X` działa dla każdego typu
+  infra/               cache.py (odpowiedzi usług na dysku), geo.py (układy współrzędnych), http.py (fabryka klienta)
+  sources/             pobieranie danych; zwracają dataclassy, nie schematy API (używane też przy treningu ML)
     parcels.py         wyszukiwanie działki: wybór źródła (ULDK → WFS EGiB), cache, pochodzenie wyniku
     uldk.py            adapter ULDK GUGiK (sam protokół)
     egib_wfs.py        adapter zapasowy: granica działki ze zbiorczego WFS ewidencji GUGiK, kody obrębów z PRG
-    weather.py         Open-Meteo Archive → NASA POWER → dobór ostatnich dni z Open-Meteo Forecast
+    weather.py         Open-Meteo Archive → NASA POWER → dobór ostatnich dni z Open-Meteo Forecast; prognoza do 16 dni
     soilgrids.py       SoilGrids: WCS → REST → kafle GeoTIFF, średnia ważona komórek 250 m
     sentinel.py        Sentinel-2 L2A z Earth Search STAC: maska SCL, NDVI, NDMI
-    terrain.py         NMT GUGiK 1 m z WCS, drogi spływu
+    terrain.py         wycinek NMT GUGiK 1 m z WCS
     imgw_hydro.py      wodowskazy IMGW-PIB: bieżące pomiary i archiwum dobowe przepływów
     mphp.py            najbliższy ciek z mapy MPHP10k (Wody Polskie) przez WMS GetFeatureInfo
     soil_moisture.py   NASA POWER: wilgotność gleby w 3 warstwach (MERRA-2), 11 lat
-  core/                obliczenia bez sieci (dane wchodzą jako argumenty)
+    ifs_forecast.py    prognoza ECMWF IFS (wejście modelu wilgotności)
+  core/                obliczenia bez sieci (dane wchodzą jako argumenty), wyniki jako dataclassy
+    dates.py           dzisiejszy dzień w Polsce, dopuszczalne daty, okno pobieranych danych
     et0.py             ET0 FAO-56 Penmana-Monteitha
     ptf.py             pojemność polowa i punkt więdnięcia (Saxton i Rawls 2006), klasy uziarnienia USDA
     crops.py           tabela upraw: Kc, fazy, korzenie, współczynnik p z numerem tabeli FAO-56
     water_balance.py   dzienny bilans strefy korzeni, cztery klasy
+    balance_run.py     bilans dla wszystkich wariantów gleby (Computed), z nawadnianiem i na dniach prognozy
     water_assessment.py ocena w dniu analizy (ubytek, RAW, dni do stresu) w pełnej precyzji dla raportu i reguł
     soil.py            warianty gleby z kwantyli SoilGrids
     analysis.py        okna 30/60/90 dni, klimatyczny bilans wodny, historia 10 sezonów
@@ -102,19 +119,24 @@ app/
     hydrology.py       przepływ z 7 dni na tle tych samych dni w poprzednich latach, zgodność z bilansem
     soil_moisture.py   wilgotność warstw w okolicy na tle tych samych dni w poprzednich latach
     flow.py            Priority-Flood, D8, powierzchnia zasilająca
+    terrain_analysis.py spadek, drogi spływu i punkty na granicy działki z wycinka NMT
     fieldwork.py       plan prac polowych na 7 dni: wilgotność wierzchu (warstwa parowania FAO-56) i reguły ocen
-    recommendations.py, terrain_rules.py   reguły rekomendacji
+    recommendations/   reguły rekomendacji: facts (fakty i progi), retention, agrotechnical, irrigation
+    terrain_rules.py   wnioski i rekomendacje z analizy terenu
   data/soilgrids_tiles_pl.json   indeks kafli SoilGrids dla Polski (tryb awaryjny)
 frontend/              komponenty React, style (app.css, Tailwind) i testy prezentacji
   components/spectrumui/  komponenty Spectrum UI (Apache-2.0, plik LICENSE), dostosowane do aplikacji
   components/ui/       podstawowe komponenty: przycisk, pola, zakładki, okno, tabela, plakietki stanu
   report/              zakładki widoku pola
 static/                gotowy build React, OpenLayers i zasoby graficzne
-tests/                 testy obliczeń bez sieci
-scripts/               sprawdzenia na prawdziwych danych
+tests/                 testy bez sieci: core/, sources/ (parsowanie odpowiedzi), services/ (ReportBuilder na
+                       podstawionych źródłach, worker pól), api/ (routery przez TestClient), ml/
+scripts/               sprawdzenia na prawdziwych danych; dev/snapshot_report.py zapisuje raporty do porównania przed i po zmianie
 ```
 
-Endpointy: `GET /api/fields`, `POST /api/fields` (dodanie albo zmiana pola, `?previous_id=` przy zmianie działki) i `DELETE /api/fields?id=` (pola i stan liczenia raportu w polu `job`: queued, running, ok, error), `POST /api/report` (raport), `GET /api/satellite` i `GET /api/terrain` (części dociągane po raporcie), `POST /api/addresses/search` (położenie adresu na mapie), `GET /api/parcels/search|by-id|by-point`, `GET /api/crops`, `GET /api/forecast` (bieżąca prognoza dla współrzędnych pola) i `GET /api/fieldwork` (plan prac na 7 dni: współrzędne, uprawa i uziarnienie wierzchu gleby z raportu). Opis w [docs/kontrakt_api.md](docs/kontrakt_api.md), schemat w [app/schemas.py](app/schemas.py), po uruchomieniu także pod `/docs`.
+Zależności idą w jedną stronę: `api` → `services` → `core`, `sources`, `presentation`, `persistence`. Obliczenia w `core` nie znają HTTP ani schematów API, adaptery w `sources` nie liczą bilansu, a zdania dla rolnika powstają w `presentation`. Wyjątek: reguły rekomendacji, terenu i zgodności zdjęć z bilansem w `core` nadal same składają zdania.
+
+Endpointy: `GET /api/fields`, `POST /api/fields` (dodanie albo zmiana pola, `?previous_id=` przy zmianie działki) i `DELETE /api/fields?id=` (pola i stan liczenia raportu w polu `job`: queued, running, ok, error), `POST /api/report` (raport), `GET /api/satellite` i `GET /api/terrain` (części dociągane po raporcie), `POST /api/addresses/search` (położenie adresu na mapie), `GET /api/parcels/search|by-id|by-point`, `GET /api/crops`, `GET /api/forecast` (bieżąca prognoza dla współrzędnych pola) i `GET /api/fieldwork` (plan prac na 7 dni: współrzędne, uprawa i uziarnienie wierzchu gleby z raportu). Opis w [docs/kontrakt_api.md](docs/kontrakt_api.md), schemat w [app/schemas/](app/schemas/), po uruchomieniu także pod `/docs`.
 
 Frontend formatuje odpowiedzi API, przelicza udział dostępnego zapasu na procent i porządkuje dane w pulpicie. Bilans, klasy i zalecenia oblicza serwer. Historia w raporcie korzysta z podsumowań sezonów, a odtwarzanie pokazuje dostępne obserwacje zieloności z datami.
 
@@ -225,7 +247,7 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 
 **Usługi płatne.** Aplikacja nie korzysta z żadnej płatnej usługi. Jedyne ograniczenie to Open-Meteo: darmowe API jest tylko do użytku niekomercyjnego. Przy wdrożeniu komercyjnym trzeba albo wykupić plan (archiwum pogody wymaga planu „API Professional”, 99 EUR miesięcznie; „API Standard” za 29 EUR go nie obejmuje), albo zostać przy NASA POWER, które jest bezpłatne bez ograniczeń i już działa jako drugi dostawca.
 
-**AI.** W aplikacji działają dwa modele uczenia maszynowego (gradient boosting, scikit-learn): prognoza zmiany NDMI pola na 7–14 dni oraz prognoza zapasu wody na 14 dni na wykresie „Zapas wody w strefie korzeni” (model wilgotności v3). Oba opisano w sekcjach „Model ML” niżej. Są dodatkiem do bilansu wodnego: ocena niedoboru, przyczyny i rekomendacje nie zależą od nich, a raport powstaje także bez nich. Pozostałe liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/report.py`). AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `docs/assets/gleba/` wygenerowało narzędzie ImageGen (opis w `docs/assets/gleba/README.md`). Ilustracje są umowne i tak są podpisane w raporcie. Zasoby z projektu Penpot w `static/design/` również powstały przy użyciu ImageGen. Pełnią funkcję ilustracyjną.
+**AI.** W aplikacji działają dwa modele uczenia maszynowego (gradient boosting, scikit-learn): prognoza zmiany NDMI pola na 7–14 dni oraz prognoza zapasu wody na 14 dni na wykresie „Zapas wody w strefie korzeni” (model wilgotności v3). Oba opisano w sekcjach „Model ML” niżej. Są dodatkiem do bilansu wodnego: ocena niedoboru, przyczyny i rekomendacje nie zależą od nich, a raport powstaje także bez nich. Pozostałe liczby pochodzą z obliczeń, a teksty raportu z reguł w kodzie (`app/core/recommendations.py`, `app/core/terrain_rules.py`, `app/presentation/sections/`). AI użyto przy tworzeniu: kod i dokumentację pisaliśmy z pomocą asystentów programistycznych (Claude Code, Codex), a ilustracje warstw gleby w `docs/assets/gleba/` wygenerowało narzędzie ImageGen (opis w `docs/assets/gleba/README.md`). Ilustracje są umowne i tak są podpisane w raporcie. Zasoby z projektu Penpot w `static/design/` również powstały przy użyciu ImageGen. Pełnią funkcję ilustracyjną.
 
 ## Jak liczony jest wynik
 
@@ -356,6 +378,7 @@ Sprawdzenia na prawdziwych danych (wymagają sieci):
 | `scripts/dev/acceptance.py` | pusty cache i wymuszone awarie źródeł (`KOWR_FAIL`) | raport powstaje, brak jest nazwany |
 | `scripts/dev/sweep_poland.py` | przegląd odporności na pustej pamięci podręcznej: 24 punkty z całej Polski (niziny, góry, wybrzeże, krańce wschodnie i zachodnie, miasto, las, jezioro) w datach 2016–2026 i dla 7 upraw; z `--cached-parcels` 8 przypadków dla działek z granicą zapisaną w `cache/uldk` | Drugi przebieg (21.11.2026 wieczorem, ULDK już działał): 24 z 24 raportów z granicą działki, mediana 15,0 s, najdłuższy 25,1 s, żaden powyżej 30 s. Zdjęcia satelitarne: wynik w 14 przypadkach, w 6 status „liczę” (wynik dochodzi po raporcie), w 4 powód braku (chmury, brak zielonej roślinności). Najwolniejsze źródła: archiwum IMGW przy pierwszym użyciu (do 17 s) i zdjęcia satelitarne. Open-Meteo odmawiało (429), pogodę dał NASA POWER. Przegląd wykrył raport bez żadnej rekomendacji (rzepak, Dolny Śląsk, 10.05.2023, bez niedoboru); dodaliśmy zapobiegawczą rekomendację retencyjną, która pojawia się, gdy żadna inna reguła retencji nie zadziała. Pierwszy przebieg (przy awarii ULDK): 24 z 24 raportów, mediana 11,9 s, najdłuższy 15,5 s, granice z zapasowego WFS ewidencji |
 | `scripts/dev/run_report.py`, `scripts/dev/http_check.py` | raport z wiersza poleceń i przez HTTP | |
+| `scripts/dev/snapshot_report.py <katalog>` | JSON raportów 580/2 (15.07.2018 i 20.06.2025) i punktu w Wielkopolsce bez pól zależnych od czasu; `diff -r` dwóch katalogów pokazuje, czy zmiana w kodzie zmieniła wynik | przy podziale `app/report.py` na warstwy (22.11.2026): raporty identyczne |
 | `scripts/dev/run_report.py` (sekcja `[hydrologia]`) | wodowskaz IMGW dla 580/2 dziś, Kościana 15.07.2018, 580/2 15.07.2026 | Lublin (Bystrzyca, 19 km): przepływ 1,01 m³/s, wyższy w 9 z 9 lat, „bardzo mało wody”; Kościan (Kanał Mosiński, 5 km): 0,18 m³/s wobec mediany 1,37, wyższy w 9 z 10 lat (susza 2018); 15.07.2026: brak danych podany wprost (archiwum kończy się 31.10.2025) |
 
 Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan) daje niedobór umiarkowany do silnego, klimatyczny bilans wodny −184 mm przy medianie −110 mm, a NDMI spadł w czerwcu z 0,29 do 0,13, co potwierdza bilans.
@@ -391,5 +414,5 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 ## Bezpieczeństwo
 
 - **Brak danych osobowych:** aplikacja nie zbiera, nie przesyła ani nie przechowuje danych osobowych (brak rejestracji, logowania, danych kontaktowych). Do analizy wystarcza identyfikator działki lub punkt na mapie; zapisane pola (działka, uprawa, data, nazwa nadana przez rolnika i ostatni raport) leżą w pliku SQLite na serwerze. Prototyp nie ma kont, więc każdy, kto otworzy aplikację na danym serwerze, widzi wszystkie zapisane na nim pola.
-- **Walidacja wejścia i brak sekretów:** wszystkie parametry żądań HTTP są walidowane przez schematy Pydantic (`app/schemas.py`: zakres współrzędnych ograniczony do Polski, maksymalna długość identyfikatora, walidacja dozwolonych upraw i zakaz dat z przyszłości). Aplikacja nie wymaga ani nie przechowuje kluczy API, tokenów ani haseł.
+- **Walidacja wejścia i brak sekretów:** wszystkie parametry żądań HTTP są walidowane przez schematy Pydantic (`app/schemas/`: zakres współrzędnych ograniczony do Polski, maksymalna długość identyfikatora, walidacja dozwolonych upraw i zakaz dat z przyszłości). Aplikacja nie wymaga ani nie przechowuje kluczy API, tokenów ani haseł.
 - **Odporność i izolacja:** wywołania usług zewnętrznych mają limity czasu i nie ujawniają śladów stosu w odpowiedziach; interfejs React domyślnie escapuje wszystkie wartości tekstowe (ochrona przed XSS). Przed wdrożeniem publicznym (poza lokalnym prototypem) należy dodać ograniczenie liczby zapytań (rate limiting), HTTPS i standardowe nagłówki bezpieczeństwa HTTP (CSP, `X-Content-Type-Options`).

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from app.textfmt import fmt, fmt_date, plural_days
+from app.presentation.textfmt import fmt, fmt_date, plural_days
 
 NDMI_DROP = 0.03          # spadek NDMI uznawany za sygnał utraty wody przez rośliny
 STRONG_DROP = 0.05        # wyraźny spadek NDMI i NDVI przy braku niedoboru w bilansie = rozbieżność

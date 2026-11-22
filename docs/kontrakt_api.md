@@ -1,6 +1,6 @@
 # Kontrakt API
 
-Źródłem prawdy jest [app/schemas.py](../app/schemas.py). Po uruchomieniu serwera pełny schemat z opisami pól jest pod `/docs` (Swagger) i `/openapi.json`.
+Źródłem prawdy jest pakiet [app/schemas/](../app/schemas/) (modele podzielone według obszaru, każdy dostępny jako `app.schemas.<Nazwa>`). Po uruchomieniu serwera pełny schemat z opisami pól jest pod `/docs` (Swagger) i `/openapi.json`.
 
 Zasady:
 

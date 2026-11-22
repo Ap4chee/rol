@@ -7,6 +7,7 @@ ochrony roślin ani terminów z przepisów (np. programu azotanowego).
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from app.core.crops import GROWTH_TEMP_THRESHOLD_C, Crop, daily_crop_arrays
@@ -31,6 +32,34 @@ SPRAY_TMAX_C = (5.0, 25.0)
 FERT_RAIN_MM, FERT_RAIN_MAX_MM = 2.0, 5.0
 FERT_RUNOFF_MM, FERT_RUNOFF_MAX_MM = 10.0, 20.0   # opad w 2 kolejnych dniach: nawóz może spłynąć
 SNOW_CODES = {71, 73, 75, 77, 85, 86}             # kody pogody WMO: śnieg
+
+
+@dataclass(frozen=True)
+class Rating:
+    rating: str   # good | caution | avoid | off (poza sezonem tej pracy) | unknown (brak danych)
+    reason: str
+
+
+@dataclass(frozen=True)
+class DayPlan:
+    """Oceny prac na jeden dzień i pogoda, z której wynikają."""
+    date: date
+    rain_mm: float | None
+    wind_max_kmh: float | None
+    temperature_max_c: float | None
+    temperature_min_c: float | None
+    weather_code: int | None
+    surface_fc_pct: float | None   # wilgotność wierzchu 0–10 cm rano, % pojemności polowej
+    traffic: Rating
+    sowing: Rating
+    spraying: Rating
+    fertilizing: Rating
+
+
+@dataclass(frozen=True)
+class Window:
+    date_from: date
+    date_to: date
 
 
 def surface_soil(sand_pct: float | None, clay_pct: float | None, soc_g_kg: float | None) -> tuple[float, float, float, bool]:
@@ -61,13 +90,13 @@ def surface_depletion_mm(rain_mm: list[float | None], et0_mm: list[float | None]
     return out
 
 
-def _judge(checks: list[tuple[str, str]], good_reason: str) -> dict:
+def _judge(checks: list[tuple[str, str]], good_reason: str) -> Rating:
     """Najgorsza ocena z wykrytych problemów i jej powody; bez problemów ocena dobra."""
     worst = max((_RANK[rating] for rating, _ in checks), default=0)
     if worst == 0:
-        return {"rating": GOOD, "reason": good_reason}
+        return Rating(GOOD, good_reason)
     rating = next(r for r, k in _RANK.items() if k == worst)
-    return {"rating": rating, "reason": "; ".join(text for r, text in checks if _RANK[r] == worst)}
+    return Rating(rating, "; ".join(text for r, text in checks if _RANK[r] == worst))
 
 
 def _mm(value: float) -> str:
@@ -82,11 +111,11 @@ def _in_sowing_window(crop: Crop, day: date) -> bool:
     return False
 
 
-def _traffic(rain: float | None, rel_fc: float | None, snow: bool) -> dict:
+def _traffic(rain: float | None, rel_fc: float | None, snow: bool) -> Rating:
     if snow:
-        return {"rating": AVOID, "reason": "śnieg"}
+        return Rating(AVOID, "śnieg")
     if rain is None or rel_fc is None:
-        return {"rating": UNKNOWN, "reason": "brak prognozy opadu lub parowania, więc nie wiadomo, jak mokra jest gleba"}
+        return Rating(UNKNOWN, "brak prognozy opadu lub parowania, więc nie wiadomo, jak mokra jest gleba")
     checks = []
     if rain >= RAIN_TRAFFIC_MM:
         checks.append((AVOID, f"opad {_mm(rain)}"))
@@ -97,14 +126,14 @@ def _traffic(rain: float | None, rel_fc: float | None, snow: bool) -> dict:
     return _judge(checks, "gleba obeschła, bez opadu")
 
 
-def _sowing(crop: Crop, day: date, traffic: dict, available: float | None) -> dict:
+def _sowing(crop: Crop, day: date, traffic: Rating, available: float | None) -> Rating:
     if crop.perennial:
-        return {"rating": OFF, "reason": "użytek trwały, bez siewu"}
+        return Rating(OFF, "użytek trwały, bez siewu")
     if not _in_sowing_window(crop, day):
-        return {"rating": OFF, "reason": f"poza terminem siewu (umownie ok. {crop.sowing_day:02d}.{crop.sowing_month:02d})"}
-    if traffic["rating"] in (AVOID, UNKNOWN):
+        return Rating(OFF, f"poza terminem siewu (umownie ok. {crop.sowing_day:02d}.{crop.sowing_month:02d})")
+    if traffic.rating in (AVOID, UNKNOWN):
         return traffic
-    checks = [(traffic["rating"], traffic["reason"])] if traffic["rating"] == CAUTION else []
+    checks = [(traffic.rating, traffic.reason)] if traffic.rating == CAUTION else []
     if available is not None and available < SOW_DRY_AVAILABLE:
         checks.append((CAUTION, "wierzch przesuszony: słabsze wschody"))
     return _judge(checks, "gleba obeschła, a wierzch ma wodę na wschody")
@@ -118,15 +147,15 @@ def _off_season(in_field: bool, stage: str) -> str | None:
     return None
 
 
-def _spraying(in_field: bool, stage: str, traffic: dict, rain: float | None, wind: float | None,
-              tmax: float | None, snow: bool) -> dict:
+def _spraying(in_field: bool, stage: str, traffic: Rating, rain: float | None, wind: float | None,
+              tmax: float | None, snow: bool) -> Rating:
     off = _off_season(in_field, stage)
     if off:
-        return {"rating": OFF, "reason": off}
+        return Rating(OFF, off)
     if snow:
-        return {"rating": AVOID, "reason": "śnieg"}
+        return Rating(AVOID, "śnieg")
     if rain is None or tmax is None:
-        return {"rating": UNKNOWN, "reason": "brak prognozy opadu lub temperatury"}
+        return Rating(UNKNOWN, "brak prognozy opadu lub temperatury")
     checks = []
     if rain >= SPRAY_RAIN_MAX_MM:
         checks.append((AVOID, f"opad {_mm(rain)}: deszcz zmyje środek"))
@@ -144,27 +173,27 @@ def _spraying(in_field: bool, stage: str, traffic: dict, rain: float | None, win
         checks.append((CAUTION, f"chłodno ({tmax:.0f} °C): wiele środków działa słabo"))
     elif tmax > SPRAY_TMAX_C[1]:
         checks.append((CAUTION, f"upał ({tmax:.0f} °C): pryskaj rano lub wieczorem"))
-    if traffic["rating"] == AVOID:
+    if traffic.rating == AVOID:
         checks.append((CAUTION, "mokro: jedź tylko ścieżkami technologicznymi"))
     return _judge(checks, "sucho, słaby wiatr, umiarkowana temperatura")
 
 
-def _fertilizing(in_field: bool, stage: str, traffic: dict, rain: float | None, next_rain: float,
-                 tmax: float | None, tmin: float | None, snow: bool) -> dict:
+def _fertilizing(in_field: bool, stage: str, traffic: Rating, rain: float | None, next_rain: float,
+                 tmax: float | None, tmin: float | None, snow: bool) -> Rating:
     off = _off_season(in_field, stage) or ("dojrzewanie: nawożenie nic nie da" if stage == "late" else None)
     if off:
-        return {"rating": OFF, "reason": off}
+        return Rating(OFF, off)
     if snow:
-        return {"rating": AVOID, "reason": "śnieg: nie nawozi się gleby pod śniegiem"}
+        return Rating(AVOID, "śnieg: nie nawozi się gleby pod śniegiem")
     if rain is None:
-        return {"rating": UNKNOWN, "reason": "brak prognozy opadu"}
+        return Rating(UNKNOWN, "brak prognozy opadu")
     checks = []
     if tmax is not None and tmax <= 0:
         checks.append((AVOID, "gleba może być zamarznięta"))
     elif tmax is not None and tmin is not None and (tmax + tmin) / 2 < GROWTH_TEMP_THRESHOLD_C:
         checks.append((AVOID, "wegetacja stoi (średnia temperatura poniżej 5 °C): rośliny nie pobiorą azotu"))
-    if traffic["rating"] in (AVOID, CAUTION):
-        checks.append((traffic["rating"], traffic["reason"]))
+    if traffic.rating in (AVOID, CAUTION):
+        checks.append((traffic.rating, traffic.reason))
     if rain >= FERT_RAIN_MAX_MM:
         checks.append((AVOID, f"opad {_mm(rain)}: nawóz spłynie"))
     elif rain >= FERT_RAIN_MM:
@@ -176,13 +205,13 @@ def _fertilizing(in_field: bool, stage: str, traffic: dict, rain: float | None, 
     return _judge(checks, "gleba nośna, bez dużego opadu w najbliższych dniach")
 
 
-def best_windows(days: list[dict]) -> dict[str, dict]:
+def best_windows(days: list[DayPlan]) -> dict[str, Window]:
     """Najdłuższy ciąg kolejnych dobrych dni dla każdej pracy (przy remisie najwcześniejszy)."""
     windows = {}
     for op in OPERATIONS:
         best, start = None, None
         for i, day in enumerate([*days, None]):
-            good = day is not None and day[op]["rating"] == GOOD
+            good = day is not None and getattr(day, op).rating == GOOD
             if good and start is None:
                 start = i
             if not good and start is not None:
@@ -190,14 +219,14 @@ def best_windows(days: list[dict]) -> dict[str, dict]:
                     best = (start, i - 1)
                 start = None
         if best:
-            windows[op] = {"date_from": days[best[0]]["date"], "date_to": days[best[1]]["date"]}
+            windows[op] = Window(days[best[0]].date, days[best[1]].date)
     return windows
 
 
 def plan_fieldwork(dates: list[date], rain_mm: list[float | None], et0_mm: list[float | None],
                    tmax_c: list[float | None], tmin_c: list[float | None], wind_kmh: list[float | None],
                    weather_codes: list[int | None], n_recent: int, crop: Crop,
-                   fc: float, wp: float, rew_mm: float) -> list[dict]:
+                   fc: float, wp: float, rew_mm: float) -> list[DayPlan]:
     """Oceny prac dla dni prognozy. Listy obejmują kolejne dni: najpierw `n_recent` dni przed dziś, potem prognozę.
 
     Każda ocena: good | caution | avoid | off (poza sezonem tej pracy) | unknown (brak danych), z powodem.
@@ -215,13 +244,12 @@ def plan_fieldwork(dates: list[date], rain_mm: list[float | None], et0_mm: list[
         next_rain = sum(r for r in rain_mm[i + 1:i + 3] if r is not None)
         in_field, stage = bool(crop_daily.in_field[i]), crop_daily.stage[i]
         traffic = _traffic(rain, rel_fc, snow)
-        days.append({
-            "date": dates[i], "rain_mm": None if rain is None else round(rain, 1), "wind_max_kmh": wind_kmh[i],
-            "temperature_max_c": tmax_c[i], "temperature_min_c": tmin_c[i], "weather_code": weather_codes[i],
-            "surface_fc_pct": None if rel_fc is None else round(100 * rel_fc),
-            "traffic": traffic,
-            "sowing": _sowing(crop, dates[i], traffic, available),
-            "spraying": _spraying(in_field, stage, traffic, rain, wind_kmh[i], tmax_c[i], snow),
-            "fertilizing": _fertilizing(in_field, stage, traffic, rain, next_rain, tmax_c[i], tmin_c[i], snow),
-        })
+        days.append(DayPlan(
+            date=dates[i], rain_mm=None if rain is None else round(rain, 1), wind_max_kmh=wind_kmh[i],
+            temperature_max_c=tmax_c[i], temperature_min_c=tmin_c[i], weather_code=weather_codes[i],
+            surface_fc_pct=None if rel_fc is None else round(100 * rel_fc),
+            traffic=traffic,
+            sowing=_sowing(crop, dates[i], traffic, available),
+            spraying=_spraying(in_field, stage, traffic, rain, wind_kmh[i], tmax_c[i], snow),
+            fertilizing=_fertilizing(in_field, stage, traffic, rain, next_rain, tmax_c[i], tmin_c[i], snow)))
     return days

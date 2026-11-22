@@ -27,6 +27,10 @@ SATELLITE_DEFERRED_BUDGET_S = 100.0
 TIMEOUT_HYDRO_S = 8.0
 TIMEOUT_TERRAIN_S = 180.0  # WCS z NMT odpowiadał w 13-120 s (pomiary 21.11.2026)
 
+# Zasięg Polski z marginesem w stopniach (EPSG:4326). Punkt spoza tego prostokąta na pewno nie leży w kraju.
+POLAND_LON_MIN, POLAND_LON_MAX = 14.0, 24.3
+POLAND_LAT_MIN, POLAND_LAT_MAX = 48.9, 55.0
+
 # Ile lat wstecz od daty analizy: 10 sezonów do porównań + 12 miesięcy rozbiegu bilansu.
 HISTORY_YEARS = 10
 WARMUP_DAYS = 400

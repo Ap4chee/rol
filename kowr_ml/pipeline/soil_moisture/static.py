@@ -14,7 +14,7 @@ import numpy as np
 from shapely.geometry import box
 
 from app.core.flow import slope_percent
-from app.geo import reproject
+from app.infra.geo import reproject
 from app.sources import NoData, SourceError
 from app.sources.soilgrids import fetch_soil
 from app.sources.terrain import fetch_dem

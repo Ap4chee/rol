@@ -5,7 +5,7 @@ import re
 
 import httpx
 
-from app.geo import transformer
+from app.infra.geo import transformer
 from app.schemas import AddressMatch, Point
 from app.sources import SourceError
 

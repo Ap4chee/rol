@@ -16,13 +16,12 @@ Funkcje są importowalne poza aplikacją (np. do przygotowania danych treningowy
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, timedelta
 
 import httpx
 import numpy as np
 
-from app import cache
 from app.config import (
     TIMEOUT_WEATHER_ARCHIVE_S,
     TIMEOUT_WEATHER_POWER_S,
@@ -30,7 +29,7 @@ from app.config import (
     check_forced_failure,
 )
 from app.core.et0 import actual_vapour_pressure_from_rh_mean_kpa, et0_fao56_mm_day
-from app.schemas import ForecastDay, ForecastResponse, Status
+from app.infra import cache
 from app.sources import NoData, SourceError
 
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -107,6 +106,51 @@ class WeatherResult:
     filled_days: int = 0
     interpolated_et0_days: int = 0
     missing_rain_days: int = 0
+
+
+@dataclass(frozen=True)
+class ForecastDay:
+    """Jedna doba prognozy. None = model nie podał wartości (nie zero)."""
+    date: date
+    temperature_max_c: float | None = None
+    temperature_min_c: float | None = None
+    precipitation_mm: float | None = None
+    et0_mm: float | None = None
+    weather_code: int | None = None
+    wind_max_kmh: float | None = None   # największa prędkość wiatru w ciągu doby, 10 m [km/h]
+
+
+@dataclass(frozen=True)
+class DashboardForecast:
+    days: list[ForecastDay]
+    recent: list[ForecastDay]   # 30 dni przed dziś (opad, ET0) do bilansu wierzchu gleby
+    last_wet_day: date | None
+    past_days_complete: bool
+
+    def to_cache(self) -> dict:
+        # ten sam kształt co dawny ForecastResponse, bo katalog cache/ czyta też starsza wersja aplikacji
+        return {"status": "ok", "reason": None,
+                **{k: _iso(v) for k, v in asdict(self).items()}}
+
+    @classmethod
+    def from_cache(cls, data: dict) -> DashboardForecast:
+        def day(row: dict) -> ForecastDay:
+            fields_ = {k: v for k, v in row.items() if k in ForecastDay.__dataclass_fields__}
+            return ForecastDay(**{**fields_, "date": date.fromisoformat(row["date"])})
+        wet = data.get("last_wet_day")
+        return cls(days=[day(r) for r in data.get("days", [])], recent=[day(r) for r in data.get("recent", [])],
+                   last_wet_day=date.fromisoformat(wet) if wet else None,
+                   past_days_complete=bool(data.get("past_days_complete")))
+
+
+def _iso(value):
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_iso(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _iso(v) for k, v in value.items()}
+    return value
 
 
 def snap(value: float) -> float:
@@ -255,7 +299,7 @@ async def fetch_open_meteo_recent(client: httpx.AsyncClient, lat: float, lon: fl
 
 # ---------- prognoza na pulpit i zakładkę Pogoda ----------
 
-def parse_dashboard_forecast(payload: dict, today: date, forecast_days: int = 7) -> ForecastResponse:
+def parse_dashboard_forecast(payload: dict, today: date, forecast_days: int = 7) -> DashboardForecast:
     daily = payload.get("daily") if isinstance(payload, dict) else None
     if not isinstance(daily, dict) or not isinstance(daily.get("time"), list):
         raise NoData("Prognoza nie zawiera danych dziennych.")
@@ -295,8 +339,7 @@ def parse_dashboard_forecast(payload: dict, today: date, forecast_days: int = 7)
                            for row in rows.values()):
         raise NoData("Dla tej lokalizacji brakuje wartości prognozy.")
     last_wet_day = max((day for day, rain in past.items() if rain is not None and rain > 5), default=None)
-    return ForecastResponse(
-        status=Status.ok,
+    return DashboardForecast(
         days=[rows.get(day) or ForecastDay(date=day) for day in (today + timedelta(days=i) for i in range(horizon))],
         recent=sorted(recent, key=lambda row: row.date), last_wet_day=last_wet_day,
         past_days_complete=len(past) == 30 and all(rain is not None for rain in past.values()),
@@ -304,21 +347,21 @@ def parse_dashboard_forecast(payload: dict, today: date, forecast_days: int = 7)
 
 
 async def fetch_dashboard_forecast(client: httpx.AsyncClient, lat: float, lon: float,
-                                   today: date, days: int = FORECAST_MAX_DAYS) -> ForecastResponse:
+                                   today: date, days: int = FORECAST_MAX_DAYS) -> DashboardForecast:
     lat, lon = snap(lat), snap(lon)
     horizon = min(max(days, 1), FORECAST_MAX_DAYS)
     key = f"om_forecast16_v2:{lat:.2f},{lon:.2f}:{today}"   # v2: wiatr, Tmin i ostatnie 30 dni w odpowiedzi
     cached = cache.get("weather", key, max_age_s=RECENT_CACHE_MAX_AGE_S)
     if cached is not None:
-        forecast = ForecastResponse.model_validate(cached)
-        return forecast.model_copy(update={"days": forecast.days[:horizon]})
+        forecast = DashboardForecast.from_cache(cached)
+        return replace(forecast, days=forecast.days[:horizon])
     payload = await _get_json(client, OPEN_METEO_FORECAST_URL, {
         "latitude": lat, "longitude": lon, "past_days": 30, "forecast_days": FORECAST_MAX_DAYS,
         "daily": OPEN_METEO_DAILY + ",weather_code,wind_speed_10m_max", "timezone": "Europe/Warsaw",
     }, TIMEOUT_WEATHER_RECENT_S, "Open-Meteo Forecast")
     forecast = parse_dashboard_forecast(payload, today, forecast_days=FORECAST_MAX_DAYS)
-    cache.put("weather", key, forecast.model_dump(mode="json"))
-    return forecast.model_copy(update={"days": forecast.days[:horizon]})
+    cache.put("weather", key, forecast.to_cache())
+    return replace(forecast, days=forecast.days[:horizon])
 
 
 # ---------- składanie serii ----------

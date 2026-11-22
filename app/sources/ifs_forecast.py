@@ -16,8 +16,8 @@ from datetime import date, datetime, timedelta
 import httpx
 import numpy as np
 
-from app import cache
 from app.config import TIMEOUT_WEATHER_RECENT_S
+from app.infra import cache
 from app.sources import NoData
 from app.sources.weather import OPEN_METEO_FORECAST_URL, RECENT_CACHE_MAX_AGE_S, _get_json, snap
 

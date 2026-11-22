@@ -21,9 +21,9 @@ from shapely.geometry import box, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import nearest_points
 
-from app import cache
 from app.config import check_forced_failure
-from app.geo import reproject
+from app.infra import cache
+from app.infra.geo import reproject
 from app.sources import SourceError
 
 WMS_URL = "https://wody.isok.gov.pl/wss/INSPIRE/INSPIRE_HY_10k_2019_WMS"
