@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fieldsCount } from '../../shared/format/plural.js';
-import { fieldTeryt, unitRole } from './logic.js';
+import { blendLook, fieldTeryt, lerp, lookOf, unitName, unitRole } from './logic.js';
 
 const withParcel = (id) => ({ report: { parcel: id ? { id } : null } });
 
@@ -34,4 +34,29 @@ test('unitRole: dzieci widoku aktywne, sąsiedzi w tle, reszta ukryta', () => {
 
 test('fieldsCount odmienia „pole”', () => {
   assert.deepEqual([1, 2, 5, 12, 22, 0].map(fieldsCount), ['1 pole', '2 pola', '5 pól', '12 pól', '22 pola', '0 pól']);
+});
+
+test('wygląd jednostki: z polami zielona, bez pól szara, sąsiedzi tylko konturem', () => {
+  assert.deepEqual(lookOf('06', 3, '', null).fill, [141, 197, 159, 1]);
+  assert.deepEqual(lookOf('06', 3, '', '06').fill, [94, 166, 118, 1]);
+  assert.deepEqual(lookOf('14', 0, '', null).fill, [219, 219, 212, 1]);
+  assert.equal(lookOf('14', 0, '0609', null).fill[3], 0);
+  assert.equal(lookOf('0609', 1, '0609102', null), null);
+});
+
+test('przejście między poziomami miesza wygląd i wygasza znikające jednostki', () => {
+  const start = blendLook('06', 2, { from: '', to: '06', t: 0, hover: null });
+  const end = blendLook('06', 2, { from: '', to: '06', t: 1, hover: null });
+  assert.equal(start.badge, 1);
+  // województwo, w które weszliśmy, gaśnie razem z plakietką
+  assert.equal(end.fill[3], 0);
+  assert.equal(end.badge, 0);
+  assert.equal(blendLook('0101', 0, { from: '06', to: '0609', t: 0.3, hover: null }), null);   // powiat innego województwa
+  const appear = blendLook('0609', 1, { from: '', to: '06', t: 0.5, hover: null });
+  assert.equal(appear.fill[3], 0.5);
+  assert.equal(appear.badge, 0.5);
+  assert.equal(appear.zIndex, 1);
+  assert.equal(lerp(2, 4, 0.25), 2.5);
+  assert.equal(unitName({ kod: '06', nazwa: 'lubelskie' }), 'województwo lubelskie');
+  assert.equal(unitName({ kod: '0609', nazwa: 'lubelski' }), 'lubelski');
 });

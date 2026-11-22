@@ -30,3 +30,44 @@ export function unitRole(unit, code) {
   return level < depth && code.startsWith(parent) && !code.startsWith(unit) ? 'context' : null;
 }
 
+
+// Wygląd jednostki w roli: wypełnienie i obrys [r, g, b, a] (paleta brand/neutral z styles/app.css), obrys w px
+// i krycie plakietki z liczbą pól. W przejściu między poziomami każda jednostka płynnie miesza stary wygląd z nowym.
+const LOOK = {
+  filled: { fill: [141, 197, 159, 1], stroke: [255, 255, 255, 1], width: 1.5, badge: 1 },      // brand-300
+  hover: { fill: [94, 166, 118, 1], stroke: [255, 255, 255, 1], width: 1.5, badge: 1 },        // brand-400
+  empty: { fill: [219, 219, 212, 1], stroke: [255, 255, 255, 1], width: 1.25, badge: 0 },
+  context: { fill: [236, 234, 227, 0], stroke: [214, 214, 207, .9], width: 1, badge: 0 },     // sam cienki kontur, bez tła
+  self: { fill: [141, 197, 159, .08], stroke: [37, 92, 59, 1], width: 2.5, badge: 0 },          // obrys brand-700
+};
+const Z = { context: 0, active: 1, self: 2 };
+const hidden = (look) => ({ ...look, fill: [...look.fill.slice(0, 3), 0], stroke: [...look.stroke.slice(0, 3), 0], badge: 0 });
+
+export const lerp = (a, b, t) => a + (b - a) * t;
+
+/** Wygląd jednostki `kod` (z `count` polami) w widoku jednostki `code`; null, gdy w tym widoku jej nie widać. */
+export function lookOf(kod, count, code, hover) {
+  const role = unitRole(kod, code);
+  if (role !== 'active') return role && LOOK[role];
+  return !count ? LOOK.empty : kod === hover ? LOOK.hover : LOOK.filled;
+}
+
+/**
+ * Wygląd jednostki w chwili `t` [0–1] przejścia z widoku `from` do `to`: kolory, grubość obrysu, krycie plakietki
+ * i warstwa. Jednostka, która pojawia się albo znika, przenika z przezroczystości. Niewidoczna w obu widokach: null.
+ */
+export function blendLook(kod, count, { from, to, t, hover }) {
+  const a = lookOf(kod, count, from, hover), b = lookOf(kod, count, to, hover);
+  if (!a && !b) return null;
+  const start = a ?? hidden(b), end = b ?? hidden(a);
+  return {
+    zIndex: Z[unitRole(kod, to)] ?? Z[unitRole(kod, from)] ?? 0,
+    fill: start.fill.map((v, i) => lerp(v, end.fill[i], t)),
+    stroke: start.stroke.map((v, i) => lerp(v, end.stroke[i], t)),
+    width: lerp(start.width, end.width, t),
+    badge: lerp(start.badge, end.badge, t),
+  };
+}
+
+/** Nazwa jednostki do zdania: województwo z przedrostkiem, powiat i gmina tak, jak w rejestrze. */
+export const unitName = (unit) => (unit.kod.length === 2 ? `województwo ${unit.nazwa}` : unit.nazwa);

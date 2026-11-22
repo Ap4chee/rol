@@ -6,7 +6,9 @@ import { Eyebrow } from '@/shared/ui/card';
 import { Spinner } from '@/shared/ui/spinner';
 import { StatusDot } from '@/shared/ui/status';
 import { cn } from '@/shared/lib/cn';
-import { fieldTeryt, LEVELS, unitRole } from './logic.js';
+import { fieldTeryt, lerp, LEVELS, unitName, unitRole } from './logic.js';
+import { fieldStyle, unitStyle } from './mapStyles.js';
+import { capitalize } from '@/shared/format/text';
 import { fieldsCount } from '@/shared/format/plural';
 import { fieldHref, mapHref } from '@/app/router';
 import { navigate } from '@/app/useHashRoute';
@@ -21,73 +23,6 @@ const CHILDREN = ['Województwa', 'Powiaty', 'Gminy'];
 const OF_CHILDREN = ['województw', 'powiatów', 'gmin'];                                    // „13 z 16 województw”
 const IN_UNITS = [['województwie', 'województwach'], ['powiecie', 'powiatach'], ['gminie', 'gminach']];
 const ENTER = 'animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none';
-
-// Wygląd jednostki w roli: wypełnienie i obrys [r, g, b, a] (paleta brand/neutral z app.css), obrys w px
-// i krycie plakietki z liczbą pól. W przejściu między poziomami każda jednostka płynnie miesza stary wygląd z nowym.
-const LOOK = {
-  filled: { fill: [141, 197, 159, 1], stroke: [255, 255, 255, 1], width: 1.5, badge: 1 },      // brand-300
-  hover: { fill: [94, 166, 118, 1], stroke: [255, 255, 255, 1], width: 1.5, badge: 1 },        // brand-400
-  empty: { fill: [219, 219, 212, 1], stroke: [255, 255, 255, 1], width: 1.25, badge: 0 },
-  context: { fill: [236, 234, 227, 0], stroke: [214, 214, 207, .9], width: 1, badge: 0 },     // sam cienki kontur, bez tła
-  self: { fill: [141, 197, 159, .08], stroke: [37, 92, 59, 1], width: 2.5, badge: 0 },          // obrys brand-700
-};
-const Z = { context: 0, active: 1, self: 2 };
-const hidden = (look) => ({ ...look, fill: [...look.fill.slice(0, 3), 0], stroke: [...look.stroke.slice(0, 3), 0], badge: 0 });
-const lerp = (a, b, t) => a + (b - a) * t;
-
-function lookOf(unit, code, hover) {
-  const role = unitRole(unit.get('kod'), code);
-  if (role !== 'active') return role && LOOK[role];
-  return !unit.get('fields').length ? LOOK.empty : unit.get('kod') === hover ? LOOK.hover : LOOK.filled;
-}
-
-/** Biała plakietka z liczbą pól w punkcie etykiety; przy wejściu rośnie razem z kryciem. */
-function badge(ol, geometry, count, alpha) {
-  const scale = .6 + .4 * alpha, radius = (count > 99 ? 15.5 : 12.5) * scale;
-  return [
-    new ol.style.Style({ geometry, zIndex: 10, image: new ol.style.Circle({ radius: radius + 3.5, fill: new ol.style.Fill({ color: [13, 35, 23, .1 * alpha] }) }) }),
-    new ol.style.Style({ geometry, zIndex: 11,
-      image: new ol.style.Circle({ radius, fill: new ol.style.Fill({ color: [255, 255, 255, alpha] }),
-        stroke: new ol.style.Stroke({ color: [37, 92, 59, alpha], width: 1.5 }) }),
-      text: new ol.style.Text({ text: String(count), font: '600 12.5px Inter, sans-serif', scale, offsetY: 1,
-        fill: new ol.style.Fill({ color: [31, 75, 49, alpha] }) }) }),
-  ];
-}
-
-function unitStyle(ol, unit, { from, to, t, hover }) {
-  const a = lookOf(unit, from, hover), b = lookOf(unit, to, hover);
-  if (!a && !b) return null;
-  const start = a ?? hidden(b), end = b ?? hidden(a);
-  const z = Z[unitRole(unit.get('kod'), to)] ?? Z[unitRole(unit.get('kod'), from)] ?? 0;
-  const styles = [new ol.style.Style({ zIndex: z,
-    fill: new ol.style.Fill({ color: start.fill.map((v, i) => lerp(v, end.fill[i], t)) }),
-    stroke: new ol.style.Stroke({ color: start.stroke.map((v, i) => lerp(v, end.stroke[i], t)), width: lerp(start.width, end.width, t), lineJoin: 'round' }),
-  })];
-  const alpha = lerp(start.badge, end.badge, t), count = unit.get('fields').length;
-  return count && alpha > .01 ? styles.concat(badge(ol, unit.get('label'), count, alpha)) : styles;
-}
-
-/** Pole: zarys działki i znacznik w środku (widać go także wtedy, gdy działka ma kilka pikseli). Tylko w widoku gminy. */
-function fieldStyle(ol, feature, byCode, { from, to, t, hover }) {
-  const shown = (code) => (code.length === 7 && byCode.get(code)?.get('fields').includes(feature) ? 1 : 0);
-  const alpha = lerp(shown(from), shown(to), t);
-  if (alpha < .01) return null;
-  const marker = feature.get('marker');
-  const active = hover === feature.get('field').id;
-  const styles = [new ol.style.Style({ geometry: marker, zIndex: 2, image: new ol.style.Circle({
-    radius: (active ? 8.5 : 7) * (.6 + .4 * alpha), fill: new ol.style.Fill({ color: [37, 92, 59, alpha] }),
-    stroke: new ol.style.Stroke({ color: [255, 255, 255, alpha], width: 2.5 }) }) })];
-  if (feature.getGeometry() === marker) return styles;
-  return [
-    new ol.style.Style({ stroke: new ol.style.Stroke({ color: [255, 255, 255, .9 * alpha], width: 5 }) }),
-    new ol.style.Style({ fill: new ol.style.Fill({ color: [62, 138, 89, (active ? .55 : .4) * alpha] }),
-      stroke: new ol.style.Stroke({ color: [31, 75, 49, alpha], width: 2 }) }),
-    ...styles,
-  ];
-}
-
-const cap = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-const unitName = (unit) => (unit.kod.length === 2 ? `województwo ${unit.nazwa}` : unit.nazwa);
 
 /**
  * Mapa pól: Polska → województwo → powiat → gmina. Jednostki z polami są zielone z liczbą pól, bez pól szare;
@@ -177,7 +112,7 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
       setHover(found?.field?.id ?? found?.unit?.get('kod') ?? null);
       setTip(found ? { x: event.pixel[0], y: event.pixel[1], ...(found.field
         ? { title: found.field.name, text: picker ? 'Pole już dodane' : 'Otwórz raport' }
-        : { title: cap(unitName({ kod: found.unit.get('kod'), nazwa: found.unit.get('nazwa') })), text: count ? fieldsCount(count) : 'Brak pól' }) } : null);
+        : { title: capitalize(unitName({ kod: found.unit.get('kod'), nazwa: found.unit.get('nazwa') })), text: count ? fieldsCount(count) : 'Brak pól' }) } : null);
     });
     map.on('singleclick', (event) => {
       if (picker && anim.current.to.length === 7) {
@@ -315,7 +250,7 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
 
   // Okruszki: na stronie jednostki nadrzędne (bieżąca jest w tytule), w formularzu także bieżąca, bo tytułu nie ma.
   const crumbs = [{ kod: '', label: 'Polska' }, ...[...trail, ...(picker && current ? [current] : [])]
-    .map((unit) => ({ kod: unit.kod, label: cap(unitName(unit)) }))];
+    .map((unit) => ({ kod: unit.kod, label: capitalize(unitName(unit)) }))];
   const crumbClass = 'rounded-md px-0.5 font-medium transition-[color] duration-150 hover:text-neutral-950';
   const breadcrumb = <nav aria-label="Poziomy mapy">
     <ol className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[13px] text-neutral-500">
@@ -364,7 +299,7 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
       <div className="min-w-0">
         {at ? breadcrumb : <Eyebrow>Mapa pól</Eyebrow>}
         <h1 key={at} className={cn('mt-2 font-display text-[28px] font-semibold leading-[1.05] tracking-tight md:text-[34px]', ENTER)}>
-          {current ? cap(unitName(current)) : 'Polska'}</h1>
+          {current ? capitalize(unitName(current)) : 'Polska'}</h1>
         {units.length > 0 && fields.length > 0 && <p className="mt-2 text-[14px] text-neutral-600">{summary}</p>}
       </div>
       <Button icon={<Plus/>} onClick={onAdd}>Dodaj pole</Button>
@@ -398,7 +333,7 @@ export function FieldsMap({ code: routeCode = '', fields = [], onAdd, onPick, pa
           </ul> : <>
             <ul className="-mx-2 mt-3 flex flex-col gap-0.5">{withFields.map((unit) =>
               <li key={unit.kod}><a href={mapHref(unit.kod)} {...hoverProps(unit.kod)} className={rowClass(unit.kod)}>
-                <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-neutral-900">{cap(unit.nazwa)}</span>
+                <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-neutral-900">{capitalize(unit.nazwa)}</span>
                 <span className="num rounded-full bg-brand-50 px-2 py-0.5 text-[12px] font-semibold text-brand-800 ring-1 ring-inset ring-brand-200">
                   {unit.fields.length}</span>
                 <ChevronRight aria-hidden className="size-4 shrink-0 text-neutral-400 transition-transform duration-150 group-hover:translate-x-0.5"/>
