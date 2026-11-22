@@ -43,6 +43,7 @@ def test_ripening_is_not_read_as_drought():
 def test_off_season_is_never_interpreted():
     result = assess(points(0.30, 0.10), DAY, in_season=False, stage="off_season", class_key="moderate", crop_name="Kukurydza")
     assert result.agreement == "inconclusive"
+    assert result.text == []  # poza sezonem żadnego tekstu o wskaźnikach: rolnikowi nic nie mówi
 
 
 def test_single_observation_is_inconclusive():

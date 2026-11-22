@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { ArrowRight, ChevronRight, CircleAlert, Info, RefreshCw } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
 import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
+import { TONE } from '@/components/ui/status';
 import { StatCards } from '@/components/spectrumui/charts/stat-cards';
 import { SkeletonReveal } from '@/components/spectrumui/skeleton-reveal';
 import { cn } from '@/lib/utils';
 import { WaterChart } from '../WaterChart.jsx';
-import { Note, Sparkline, statusFill, statusInk } from '../ui.jsx';
+import { BUCKET_IMAGES } from '../Dashboard.jsx';
+import { Note, Paragraphs, Sparkline, statusFill, statusTone } from '../ui.jsx';
 import { dateText, number, satelliteMeasurements, waterPercent } from '../model.js';
-import { GROUPS, groupActions, Irrigation } from './Recommendations.jsx';
+import { actionArt, GROUPS, groupActions, Irrigation } from './Recommendations.jsx';
 import { CauseList, Section, TAB_LABELS } from './shared.jsx';
 
 const WATER = 'var(--color-water-500)';
@@ -48,18 +51,29 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
   const latest = water.series?.at(-1);
   // próg stresu dotyczy rosnącej uprawy; poza sezonem pokazujemy sam zapas
   const threshold = water.in_season !== false && Number.isFinite(latest?.stress_threshold_pct) ? latest.stress_threshold_pct : null;
-  const actions = GROUPS.flatMap((group) => groupActions(report.recommendations, terrain?.recommendations ?? [], group.key));
+  const actions = GROUPS.flatMap((group) => groupActions(report.recommendations, terrain?.recommendations ?? [], group.key)
+    .map((item) => ({ ...item, group: group.key })));
   const first = actions[0];
+  const art = first && actionArt(first.key, first.group);
   const [context, statement] = splitHeadline(water.headline ?? 'Brakuje danych do oceny');
+  const tone = TONE[statusTone(water)];
+  const stateImage = BUCKET_IMAGES[water.status === 'ok' ? water.class_key : 'unknown'] ?? 'brak';
 
-  // na szerokim ekranie ocena z lewej, najważniejsze działanie z prawej (pod oceną informacja o pewności wyniku)
-  return <div className={cn('grid gap-8 md:grid-cols-2 md:items-center md:gap-x-12', intro &&'animate-rise [animation-delay:70ms] motion-reduce:animate-none')}>
-    <div>
-      <h2 className="eyebrow">Sytuacja wodna</h2>
-      {context && <p className="mt-3 text-[15px] font-medium text-neutral-600">{context}</p>}
-      <p className={cn(context ? 'mt-1.5' : 'mt-3', 'font-display font-semibold leading-[1.04] tracking-tight text-balance',
-        statement.length > 48 ? 'text-[clamp(24px,2.4vw,32px)]' : 'text-[clamp(28px,3.2vw,44px)]')}
-        style={{ color: statusInk(water) }}>{statement}</p>
+  // jedna karta: ocena z lewej (ilustracja stanu, tło w kolorze stanu), najważniejsze działanie z obrazkiem z prawej
+  return <section className={cn('surface overflow-hidden md:grid', first && 'md:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]',
+    intro && 'animate-rise [animation-delay:70ms] motion-reduce:animate-none')}>
+    <div className="flex flex-col p-6 md:p-8" style={{ backgroundImage: `linear-gradient(135deg, ${tone.soft} 0%, transparent 60%)` }}>
+      <div className="flex items-center gap-4">
+        {/* ilustracje stanu z /design, te same co w „Stanie wody na polach” na pulpicie */}
+        <img src={`/design/stan-${stateImage}.png`} alt="" width="112" height="112" decoding="async"
+          className="size-16 shrink-0 drop-shadow-[0_8px_10px_rgba(0,0,0,0.12)] md:size-[72px]"/>
+        <div className="min-w-0">
+          <h2 className="eyebrow">Sytuacja wodna</h2>
+          {context && <p className="mt-1 text-[14px] text-neutral-600">{context}</p>}
+        </div>
+      </div>
+      <p className={cn('mt-5 font-display font-semibold leading-[1.08] tracking-tight text-balance text-neutral-950',
+        statement.length > 48 ? 'text-[clamp(22px,2.2vw,28px)]' : 'text-[clamp(26px,2.6vw,34px)]')}>{statement}</p>
       {result && <>
         <p className="mt-4 text-[16px] leading-relaxed text-neutral-700">
           {result.depletion_mm > 1
@@ -67,7 +81,7 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
             : 'Zapas wody jest pełny'}
           {pct == null && <span className="num text-neutral-500"> · {number(result.available_mm)} z {mm(result.taw_mm)}</span>}
         </p>
-        {pct != null && <div className="mt-4 max-w-[440px]">
+        {pct != null && <div className="mt-4 max-w-[480px]">
           <Meter value={pct} color={statusFill(water)} marker={threshold ?? undefined}
             label={`Zapas wody: ${number(result.available_mm)} z ${mm(result.taw_mm)}`}/>
           <div className="num mt-2.5 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[12.5px] text-neutral-500">
@@ -80,23 +94,29 @@ function Verdict({ report, terrain, limited, onTab, intro }) {
           <CircleAlert aria-hidden className="size-4 shrink-0" strokeWidth={2.25}/>Stres wodny od {dateText(stressDay)}</p>}
       </>}
       <Note section={water} className="mt-4"/>
+      {/* informacja o pewności na dole kolumny, gdy obok jest wyższy panel działania */}
+      {limited && <div className="no-print mt-auto pt-5">
+        <Button variant="link" size="inline" onClick={() => onTab('zrodla')} icon={<Info className="size-4"/>}
+          className="text-[13px]">Ograniczona pewność wyniku</Button>
+      </div>}
     </div>
 
-    {first && <Card className="p-5">
-      <p className="eyebrow flex items-center gap-2"><span aria-hidden className="size-1.5 rounded-full bg-brand-600"/>Najważniejsze teraz</p>
-      <p className="mt-2.5 text-[17px] font-semibold leading-snug tracking-tight text-neutral-950">{first.title}</p>
-      {first.what && <p className="mt-1.5 line-clamp-2 text-[13.5px] leading-relaxed text-neutral-600">{first.what}</p>}
-      <Button variant="link" size="inline" className="press no-print mt-3 text-[13.5px]" iconRight={<ArrowRight className="size-3.5"/>}
+    {first && <div className="flex flex-col border-t border-black/[0.06] bg-neutral-50/70 p-5 md:border-l md:border-t-0 md:p-6">
+      {/* zdjęcie zabiegu kadrowane na całą szerokość; ilustracja grupy cała, na jasnym tle */}
+      <div aria-hidden className={cn('grid aspect-[16/7] place-items-center overflow-hidden rounded-xl ring-1 ring-inset ring-black/[0.05]',
+        !art.photo && 'bg-white')}>
+        <img src={art.src} alt="" width={art.photo ? 472 : 96} height={art.photo ? 288 : 96} decoding="async"
+          className={art.photo ? 'size-full object-cover' : 'size-24 object-contain drop-shadow-[0_8px_10px_rgba(0,0,0,0.12)]'}/>
+      </div>
+      <p className="eyebrow mt-5">Pierwsze zalecane działanie</p>
+      <p className="mt-1.5 text-[17px] font-semibold leading-snug tracking-tight text-neutral-950">{first.title}</p>
+      {first.what && <p className="mt-1.5 line-clamp-3 text-[13.5px] leading-relaxed text-neutral-600">{first.what}</p>}
+      <Button variant="link" size="inline" className="press no-print mt-auto self-start pt-4 text-[13.5px]" iconRight={<ArrowRight className="size-3.5"/>}
         onClick={() => onTab('rekomendacje')}>
         {actions.length > 1 ? `Wszystkie działania (${actions.length})` : 'Szczegóły działania'}
       </Button>
-    </Card>}
-
-    {limited && <button type="button" onClick={() => onTab('zrodla')}
-      className="press -my-1 inline-flex items-center gap-1.5 self-start justify-self-start rounded-md py-1 text-[13px] text-neutral-500 hover:text-neutral-900">
-      <Info aria-hidden className="size-4"/>Ograniczona pewność wyniku<ArrowRight aria-hidden className="size-3.5"/>
-    </button>}
-  </div>;
+    </div>}
+  </section>;
 }
 
 // ---------- zapas wody ----------
@@ -137,6 +157,7 @@ function factCards(report) {
       format: (v) => minus(number(v)), delta: false,
       series: balanceSeries ? runningTotal(balanceDays.map((d) => d.rain_mm - d.et0_mm)) : undefined,
       reference: balanceSeries ? climat.median_10y_mm ?? null : null, color: WATER,
+      baseline: 0, belowColor: 'var(--color-watch)', // nad zerem gleba się nawadnia, pod zerem przesycha
       pointLabel: (i) => `suma do ${dayMonth(balanceDays[i].date)}`,
       caption: typical(climat?.median_10y_mm, balanceSeries),
     },
@@ -156,11 +177,17 @@ function WaterReserve({ report, intro }) {
   const series = water.series ?? [];
   const forecastNote = water.forecast_reason && !water.forecast?.length
     ? <p className="mt-3 text-[12.5px] leading-relaxed text-neutral-500">{water.forecast_reason}</p> : null;
-  return <Section title="Zapas wody w glebie" lead="Woda dostępna dla roślin w strefie korzeni, dzień po dniu, na tle tych samych dni z 10 lat.">
+  // prognoza modelu ML: opis z backendu albo powód, dla którego jej nie ma
+  const ml = water.ml_forecast;
+  const mlLines = ml ? (ml.available ? ml.text ?? [] : [`Prognoza modelu AI niedostępna: ${ml.reason}.`]) : [];
+  const mlNote = mlLines.length
+    ? <div className="mt-3 space-y-1 text-[12.5px] leading-relaxed text-neutral-500">{mlLines.map((line) => <p key={line}>{line}</p>)}</div> : null;
+  return <Section title="Zapas wody w strefie korzeni">
     {series.length > 1
       ? <Card className="px-0 py-4 sm:p-5">
-        <WaterChart series={series} forecast={water.forecast ?? []} color={statusFill(water)} intro={intro}/>
+        <WaterChart series={series} forecast={water.forecast ?? []} ml={ml} color={statusFill(water)} intro={intro}/>
         {forecastNote && <div className="px-4 sm:px-0">{forecastNote}</div>}
+        {mlNote && <div className="px-4 sm:px-0">{mlNote}</div>}
       </Card>
       : <>
         {water.status === 'ok'
@@ -181,7 +208,7 @@ function Causes({ report, terrain, onTab }) {
       iconRight={<ChevronRight aria-hidden className="-ml-1 text-neutral-400"/>}>{TAB_LABELS[key]}</Button>)}
   </div>}>
     <Note section={report.causes}/>
-    {causes.length > 0 ? <CauseList causes={causes} limit={3}/>
+    {causes.length > 0 ? <CauseList causes={causes}/>
       : report.causes.status === 'ok' && <p className="text-[14px] leading-relaxed text-neutral-500">
         {report.causes.reason || 'Raport nie wskazuje wyraźnej przyczyny niedoboru.'}</p>}
   </Section>;
@@ -242,8 +269,10 @@ function Greenness({ satellite, failed, retry, canRetry, printing }) {
   const last = measurements.length - 1;
   const current = index != null && index <= last ? index : last;
   const observation = measurements[current];
+  const details = satellite.text ?? [];
+  const forecast = satellite.ndmi_forecast;
 
-  return <Section title="Zieloność roślin" lead="Ze zdjęć satelitarnych Sentinel-2: im wyższy NDVI, tym więcej zielonych roślin.">
+  return <Section title="Zieloność roślin">
     {pending && <p role="status" className="mb-3 flex items-center gap-2 text-[13.5px] text-neutral-500">
       <Spinner className="size-3.5"/>Wczytuję zdjęcia Sentinel-2…</p>}
     {!pending && satellite.status !== 'ok' && <div role={satellite.status === 'error' ? 'alert' : undefined} className="mb-3">
@@ -265,13 +294,26 @@ function Greenness({ satellite, failed, retry, canRetry, printing }) {
     </Card>}
     {!pending && satellite.status === 'ok' && measurements.length === 0
       && <p className="text-[14px] text-neutral-500">Brak obserwacji.</p>}
+    {(!pending || measurements.length > 0) && (details.length > 0 || forecast) && <Accordion type="multiple" className="mt-3 border-y border-black/[0.07]">
+      {details.length > 0 && <AccordionItem value="observations">
+        <AccordionTrigger>Szczegóły obserwacji</AccordionTrigger>
+        <AccordionContent className="text-[13.5px]"><Paragraphs lines={details}/></AccordionContent>
+      </AccordionItem>}
+      {forecast && <AccordionItem value="ndmi-forecast">
+        <AccordionTrigger>{forecast.available ? 'Prognoza uwilgotnienia roślin' : 'Brak prognozy uwilgotnienia roślin'}</AccordionTrigger>
+        <AccordionContent className="text-[13.5px]">
+          {forecast.available ? <Paragraphs lines={forecast.text}/> : forecast.reason || 'Brak wymaganych danych wejściowych.'}
+        </AccordionContent>
+      </AccordionItem>}
+    </Accordion>}
   </Section>;
 }
 
 // ---------- podsumowanie ----------
 
 /**
- * Zakładka „Podsumowanie”: ocena, zapas wody z liczbami, przyczyny i zieloność roślin.
+ * Zakładka „Podsumowanie”: ocena, zapas wody z liczbami, przyczyny, zieloność roślin i (na końcu) nawadnianie.
+ * Przy drukowaniu blok nawadniania trafia na koniec zakładki Rekomendacje, po retencji i agrotechnice.
  * `intro`: wejście (ocena, karty liczb) tylko przy pierwszym pokazaniu raportu, nie przy powrocie na zakładkę.
  */
 export function Summary({ report, terrain, satellite, sat, limited, onTab, printing, intro = false }) {
@@ -279,11 +321,11 @@ export function Summary({ report, terrain, satellite, sat, limited, onTab, print
     {/* bez modelu 3D i mapy: te są w zakładkach Gleba i Teren i woda, tu same informacje */}
     <Verdict report={report} terrain={terrain} limited={limited} onTab={onTab} intro={intro}/>
     <WaterReserve report={report} intro={intro}/>
-    <Irrigation report={report} terrainActions={terrain?.recommendations ?? []} intro={intro}/>
     <div className="grid gap-14 md:grid-cols-12 md:gap-12">
       <div className="min-w-0 md:col-span-7"><Causes report={report} terrain={terrain} onTab={onTab}/></div>
       <div className="min-w-0 md:col-span-5"><Greenness satellite={satellite} failed={sat.failed} retry={sat.retry}
         canRetry={sat.canRetry} printing={printing}/></div>
     </div>
+    {!printing && <Irrigation report={report} terrainActions={terrain?.recommendations ?? []} intro={intro}/>}
   </div>;
 }

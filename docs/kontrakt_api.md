@@ -10,6 +10,10 @@ Zasady:
 - Jednostki są w nazwach pól (`_mm`, `_pct`, `_ha`, `_m`). Współrzędne w odpowiedzi: EPSG:4326, kolejność lon, lat.
 - Kolejność sekcji raportu jest narzucona przez zadanie: sytuacja wodna, przyczyny, rekomendacje retencyjne, agrotechniczne, nawadnianie, potem źródła i ograniczenia.
 
+## `POST /api/addresses/search`
+
+Przyjmuje `{"query":"Marki, Andersa 1"}`. Zwraca możliwe miejsca z UUG GUGiK. Każde ma etykietę, region, punkt w EPSG:4326 i flagę `precise` określającą, czy znaleziono konkretny numer adresowy. Wynik ustawia widok mapy, a rolnik osobno wskazuje działkę.
+
 ## `POST /api/report`
 
 Wejście: identyfikator działki albo punkt (dokładnie jedno z dwojga), uprawa, data.
@@ -24,6 +28,8 @@ Wejście: identyfikator działki albo punkt (dokładnie jedno z dwojga), uprawa,
 
 Uprawy (`crop`): `winter_wheat`, `spring_barley`, `winter_rapeseed`, `maize`, `potato`, `sugar_beet`, `grassland`. Lista z polskimi nazwami: `GET /api/crops`.
 
+Opcjonalne daty dla upraw jednorocznych to `sowing_date`, `harvest_date` i `next_sowing_date` (ISO `RRRR-MM-DD`). Siew lub sadzenie i zbiór określają granice jednego sezonu, a kolejny siew służy do oceny przerwy po zbiorze. Te same pola przyjmuje zapis pola. Raport przekazuje je również w adresie do późniejszego pobrania sekcji satelitarnej.
+
 Wyjście (`ReportResponse`), pola najwyższego poziomu:
 
 | Pole | Zawartość |
@@ -31,7 +37,7 @@ Wyjście (`ReportResponse`), pola najwyższego poziomu:
 | `parcel` | identyfikator, położenie administracyjne, powierzchnia, geometria GeoJSON |
 | `crop` | uprawa, faza w dniu analizy, Kc, głębokość korzeni, założenia |
 | `summary` | najważniejsze wnioski, 2–4 zdania |
-| `water_status` | bilans wodny FAO-56: klasa niedoboru, wyczerpanie względem RAW i TAW, przedział niepewności, klimatyczny bilans wodny 60 dni, przebieg dzienny (zapas w % z pasmem 10/50/90 percentyla tych samych dni w 10 latach), dla analizy na dziś prognoza zapasu na 7 dni (`forecast`, `forecast_stress_day`) |
+| `water_status` | bilans wodny FAO-56: klasa niedoboru, wyczerpanie względem RAW i TAW, przedział niepewności, klimatyczny bilans wodny 60 dni, przebieg dzienny (zapas w % z pasmem 10/50/90 percentyla tych samych dni w 10 latach), dla analizy na dziś prognoza zapasu na 7 dni (`forecast`, `forecast_stress_day`; każdy dzień także z `typical_p10_pct`, `typical_median_pct`, `typical_p90_pct` z tych samych dni w 10 latach) oraz prognoza modelu ML na 7 dni (`ml_forecast`: `available`, `reason`, `points` z `date`, `available_pct`, `low_pct`, `high_pct` w % TAW, `text`; dla daty historycznej `null`) |
 | `satellite` | obserwacje NDVI i NDMI z Sentinel-2 i to, czy potwierdzają bilans; `ndmi_forecast`: prognoza ML zmiany NDMI na 7–14 dni (opis niżej) |
 | `history` | ten sam bilans dla 10 poprzednich sezonów |
 | `causes` | przyczyny wynikające z danych: opad i ET0 względem mediany 10 lat, gleba, faza uprawy |
@@ -80,4 +86,8 @@ Granica pochodzi z ULDK, a gdy ULDK nie odpowiada, z zapasowej usługi GUGiK (zb
 
 ## `GET /api/forecast?lon=...&lat=...`
 
-Bieżąca prognoza Open-Meteo dla współrzędnych pola, poza historycznym bilansem raportu. `ForecastResponse` zawiera status oraz dobową temperaturę maksymalną, opad, parowanie wskaźnikowe i kod pogody na siedem dni w strefie Europe/Warsaw. Pomiary niedostępne mają wartość `null`. `last_wet_day` wskazuje ostatni dzień z opadem powyżej 5 mm w dostępnych danych z poprzednich 30 dni. `past_days_complete` sygnalizuje, czy sprawdzono cały okres. Cache ma ważność godziny.
+Bieżąca prognoza Open-Meteo dla współrzędnych pola, poza historycznym bilansem raportu. `ForecastResponse` zawiera status oraz dobową temperaturę maksymalną, opad, parowanie wskaźnikowe i kod pogody na siedem dni w strefie Europe/Warsaw. Pomiary niedostępne mają wartość `null`. `last_wet_day` wskazuje ostatni dzień z opadem powyżej 5 mm w dostępnych danych z poprzednich 30 dni. `past_days_complete` sygnalizuje, czy sprawdzono cały okres. Cache ma ważność godziny. Dni prognozy mają też `temperature_min_c` i `wind_max_kmh` (maksimum doby na 10 m), a `recent` to 30 dni przed dziś (opad, ET0) do bilansu wierzchu gleby.
+
+## `GET /api/fieldwork?lon=...&lat=...&crop=...[&sand=...&clay=...&soc=...]`
+
+Plan prac polowych na 7 dni od dziś. `sand`, `clay` [%] i `soc` [g/kg] to uziarnienie wierzchu 0–10 cm z raportu pola. Bez nich serwer liczy glebę umowną i ustawia `soil_assumed: true`. `FieldworkResponse.days[]` ma pogodę dnia, `surface_fc_pct` (wilgotność wierzchu rano w % pojemności polowej, model) i oceny `traffic`, `sowing`, `spraying`, `fertilizing`. Każda ocena ma `rating` (`good` | `caution` | `avoid` | `off`, gdy praca nie pasuje do okresu uprawy, | `unknown` przy braku danych) i `reason`. `windows` podaje najdłuższy ciąg dobrych dni dla każdej pracy (bez klucza, gdy go nie ma), a `notes` ograniczenia. Brak prognozy daje `status` `no_data` albo `error` z powodem.

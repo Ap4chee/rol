@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Menu, Plus } from 'lucide-react';
+import { Menu, Pencil, Plus, Trash2 } from 'lucide-react';
 import { LoadingState } from '@/components/spectrumui/loading-state';
 import {
   ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle, ResponsiveModalTrigger,
@@ -8,15 +8,19 @@ import {
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Dialog } from '@/components/ui/dialog';
-import { ToastProvider } from '@/components/ui/toaster';
+import { ToastProvider, useToast } from '@/components/ui/toaster';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { AddFieldForm } from './AddField.jsx';
-import { Dashboard } from './Dashboard.jsx';
+import { Dashboard, JobBadge } from './Dashboard.jsx';
+import { FieldworkPage } from './Fieldwork.jsx';
+import { FieldsMap } from './FieldsMap.jsx';
+import { mapCode } from './fieldsMap.js';
 import { Report } from './Report.jsx';
 import { mergeSatellite } from './completion.js';
 import { Brand, Sidebar } from './Sidebar.jsx';
-import { dateText, fieldFromReport, fieldHref, fieldTabHref, readFields, routeTab, STORAGE_KEY, upsertField } from './model.js';
-import { generateReport } from './ui.jsx';
+import { dateText, fieldFromReport, fieldHref, fieldTabHref, inputFromReport, readFields, routeTab, STORAGE_KEY } from './model.js';
+import { testParcel } from './testParcel.js';
+import { deleteField, generateReport, listFields, saveField } from './ui.jsx';
 
 const COMPACT_KEY = 'kowr.sidebar-compact';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -75,30 +79,61 @@ function NotFound({ onAdd }) {
   </Callout>;
 }
 
-function Footer() {
-  return <footer className="no-print mx-auto w-full max-w-[1600px] px-4 md:px-8 lg:px-10">
-    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-black/[0.06] py-5 text-[12.5px] leading-snug">
-      <p className="font-medium text-neutral-700">Asystent wody</p>
-      <p className="text-neutral-500">Wynik jest szacunkiem z modeli i otwartych danych.</p>
-    </div>
-  </footer>;
+/** Obrys testowy (adres z ?test) dorysowany do raportu, który serwer policzył dla punktu. */
+function withTestShape(field) {
+  const point = field.input?.test && field.report?.request?.point;
+  if (!point) return field;
+  const shape = testParcel(point.lat, point.lon);
+  return { ...field, report: { ...field.report, parcel: shape.parcel, test_crop_area: shape.cropArea } };
+}
+
+/** Lista z serwera. Pole bez zmian zostaje tym samym obiektem, więc otwarty raport się nie przeładowuje
+ *  i nie gubi dociągniętych w przeglądarce zdjęć satelitarnych. */
+function mergeFields(previous, next) {
+  return next.map((field) => {
+    const old = previous.find((entry) => entry.id === field.id);
+    return old && old.name === field.name && old.job === field.job && old.error === field.error
+      && old.refreshed_at === field.refreshed_at ? old : withTestShape(field);
+  });
+}
+
+/** Pole zapisane, ale jego pierwszy raport jeszcze się liczy na serwerze (albo liczenie się nie udało). */
+function FieldPending({ field, onEdit, onDelete }) {
+  return <div className="flex flex-col gap-6">
+    <header className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-tight md:text-[34px]">{field.name}</h1>
+        <div role="status" className="mt-3"><JobBadge field={field}/></div>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="secondary" size="sm" icon={<Pencil/>} onClick={onEdit}>Edytuj</Button>
+        <Button variant="secondary" size="sm" icon={<Trash2/>} onClick={onDelete}>Usuń</Button>
+      </div>
+    </header>
+    {field.job === 'error'
+      ? <Callout tone="danger" title="Raport się nie policzył">{field.error} Serwer spróbuje ponownie sam.</Callout>
+      : <LoadingState label="Liczę raport w tle: pogoda, gleba, zdjęcia satelitarne (zwykle do minuty)"/>}
+  </div>;
 }
 
 function App() {
-  const [fields, setFields] = useState(() => {
-    try { return readFields(window.localStorage); } catch { return []; }
-  });
+  const [fields, setFields] = useState([]);   // pola z serwera; raporty liczy tam worker (app/fields.py)
+  const [loaded, setLoaded] = useState(false);
   const currentFields = useRef(fields);
+  const poll = useRef(0);
   const [preview, setPreview] = useState(null);
-  // Modal dodawania/przeliczania. Po zamknięciu `field` zostaje, żeby tytuł i treść nie podmieniały się
+  // Modal dodawania/edycji i potwierdzenie usunięcia. Po zamknięciu `field` zostaje, żeby tytuł i treść nie znikały
   // w trakcie animacji wyjścia; `seq` daje świeży formularz przy każdym otwarciu.
   const [modal, setModal] = useState({ open: false, field: undefined, seq: 0 });
+  const [deleting, setDeleting] = useState({ open: false, field: null });
+  const { toast } = useToast();
   const [message, setMessage] = useState('');
   const [shared, setShared] = useState(() => new URLSearchParams(window.location.search).get('parcel') ? 'loading' : '');
   const hash = useHash();
   const { id: current, tab } = routeTab(hash);
   const field = current === 'preview' ? preview : fields.find((entry) => entry.id === current);
-  const page = field ? 'field' : 'dashboard';
+  const mapAt = mapCode(hash);
+  const page = field ? 'field' : mapAt !== null ? 'map' : hash === '#plan' ? 'plan' : 'dashboard';
   const [mobileOpen, setMobileOpen] = useState(false);
   const [compactPref, setCompactPref] = useState(() => { try { return localStorage.getItem(COMPACT_KEY) === '1'; } catch { return false; } });
   const desktop = useDesktop();
@@ -112,26 +147,48 @@ function App() {
 
   const openModal = useCallback((entry) => setModal((state) => ({ open: true, field: entry, seq: state.seq + 1 })), []);
   const closeModal = useCallback(() => setModal((state) => (state.open ? { ...state, open: false } : state)), []);
+  const askDelete = useCallback((entry) => setDeleting({ open: true, field: entry }), []);
+  const closeDelete = useCallback(() => setDeleting((state) => (state.open ? { ...state, open: false } : state)), []);
 
-  const persist = useCallback((next) => {
+  const show = useCallback((next) => {
     currentFields.current = next;
     setFields(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      setMessage('');
-      return true;
-    } catch {
-      setMessage('Przeglądarka nie mogła zapisać danych. Pola są dostępne do zamknięcia tej strony.');
-      return false;
-    }
   }, []);
+
+  /** Lista pól z serwera. W trakcie liczenia co 3 s (stan na kartach), poza tym co minutę (odświeżenie dobowe). */
+  const refresh = useCallback(async () => {
+    try {
+      show(mergeFields(currentFields.current, await listFields()));
+      setMessage('');
+    } catch (error) {
+      setMessage(`Nie udało się wczytać pól z serwera: ${error.message}`);
+    }
+    setLoaded(true);
+    clearTimeout(poll.current);
+    const busy = currentFields.current.some((field) => field.job === 'queued' || field.job === 'running');
+    poll.current = setTimeout(refresh, busy ? 3000 : 60000);
+  }, [show]);
+
+  useEffect(() => {
+    // pola zapisane dawniej tylko w tej przeglądarce przenosimy na serwer; przy błędzie zostają i wracamy do nich później
+    (async () => {
+      let local = [];
+      try { local = readFields(window.localStorage); } catch { /* brak dostępu do pamięci przeglądarki */ }
+      try {
+        for (const field of local) await saveField(inputFromReport(field.report, field.name));
+        if (local.length) window.localStorage.removeItem(STORAGE_KEY);
+      } catch { /* spróbujemy przy następnym wejściu */ }
+      refresh();
+    })();
+    return () => clearTimeout(poll.current);
+  }, [refresh]);
 
   const onSatellite = useCallback((id, generatedAt, result) => {
     const merge = (entry) => ({ ...entry, report: mergeSatellite(entry.report, result) });
-    const saved = currentFields.current.find((field) => field.id === id && field.report.generated_at === generatedAt);
-    if (saved) persist(upsertField(currentFields.current, merge(saved)));
-    setPreview((field) => field?.id === id && field.report.generated_at === generatedAt ? merge(field) : field);
-  }, [persist]);
+    const matches = (field) => field?.id === id && field.report?.generated_at === generatedAt;
+    show(currentFields.current.map((field) => (matches(field) ? merge(field) : field)));
+    setPreview((field) => (matches(field) ? merge(field) : field));
+  }, [show]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -158,11 +215,40 @@ function App() {
     if (desktop) setMobileOpen(false);
   }, [desktop]);
 
-  function add(entry) {
-    const saved = persist(upsertField(currentFields.current, entry));
+  const failed = (what) => (error) => toast({ title: `Nie udało się ${what}.`, description: error.message, status: 'error' });
+
+  /** Raport z linku zapisany jako pole: serwer liczy je od nowa w tle i odświeża codziennie. */
+  function save(entry) {
+    saveField(inputFromReport(entry.report, entry.name)).then(async (saved) => {
+      await refresh();
+      if (current === 'preview') window.location.hash = fieldHref(saved.id);
+    }).catch(failed('zapisać pola'));
+    return true;
+  }
+
+  /** Formularz: zapis pola na serwerze i od razu zamknięcie okna; raport liczy się w tle (stan na karcie pola). */
+  async function submitField(input, signal) {
+    const edited = modal.field;
+    const saved = await saveField(input, edited?.id, signal);
+    await refresh();
     closeModal();
-    window.location.hash = fieldHref(entry.id);
-    return saved;
+    if (edited) {
+      toast({ title: 'Zapisano zmiany w polu.', description: saved.job === 'queued' ? 'Raport przelicza się w tle.' : undefined, status: 'success' });
+      if (page === 'field' && saved.id !== current) window.location.hash = fieldHref(saved.id);
+    } else {
+      toast({ title: `Dodano pole „${saved.name}”.`, description: 'Raport liczy się w tle, stan widać na karcie pola.', status: 'success' });
+    }
+  }
+
+  function confirmDelete() {
+    const target = deleting.field;
+    if (!target) return;
+    closeDelete();
+    deleteField(target.id).then(async () => {
+      await refresh();
+      if (current === target.id) window.location.hash = '';
+      toast({ title: `Usunięto pole „${target.name}”.`, status: 'info' });
+    }).catch(failed('usunąć pola'));
   }
 
   const closeMenu = () => setMobileOpen(false);
@@ -211,24 +297,38 @@ function App() {
       <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col focus:outline-none">
         <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-4 py-6 md:px-8 md:py-10 lg:px-10 print:max-w-none! print:p-0!">
           {message && <Callout tone="danger" role="alert" className="no-print mb-6">{message}</Callout>}
-          {shared === 'loading' ? <SharedLoading/> : <>
+          {shared === 'loading' ? <SharedLoading/> : !loaded ? <LoadingState label="Wczytuję pola"/> : <>
             {shared && <Callout tone="danger" role="alert" title="Nie udało się otworzyć raportu z linku" className="mb-6">{shared}</Callout>}
-            {page === 'field' ? <Report key={field.id + field.report.generated_at} field={field} tab={tab}
+            {page === 'field' && !field.report ? <FieldPending field={field} onEdit={() => openModal(field)}
+              onDelete={() => askDelete(field)}/>
+              : page === 'field' ? <Report key={field.id + field.report.generated_at} field={field} tab={tab}
               onTab={(next) => { window.location.hash = fieldTabHref(current, next); }} onEdit={() => openModal(field)}
-              onSave={add} onSatellite={onSatellite} saved={fields.some((entry) => entry.id === field.id)}/>
-              : <>
+              onDelete={() => askDelete(field)} onSave={save} onSatellite={onSatellite}
+              saved={fields.some((entry) => entry.id === field.id)}/>
+              : page === 'map' ? <FieldsMap code={mapAt} fields={fields} onAdd={addField}/>
+              // plan potrzebuje uprawy i gleby z raportu; pole, którego raport jeszcze się liczy, dołącza po policzeniu
+              : page === 'plan' ? <FieldworkPage fields={fields.filter((entry) => entry.report)} onAdd={addField}/> : <>
                 {current && <NotFound onAdd={addField}/>}
-                <Dashboard fields={fields} onAdd={addField}/>
+                <Dashboard fields={fields} onAdd={addField} onEdit={openModal} onDelete={askDelete}/>
               </>}
           </>}
         </div>
       </main>
-      <Footer/>
     </div>
 
     <Dialog open={modal.open} onOpenChange={(open) => { if (!open) closeModal(); }}
-      title={modal.field ? 'Przelicz raport' : 'Dodaj pole'} width="lg:max-w-6xl">
-      <AddFieldForm key={modal.seq} initial={modal.field} onCancel={closeModal} onReport={add}/>
+      title={modal.field ? 'Edytuj pole' : 'Dodaj pole'} width="lg:max-w-6xl">
+      <AddFieldForm key={modal.seq} initial={modal.field} fields={fields} onCancel={closeModal} onSubmit={submitField}/>
+    </Dialog>
+
+    <Dialog open={deleting.open} onOpenChange={(open) => { if (!open) closeDelete(); }}
+      title="Usuń pole"
+      description={deleting.field ? `Pole „${deleting.field.name}” i jego raport zostaną usunięte.` : undefined}
+      width="lg:max-w-md">
+      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="secondary" onClick={closeDelete} data-autofocus>Anuluj</Button>
+        <Button variant="danger" onClick={confirmDelete}>Usuń pole</Button>
+      </div>
     </Dialog>
   </div>;
 }

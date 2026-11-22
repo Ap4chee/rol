@@ -6,12 +6,12 @@ na fao.org 21.11.2026:
 - tab. 12 (Kc ini, Kc mid, Kc end), tamże
 - tab. 22 (maksymalna efektywna głębokość korzeni Zr i współczynnik p), https://www.fao.org/4/x0490e/x0490e0e.htm
 
-Terminy siewu i fazy upraw ozimych są ZAŁOŻENIAMI dla przeciętnych warunków Polski
-(tab. 11 nie ma wierszy dla naszego klimatu). Rolnik nie podaje daty siewu, więc kalendarz jest umowny.
+Domyślne terminy siewu i fazy upraw ozimych są założeniami dla przeciętnych warunków Polski
+(tab. 11 nie ma wierszy dla naszego klimatu). Terminy podane dla pola dotyczą jednego sezonu.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
 import numpy as np
@@ -47,6 +47,8 @@ class Crop:
     critical_override: tuple[tuple[int, int], tuple[int, int]] | None = None
     sources: dict[str, str] = field(default_factory=dict)
     assumptions: tuple[str, ...] = ()
+    season_override: Season | None = None
+    next_sowing_date: date | None = None
 
 
 CROPS: dict[str, Crop] = {
@@ -150,19 +152,67 @@ class Season:
 
 
 def season_for_harvest_year(crop: Crop, year: int) -> Season:
+    override = crop.season_override
+    if override is not None and override.label == year:
+        return override
     sowing = date(year - 1 if crop.winter else year, crop.sowing_month, crop.sowing_day)
+    harvest = sowing + timedelta(days=sum(crop.stage_days))
+    # Podane terminy mają pierwszeństwo przed sąsiednimi sezonami z kalendarza gatunku.
+    if override is not None and year == override.label - 1:
+        harvest = max(sowing, min(harvest, override.sowing))
+    if override is not None and year == override.label + 1:
+        sowing = min(harvest, max(sowing, override.harvest))
+    return _season(crop, year, sowing, harvest)
+
+
+def _season(crop: Crop, year: int, sowing: date, harvest: date) -> Season:
     l_ini, l_dev, l_mid, l_late = crop.stage_days
-    development_start = sowing + timedelta(days=l_ini)
-    mid_start = development_start + timedelta(days=l_dev)
-    late_start = mid_start + timedelta(days=l_mid)
-    harvest = late_start + timedelta(days=l_late)
+    scale = (harvest - sowing).days / (l_ini + l_dev + l_mid + l_late)
+    development_start = sowing + timedelta(days=round(l_ini * scale))
+    mid_start = sowing + timedelta(days=round((l_ini + l_dev) * scale))
+    late_start = sowing + timedelta(days=round((l_ini + l_dev + l_mid) * scale))
     if crop.critical_override:
         (m1, d1), (m2, d2) = crop.critical_override
         critical_start, critical_end = date(year, m1, d1), date(year, m2, d2) + timedelta(days=1)
     else:
         # okres krytyczny: druga połowa fazy szybkiego wzrostu i cały środek sezonu
-        critical_start, critical_end = development_start + timedelta(days=l_dev // 2), late_start
+        critical_start = development_start + (mid_start - development_start) // 2
+        critical_end = late_start
     return Season(year, sowing, development_start, mid_start, late_start, harvest, critical_start, critical_end)
+
+
+def with_season_dates(crop: Crop, sowing: date | None, harvest_day: date | None,
+                      next_sowing: date | None) -> Crop:
+    """Terminy pola dotyczą jednego sezonu. Brakującą granicę wyznacza długość sezonu gatunku."""
+    if not any((sowing, harvest_day, next_sowing)):
+        return crop
+    if crop.perennial:
+        raise ValueError("Terminy siewu i zbioru dotyczą tylko upraw jednorocznych.")
+    try:
+        duration = timedelta(days=sum(crop.stage_days))
+        if harvest_day is not None:
+            harvest = harvest_day + timedelta(days=1)
+            sowing = sowing or harvest - duration
+        elif sowing is not None:
+            harvest = sowing + duration
+        else:
+            previous = last_completed_season(crop, next_sowing)
+            return replace(crop, season_override=previous, next_sowing_date=next_sowing)
+        if not 2 <= (harvest - sowing).days <= 366:
+            raise ValueError("Zbiór musi przypadać po siewie, a sezon może trwać do 366 dni.")
+        if next_sowing is not None and next_sowing < harvest:
+            raise ValueError("Kolejny siew musi przypadać po zbiorze (również gdy termin zbioru jest szacowany).")
+        last_day = harvest - timedelta(days=1)
+        season = _season(crop, last_day.year, sowing, harvest)
+    except OverflowError as exc:
+        raise ValueError("Podane terminy są poza zakresem kalendarza.") from exc
+    return replace(crop, season_override=season, next_sowing_date=next_sowing)
+
+
+def sowing_after(crop: Crop, season: Season) -> date:
+    if season == crop.season_override and crop.next_sowing_date is not None:
+        return crop.next_sowing_date
+    return season_for_harvest_year(crop, season.label + 1).sowing
 
 
 def season_containing(crop: Crop, day: date) -> Season | None:

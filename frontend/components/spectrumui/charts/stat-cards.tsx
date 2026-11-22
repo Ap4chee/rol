@@ -49,6 +49,10 @@ export type StatCardData = {
   reference?: number | null;
   /** Dół skali wykresu (np. 0 dla sum narastających). Domyślnie najmniejsza wartość serii. */
   min?: number;
+  /** Linia bazowa (np. 0): ciągła linia na wykresie; nad nią kolor karty, pod nią `belowColor`. */
+  baseline?: number;
+  /** Kolor linii i wypełnienia poniżej `baseline`. */
+  belowColor?: string;
   /** Odcinki zamiast wykresu, po jednym na element (np. sezon); zapalone w kolorze karty. */
   segments?: StatCardSegment[];
   /** Podpisy pod pierwszym i ostatnim odcinkiem. */
@@ -131,17 +135,25 @@ function StatCard({
       lo = Math.min(lo, card.reference);
       hi = Math.max(hi, card.reference);
     }
+    if (card.baseline != null) {
+      lo = Math.min(lo, card.baseline);
+      hi = Math.max(hi, card.baseline);
+    }
     const span = hi - lo || 1;
     const y = (v: number) => 7 + (1 - (v - lo) / span) * (box.h - 16);
     const points = series.map((v, i) => ({ x: 3 + (i / (n - 1)) * (box.w - 6), y: y(v) }));
     const line = monotonePath(points);
+    const baseline = card.baseline != null ? y(card.baseline) : null;
+    // z linią bazową wypełnienie sięga do niej (nad i pod), bez niej do dołu wykresu
+    const floor = baseline ?? box.h;
     return {
       line,
-      area: `${line}L${points[n - 1].x},${box.h}L${points[0].x},${box.h}Z`,
+      area: `${line}L${points[n - 1].x},${floor}L${points[0].x},${floor}Z`,
       points,
       reference: card.reference != null ? y(card.reference) : null,
+      baseline,
     };
-  }, [hasSpark, series, n, box, card.min, card.reference]);
+  }, [hasSpark, series, n, box, card.min, card.reference, card.baseline]);
 
   const onMove = (clientX: number) => {
     const node = sparkRef.current;
@@ -154,6 +166,10 @@ function StatCard({
 
   const scrubDot = hover != null && spark ? spark.points[hover] : null;
   const endDot = spark ? spark.points[n - 1] : null;
+  const below = card.belowColor ?? color;
+  const tone = (v: number) => (card.baseline != null && v < card.baseline ? below : color);
+  // miejsce linii bazowej jako ułamek wysokości: tu gradient twardo przechodzi z koloru karty w `below`
+  const split = spark?.baseline != null && box.h > 0 ? Math.max(0, Math.min(1, spark.baseline / box.h)) : null;
 
   let visual: React.ReactNode = null;
   if (known && segments?.length) {
@@ -253,11 +269,29 @@ function StatCard({
             aria-hidden
           >
             <defs>
-              <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity={0.22} />
-                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
-              </linearGradient>
+              {split != null ? (
+                <>
+                  <linearGradient id={`${uid}-fill`} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={box.h}>
+                    <stop offset={0} stopColor={color} stopOpacity={0.24} />
+                    <stop offset={split} stopColor={color} stopOpacity={0.06} />
+                    <stop offset={split} stopColor={below} stopOpacity={0.06} />
+                    <stop offset={1} stopColor={below} stopOpacity={0.24} />
+                  </linearGradient>
+                  <linearGradient id={`${uid}-stroke`} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={box.h}>
+                    <stop offset={split} stopColor={color} />
+                    <stop offset={split} stopColor={below} />
+                  </linearGradient>
+                </>
+              ) : (
+                <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+                </linearGradient>
+              )}
             </defs>
+            {spark.baseline != null ? (
+              <line x1={0} x2={box.w} y1={spark.baseline} y2={spark.baseline} stroke="var(--color-neutral-300)" strokeWidth={1} />
+            ) : null}
             {spark.reference != null ? (
               <line
                 x1={0}
@@ -277,7 +311,7 @@ function StatCard({
             <path
               d={spark.line}
               fill="none"
-              stroke={color}
+              stroke={split != null ? `url(#${uid}-stroke)` : color}
               strokeWidth={2}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -291,14 +325,14 @@ function StatCard({
             {scrubDot ? (
               <>
                 <line x1={scrubDot.x} x2={scrubDot.x} y1={0} y2={box.h} stroke="var(--color-neutral-300)" strokeWidth={1} />
-                <circle cx={scrubDot.x} cy={scrubDot.y} r={4.5} fill="#fff" stroke={color} strokeWidth={2} />
+                <circle cx={scrubDot.x} cy={scrubDot.y} r={4.5} fill="#fff" stroke={tone(pointValue(hover!))} strokeWidth={2} />
               </>
             ) : endDot ? (
               <circle
                 cx={endDot.x}
                 cy={endDot.y}
                 r={3}
-                fill={color}
+                fill={tone(pointValue(n - 1))}
                 stroke="#fff"
                 strokeWidth={1.5}
                 style={animate ? { animation: `spectrum-mc-fade 240ms ease-out ${delay + 620}ms both` } : undefined}

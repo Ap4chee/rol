@@ -24,7 +24,6 @@ from app.core import hydrology as hydro_calc
 from app.core import soil_moisture as moisture_calc
 from app.core import recommendations as rules
 from app.core.crops import (
-    CROPS,
     GROWTH_TEMP_THRESHOLD_C,
     STAGE_NAMES_PL,
     Crop,
@@ -34,6 +33,7 @@ from app.core.crops import (
     root_depth_on,
     season_containing,
     season_for_harvest_year,
+    sowing_after,
 )
 from app.core.ptf import USDA_LABELS_PL, usda_texture_class
 from app.core.soil import SoilVariant, assumed_variant, build_variants, layer_water
@@ -60,6 +60,8 @@ from app.schemas import (
     HydrologySection,
     HydroYear,
     IrrigationNeed,
+    MlForecast,
+    MlForecastPoint,
     MonthAmount,
     ParcelInfo,
     Point,
@@ -83,22 +85,28 @@ from app.schemas import (
     WeatherWindow,
 )
 from app import terrain_service
-from app.sources import NoData, SourceError, egib_wfs, imgw_hydro, parcels, sentinel, soilgrids, weather
+from app.sources import NoData, SourceError, egib_wfs, imgw_hydro, mphp, parcels, sentinel, soilgrids, weather
 from app.sources import soil_moisture as moisture_source
+from app.sources import ifs_forecast
 from app.textfmt import fmt, fmt_date, plural_days
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 MIN_ANALYSIS_DATE = date(2005, 1, 1)
-SERIES_DAYS_FOR_CHART = 180
+SERIES_DAYS_FOR_CHART = 365   # rok wstecz: wykres pokazuje ok. 4 miesiące, resztę odsłania przeciąganie
 NOT_CONNECTED = "Tej części nie policzono, bo raport zatrzymał się na braku pogody."
 HYDROLOGY_CHECK = ("Sprawdź na mapie i w terenie, czy przy działce jest ciek, rów albo oczko wodne. Jeśli tak, zostaw "
                    "wzdłuż brzegu pas trwałej roślinności.")
-HYDROLOGY_IMPACT = ("Raport nie ocenia odległości działki od cieków i rowów ani poziomu wody gruntowej: mapa cieków MPHP10k "
-                    "(Wody Polskie) udostępnia dane wektorowe tylko po zalogowaniu, a wody gruntowej nie ma w otwartych "
-                    "danych dla dowolnego punktu.")
+HYDROLOGY_IMPACT = ("Raport nie ocenia poziomu wody gruntowej: nie ma go w otwartych danych dla dowolnego punktu. "
+                    "Odległość od cieku pochodzi z mapy MPHP10k w skali 1:10 000: drenażu podziemnego na niej nie ma, "
+                    "a małe rowy mogą nie być zaznaczone. Stan rzeki z najbliższego wodowskazu IMGW opisuje całą zlewnię "
+                    "powyżej niego (także wpływ zbiorników, zrzutów i poborów wody), a nie wodę w glebie działki.")
 HYDRO_NO_IMPACT = ("Bilans wodny działki nie zależy od danych z wodowskazu: brakuje tylko niezależnej informacji, "
                    "czy w rzekach okolicy jest mało wody.")
 TIMEOUT_HYDRO_TOTAL_S = 20.0
+WATERCOURSE_SOURCE_NAME = "Mapa Podziału Hydrograficznego Polski MPHP10k (Wody Polskie, ISOK)"
+WATERCOURSE_NO_IMPACT = ("Bez mapy cieków raport nie sprawdza, czy działka leży przy cieku, więc nie podpowie pasa "
+                         "roślinności wzdłuż brzegu.")
+TIMEOUT_WATERCOURSE_S = 20.0
 
 MODEL_LIMITATIONS = [
     "Bilans nie uwzględnia spływu powierzchniowego: cały opad jest liczony jako woda, która wsiąka. "
@@ -109,8 +117,7 @@ MODEL_LIMITATIONS = [
     "Nawadnianie jest nieznane i nie wchodzi do bilansu. Jeśli pole było nawadniane, niedobór jest zawyżony.",
     "Pogoda pochodzi z siatki modelu, a nie z pomiaru na polu. Lokalna burza albo jej brak mogą "
     "zmienić wynik o kilkadziesiąt milimetrów.",
-    "Terminy siewu, faz rozwoju i zbioru są przyjęte umownie dla Polski, a głębokość korzeni jest "
-    "stała przez cały sezon. Wczesny albo późny siew przesuwa okres największego zapotrzebowania.",
+    "Długości faz rozwoju wynikają z kalendarza gatunku. Głębokość korzeni jest stała przez cały sezon.",
     "Współczynniki Kc pochodzą z tablic FAO-56 bez poprawki na lokalny wiatr i wilgotność powietrza.",
     "Porównanie z 10 latami zakłada, że co roku na polu rosła ta sama uprawa.",
 ]
@@ -326,7 +333,7 @@ def variant_result(variant: SoilVariant, a: WaterAssessment, in_season: bool) ->
         class_key=a.class_key, class_label=labels[a.class_key])
 
 
-def crop_info(c: Computed, analysis_date: date) -> CropInfo:
+def crop_info(c: Computed, request: ReportRequest) -> CropInfo:
     crop = c.crop
     last = c.dates[-1]
     season = season_containing(crop, last)
@@ -337,6 +344,19 @@ def crop_info(c: Computed, analysis_date: date) -> CropInfo:
         if crop.perennial:
             season = season_for_harvest_year(crop, last.year)
     assumptions = [crop.sources["stages"], *crop.assumptions]
+    if season == crop.season_override:
+        sowing_label = "Sadzenie" if crop.key == "potato" else "Siew"
+        sowing_source = "podana data" if request.sowing_date is not None else "szacunek"
+        harvest_source = "podana data" if request.harvest_date is not None else "szacunek"
+        assumptions = [
+            f"{sowing_label} {fmt_date(season.sowing)} ({sowing_source}), "
+            f"zbiór {fmt_date(season.harvest - timedelta(days=1))} ({harvest_source}).",
+            f"Wzorzec faz: {crop.sources['stages']}.",
+            *crop.assumptions,
+        ]
+        if crop.next_sowing_date is not None:
+            assumptions.insert(1, f"Kolejny siew {fmt_date(crop.next_sowing_date)} (podana data do oceny przerwy po zbiorze).")
+    phase_bounds = (season.sowing, season.development_start, season.mid_start, season.late_start, season.harvest)
     if crop.perennial:
         assumptions.append("Użytek zielony jest uprawą trwałą: sezon liczony od 1 IV do 31 X.")
     assumptions.append(f"Głębokość korzeni pokazana w modelu rośnie liniowo od 0,15 m przy siewie do {fmt(crop.root_depth_m, 1)} m "
@@ -355,8 +375,10 @@ def crop_info(c: Computed, analysis_date: date) -> CropInfo:
                           source=crop.sources["kc"]),
             CropParameter(name="Głębokość korzeni Zr i frakcja p", value=f"{fmt(crop.root_depth_m, 1)} m; p = {fmt(crop.p, 2)}",
                           source=crop.sources["root"]),
-            CropParameter(name="Długości faz [dni]", value=" / ".join(str(d) for d in crop.stage_days),
-                          source=crop.sources["stages"]),
+            CropParameter(name="Długości faz [dni]",
+                          value=" / ".join(str((end - start).days) for start, end in zip(phase_bounds, phase_bounds[1:])),
+                          source=("Kalendarz gatunku dostosowany do terminów pola"
+                                  if season == crop.season_override else crop.sources["stages"])),
         ],
         assumptions=assumptions)
 
@@ -369,9 +391,8 @@ def _season_reason(c: Computed) -> str:
             return (f"{crop.name}: {fmt_date(last)} to czas poza sezonem wegetacyjnym "
                     "(przyjęty sezon 1 IV–31 X), darń jest w spoczynku.")
         previous = last_completed_season(crop, last)
-        upcoming = season_for_harvest_year(crop, previous.label + 1)
-        return (f"{crop.name} nie rośnie teraz na polu: według przyjętego kalendarza zbiór przypadał "
-                f"{fmt_date(previous.harvest - timedelta(days=1))}, a siew kolejnego sezonu {fmt_date(upcoming.sowing)}.")
+        return (f"{crop.name} nie rośnie teraz na polu: według przyjętych terminów zbiór przypadał "
+                f"{fmt_date(previous.harvest - timedelta(days=1))}, a kolejny siew {fmt_date(sowing_after(crop, previous))}.")
     season = season_containing(crop, last)
     sown = f"po siewie ({fmt_date(season.sowing)}) " if season and not crop.perennial else ""
     return (f"{crop.name} jest {sown}w polu, ale średnia temperatura z ostatnich 10 dni to "
@@ -603,7 +624,7 @@ def causes_section(c: Computed, status: WaterStatus, soil_assumed: bool) -> Caus
             evidence={"available_mm_per_m": round(awc * 1000)}))
 
     kc = c.crop_daily.kc[-1]
-    if c.in_season and np.isfinite(kc) and kc >= 1.0:
+    if c.in_season and c.crop_daily.stage[-1] != "late" and np.isfinite(kc) and kc >= 1.0:
         etc = float(c.main.etc_mm[-7:].mean())
         items.append(Cause(
             key="high_demand_stage", title="Faza dużego zapotrzebowania uprawy",
@@ -648,7 +669,8 @@ SATELLITE_NO_IMPACT = ("Bilans wodny nie zależy od zdjęć: brakuje tylko nieza
 
 
 def satellite_endpoint(request: ReportRequest, parcel_id: str) -> str:
-    return "/api/satellite?" + urlencode({"parcel_id": parcel_id, "crop": request.crop.value, "date": request.date.isoformat()})
+    query = request.model_dump(mode="json", exclude_none=True, exclude={"point"})
+    return "/api/satellite?" + urlencode({**query, "parcel_id": parcel_id})
 
 
 async def finish_satellite(task: asyncio.Task | None, started_at: float) -> tuple[sentinel.SatelliteResult | None, SourceInfo]:
@@ -686,13 +708,15 @@ def signed(value: float) -> str:
 
 
 def ndmi_forecast(result: sentinel.SatelliteResult, c: Computed, analysis_date: date,
-                  location: tuple[float, float] | None = None) -> NdmiForecast:
+                  location: tuple[float, float] | None = None) -> NdmiForecast | None:
     """Prognoza zmiany NDMI na 7–14 dni (kowr_ml). Model jest dodatkiem: błąd albo brak modelu nie psuje raportu.
 
     location – (lat, lon) środka działki w EPSG:4326; model używa położenia jako cechy.
     """
     try:
         from kowr_ml import predict as ml_predict
+        if not ml_predict.in_season(analysis_date):
+            return None
         lat, lon = location if location else (None, None)
         out = ml_predict.predict(result.observations, c.series, analysis_date, lat=lat, lon=lon)
     except Exception as exc:  # brak scikit-learn, uszkodzony plik modelu itp.
@@ -793,7 +817,8 @@ def satellite_section(result: sentinel.SatelliteResult | None, info: SourceInfo,
     section.ndmi_forecast = ndmi_forecast(result, c, request.date, location)
     if not c.in_season and section.green_cover is True and c.crop_daily.stage[-1] == "off_season":
         section.text.append("Na polu widać zieloną okrywę, choć według kalendarza wybranej uprawy pole powinno być puste. "
-                            "To może być międzyplon, samosiewy albo inna uprawa niż wybrana.")
+                            "To może być międzyplon, samosiewy albo inna uprawa niż wybrana. Okrywa ogranicza spływ "
+                            "i parowanie, więc warto ją utrzymać do wiosny.")
     return section, field_check
 
 
@@ -842,11 +867,61 @@ def irrigation_need_section(c: Computed) -> IrrigationNeed:
 # ---------- prognoza zapasu wody ----------
 
 async def fetch_forecast_safe(client: httpx.AsyncClient, lat: float, lon: float, today: date):
-    """Prognoza Open-Meteo na 7 dni; błąd zwraca powód zamiast przerywać raport."""
+    """Prognoza Open-Meteo do 16 dni; błąd zwraca powód zamiast przerywać raport."""
     try:
-        return await weather.fetch_dashboard_forecast(client, lat, lon, today), None
+        return await weather.fetch_dashboard_forecast(client, lat, lon, today, days=weather.FORECAST_MAX_DAYS), None
     except (NoData, SourceError) as exc:
         return None, f"Brak prognozy pogody: {exc}"
+
+
+async def fetch_ifs_safe(client: httpx.AsyncClient, lat: float, lon: float, today: date):
+    """Prognoza ECMWF IFS (wejście modelu wilgotności); błąd zwraca powód zamiast przerywać raport."""
+    try:
+        return (await ifs_forecast.fetch(client, lat, lon, today))[0], None
+    except (NoData, SourceError) as exc:
+        return None, f"Brak prognozy ECMWF IFS: {exc}"
+
+
+def ml_forecast(c: Computed, soil_layers, ifs, ifs_reason: str | None, today: date) -> MlForecast | None:
+    """Zapas działki na dni t … t+13 modelem wilgotności v3 (kowr_ml.sm_predict).
+
+    Model daje zmianę wilgotności 0–100 cm od ostatniej doby bilansu (t−1). Zmianę przeliczamy na mm wody w strefie
+    korzeni (do 1 m, bo tyle obejmuje etykieta) i doczepiamy do zapasu działki z bilansu FAO-56 z tej doby.
+    Model jest dodatkiem: brak danych albo błąd daje powód, a raport liczy się dalej.
+    """
+    if ifs is None:
+        return MlForecast(available=False, reason=ifs_reason) if ifs_reason else None
+    taw = c.main.taw_mm
+    if taw <= 0:
+        return MlForecast(available=False, reason="zerowa pojemność wodna strefy korzeni")
+    try:
+        from kowr_ml import sm_predict
+        out = sm_predict.predict(c.series, ifs, soil_layers, today)
+    except Exception as exc:  # brak scikit-learn, uszkodzony plik modelu itp.
+        return MlForecast(available=False, reason=f"moduł prognozy niedostępny ({type(exc).__name__})")
+    if not out["available"]:
+        return MlForecast(available=False, reason=out["reason"])
+    start = 100.0 * (1.0 - float(c.main.depletion_mm[-1]) / taw)
+    scale = 100.0 * 1000.0 * min(c.crop.root_depth_m, 1.0) / taw   # Δθ [m3/m3] -> % TAW działki
+
+    def pct(delta: float) -> float:
+        return round(min(max(start + scale * delta, 0.0), 100.0), 1)
+
+    points = [MlForecastPoint(date=p["date"], available_pct=pct(p["delta_p50"]), low_pct=pct(p["delta_p10"]),
+                              high_pct=pct(p["delta_p90"])) for p in out["points"]]
+    text = [f"Prognoza modelu uczenia maszynowego ({out['status']}) na {plural_days(len(points))}: zmiana wilgotności gleby "
+            f"0–100 cm z modelu uczonego na reanalizie ERA5-Land i prognozie ECMWF IFS, doczepiona do zapasu działki "
+            f"z {fmt_date(c.dates[-1])}. Pas wokół linii to przedział 80%."]
+    coverage = out.get("interval_coverage_test")
+    if coverage is not None and coverage < 0.78:
+        text.append(f"W teście na sezonie 2025 ten przedział obejmował {fmt(100 * coverage)}% obserwacji, "
+                    + ("czyli jest nieco za wąski." if coverage >= 0.72
+                       else "czyli jest za wąski: rzeczywista zmiana częściej wypada poza pas, zwłaszcza w dalszych dniach."))
+    recent = [o for d, o in zip(c.series.dates, c.series.origin) if today - timedelta(days=30) <= d < today]
+    if any(o == "nasa_power" for o in recent):
+        text.append("Pogoda z ostatnich 30 dni pochodzi z NASA POWER, a model uczono na reanalizie ERA5, "
+                    "więc prognoza jest mniej pewna niż zwykle.")
+    return MlForecast(available=True, model_run=out["model_run"], model_status=out["status"], points=points, text=text)
 
 
 def project_forecast(status: WaterStatus, c: Computed, forecast) -> None:
@@ -859,7 +934,8 @@ def project_forecast(status: WaterStatus, c: Computed, forecast) -> None:
         status.forecast_reason = (f"Prognoza zaczyna się później niż ostatni dzień bilansu ({fmt_date(last)}), "
                                   "więc nie da się jej dołączyć bez luki.")
         return
-    days = [d for i, d in enumerate(days) if d.date == days[0].date + timedelta(days=i)]
+    # tyle dni, ile prognozy modelu AI (ifs_forecast.DAYS), żeby obie linie na wykresie kończyły się razem
+    days = [d for i, d in enumerate(days) if d.date == days[0].date + timedelta(days=i)][:ifs_forecast.DAYS]
     variant = c.variants[0]
     crop_daily = daily_crop_arrays(c.crop, [d.date for d in days])
     taw = c.main.taw_mm
@@ -867,11 +943,15 @@ def project_forecast(status: WaterStatus, c: Computed, forecast) -> None:
         np.array([d.precipitation_mm for d in days]), np.array([d.et0_mm for d in days]), crop_daily.kc, crop_daily.in_field,
         taw_mm=taw, p_table=c.crop.p, tew_mm=total_evaporable_water_mm(variant.fc_top, variant.wp_top),
         rew_mm=variant.rew_mm, initial_depletion_mm=float(c.main.depletion_mm[-1]))
+    # „typowo” na dni prognozy: te same dni w 10 poprzednich latach bilansu, jak dla przebiegu dziennego
+    band = analysis.typical_for(c.dates, 100.0 * (1.0 - c.main.depletion_mm / taw), [d.date for d in days], HISTORY_YEARS)
     for i, d in enumerate(days):
         available = 100.0 * (1.0 - result.depletion_mm[i] / taw)
         threshold = 100.0 * (1.0 - result.raw_mm[i] / taw)
+        p10, p50, p90 = (round(v, 1) for v in band[i]) if band[i] else (None, None, None)
         status.forecast.append(ForecastPoint(date=d.date, rain_mm=round(d.precipitation_mm, 1), et0_mm=round(d.et0_mm, 2),
-                                             available_pct=round(available, 1), stress_threshold_pct=round(threshold, 1)))
+                                             available_pct=round(available, 1), stress_threshold_pct=round(threshold, 1),
+                                             typical_p10_pct=p10, typical_median_pct=p50, typical_p90_pct=p90))
         if status.forecast_stress_day is None and crop_daily.in_field[i] and available < threshold:
             status.forecast_stress_day = d.date
 
@@ -966,6 +1046,49 @@ async def fetch_hydrology_safe(client: httpx.AsyncClient, lon: float, lat: float
     return result, info
 
 
+async def fetch_watercourse_safe(client: httpx.AsyncClient,
+                                 geometry) -> tuple[mphp.Watercourse | None, SourceInfo]:
+    """Najbliższy ciek z mapy MPHP10k z limitem czasu. Błąd nie przerywa raportu."""
+    t0 = time.perf_counter()
+    info = SourceInfo(
+        key="watercourses", name=WATERCOURSE_SOURCE_NAME, status=Status.ok,
+        resolution=f"skala 1:10 000, cieki do {fmt(mphp.SEARCH_RADIUS_M)} m od działki",
+        url="https://isok.gov.pl/inspire.html",
+        license="usługa WMS: brak warunków dostępu i użytkowania; zbiór na dane.gov.pl: CC BY 4.0",
+        notes=["Geometria cieków z publicznej usługi WMS (zapytanie GetFeatureInfo), bez logowania."])
+    result = None
+    try:
+        result, info.from_cache = await asyncio.wait_for(
+            mphp.fetch_nearest_watercourse(client, geometry), TIMEOUT_WATERCOURSE_S)
+    except asyncio.TimeoutError:
+        info.status, info.impact = Status.error, WATERCOURSE_NO_IMPACT
+        info.reason = f"Mapa cieków nie odpowiedziała w {TIMEOUT_WATERCOURSE_S:.0f} s."
+    except (SourceError, RuntimeError) as exc:
+        info.status, info.reason, info.impact = Status.error, str(exc), WATERCOURSE_NO_IMPACT
+    info.elapsed_s = round(time.perf_counter() - t0, 2)
+    return result, info
+
+
+def add_watercourse(hydro: HydrologySection, watercourse: mphp.Watercourse | None, info: SourceInfo,
+                    is_point: bool) -> None:
+    """Dopisuje do sekcji hydrologii najbliższy ciek z mapy MPHP10k albo to, że w promieniu wyszukiwania go nie ma."""
+    if info.status != Status.ok:
+        hydro.text.append(HYDROLOGY_CHECK)   # bez mapy cieków rolnik musi to sprawdzić sam
+        return
+    edge = "od wskazanego punktu" if is_point else "od granicy działki"
+    hydro.search_radius_m = mphp.SEARCH_RADIUS_M
+    if watercourse is None:
+        hydro.text.insert(0, f"Na mapie cieków MPHP10k nie ma cieku bliżej niż {fmt(mphp.SEARCH_RADIUS_M)} m {edge}.")
+        return
+    distance_m = round(watercourse.distance_m, -1)   # mapa 1:10 000, linie uproszczone do ok. 8 m
+    hydro.nearest_watercourse_name = watercourse.name
+    hydro.nearest_watercourse_distance_m = distance_m
+    name = watercourse.name or "bez nazwy"
+    where = ("przecina działkę albo biegnie jej granicą" if distance_m == 0 and not is_point
+             else f"jest ok. {fmt(distance_m)} m {edge}")
+    hydro.text.insert(0, f"Najbliższy ciek na mapie MPHP10k ({name}) {where}.")
+
+
 def _river_name(river: str) -> str:
     """„Bystrzyca (246)” → „Bystrzyca” (w nawiasie jest kod IMGW, rolnikowi niepotrzebny)."""
     return river.split(" (")[0].strip() if river else river
@@ -974,30 +1097,18 @@ def _river_name(river: str) -> str:
 def hydrology_section(result: imgw_hydro.HydroResult | None, info: SourceInfo, class_key: str | None,
                       in_season: bool) -> HydrologySection:
     if result is None:
-        return HydrologySection(status=info.status, reason=info.reason, text=[HYDRO_NO_IMPACT, HYDROLOGY_CHECK])
+        return HydrologySection(status=info.status, reason=info.reason, text=[HYDRO_NO_IMPACT])
     s, cmp = result.station, result.comparison
     river = _river_name(s.river)
-    decimals = 2 if result.metric == "flow" and cmp.median < 10 else 1 if result.metric == "flow" else 0
-    what = "przepływ" if result.metric == "flow" else "stan wody"
+    # Stacja, pomiar, mediana i porównanie z latami są na kafelkach i w tabeli; w tekście tylko to, co z tego wynika
+    # dla pola. Zastrzeżenia metodyczne idą do źródła (notes) i do „Czego nie wiemy” (HYDROLOGY_IMPACT).
+    text = [hydro_calc.agreement_with_balance(cmp.class_key, class_key, in_season)]
     if result.origin == "live":
-        current_text = f"Ostatni pomiar ({fmt_date(result.current_to)}): {what} {fmt(cmp.current, decimals)} {result.unit}."
-    else:
-        current_text = (f"Średni {what} z 7 dni do {fmt_date(result.current_to)}: {fmt(cmp.current, decimals)} {result.unit}.")
-    text = [
-        f"Najbliższy wodowskaz IMGW z pomiarami: {s.name} na rzece {river}, ok. {fmt(s.distance_km)} km od działki.",
-        current_text + f" W tych samych dniach roku {what} był wyższy niż teraz w {cmp.years_higher} z {cmp.years_compared} "
-        f"poprzednich lat (mediana {fmt(cmp.median, decimals)} {result.unit}). Ocena: {hydro_calc.CLASS_LABELS[cmp.class_key]}.",
-        hydro_calc.agreement_with_balance(cmp.class_key, class_key, in_season),
-        "Wodowskaz mierzy wodę spływającą z całej zlewni powyżej niego, a nie wilgotność gleby na działce. Zbiorniki, "
-        "zrzuty i pobory wody mogą zmieniać przepływ, dlatego ten wynik traktujemy jako tło, nie jako ocenę pola.",
-    ]
-    if result.origin == "live":
-        text.append("Bieżący pomiar to pojedynczy odczyt, a lata odniesienia to średnie z 7 dni z archiwum IMGW "
-                    "(opublikowane do " + fmt_date(result.archive_to) + ").")
+        info.notes.append("Bieżący pomiar to pojedynczy odczyt, a lata odniesienia to średnie z 7 dni z archiwum IMGW "
+                          "(opublikowane do " + fmt_date(result.archive_to) + ").")
     if result.metric == "level":
-        text.append("Ten wodowskaz nie ma opracowanego przepływu, więc porównano stan wody; jest on mniej porównywalny "
-                    "między latami (zmiany koryta i wodowskazu).")
-    text.append(HYDROLOGY_CHECK)
+        info.notes.append("Ten wodowskaz nie ma opracowanego przepływu, więc porównano stan wody; jest on mniej "
+                          "porównywalny między latami (zmiany koryta i wodowskazu).")
     return HydrologySection(
         status=Status.ok, station_id=s.id, station_name=s.name, river=river, station_distance_km=round(s.distance_km, 1),
         station_location=Point(lon=s.lon, lat=s.lat), metric=result.metric, unit=result.unit, origin=result.origin,
@@ -1035,11 +1146,14 @@ def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySecti
     stressed_days = [s.stress_days_critical for s in past if s.stressed]
 
     harvest_day = next_sowing = bare_days = None
+    uses_field_dates = next_sowing_provided = False
     if not crop.perennial:
         season = season_containing(crop, last) or last_completed_season(crop, last)
         harvest_day = season.harvest - timedelta(days=1)
-        next_sowing = season_for_harvest_year(crop, season.label + 1).sowing
+        next_sowing = sowing_after(crop, season)
         bare_days = (next_sowing - harvest_day).days - 1
+        uses_field_dates = season == crop.season_override
+        next_sowing_provided = uses_field_dates and crop.next_sowing_date is not None
     bare = analysis.bare_period_stats(c.dates, crop, c.main, c.series.rain_mm)
 
     soc = None
@@ -1064,6 +1178,7 @@ def recommendation_facts(c: Computed, status: WaterStatus, history: HistorySecti
         harvest_day=harvest_day, next_sowing_day=next_sowing, bare_period_days=bare_days,
         bare_rain_mm=bare["rain_mm"] if bare else None, bare_evaporation_mm=bare["evaporation_mm"] if bare else None,
         bare_from=bare["date_from"] if bare else None, bare_to=bare["date_to"] if bare else None,
+        uses_field_dates=uses_field_dates, next_sowing_provided=next_sowing_provided,
         satellite_green_cover=satellite.green_cover, satellite_agreement=satellite.agreement,
         satellite_field_check=satellite_field_check,
         watercourse_distance_m=hydrology.nearest_watercourse_distance_m,
@@ -1096,7 +1211,7 @@ def _no_weather_report(request: ReportRequest, parcel: parcels.Parcel | None, so
     reason = ("Żaden dostawca pogody nie odpowiedział. Bez opadu i ewapotranspiracji nie da się policzyć "
               "bilansu wodnego, więc oceny niedoboru wody nie ma. Spróbuj ponownie za kilka minut.")
     dependent = "Wymaga bilansu wodnego, a ten nie powstał z powodu braku pogody."
-    crop = CROPS[request.crop.value]
+    crop = request.crop_with_timeline()
     return ReportResponse(
         generated_at=datetime.now(timezone.utc), elapsed_s=round(time.perf_counter() - started, 2),
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
@@ -1124,7 +1239,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
         raise HTTPException(status_code=422, detail="Data analizy nie może być z przyszłości.")
     if request.date < MIN_ANALYSIS_DATE:
         raise HTTPException(status_code=422, detail="Data analizy jest zbyt odległa (najwcześniej 01.01.2005).")
-    crop = CROPS[request.crop.value]
+    crop = request.crop_with_timeline()
     timings: dict[str, float] = {}
 
     # Ostatni dzień, który może wejść do obliczeń. Dla „dziś” jest to wczoraj (ostatnia pełna doba),
@@ -1159,13 +1274,18 @@ async def build_report(request: ReportRequest, today: date | None = None,
         async def no_forecast():
             return None, "Prognoza zapasu jest liczona tylko dla analizy na dziś."
 
-        weather_result, (soil_data, soil_info), (hydro_result, hydro_info), (moisture, moisture_info), \
-            (forecast, forecast_reason) = await asyncio.gather(
+        async def no_ifs():   # data historyczna: model wilgotności nie działa z zasady, bez ramki w raporcie
+            return None, None
+
+        weather_result, (soil_data, soil_info), (hydro_result, hydro_info), (watercourse, watercourse_info), \
+            (moisture, moisture_info), (forecast, forecast_reason), (ifs, ifs_reason) = await asyncio.gather(
                 timed("weather", weather.fetch_weather(client, lat, lon, start, end, today)),
                 timed("soil", fetch_soil_safe(client, geometry)),
                 timed("hydrology", fetch_hydrology_safe(client, lon, lat, request.date, today)),
+                timed("watercourses", fetch_watercourse_safe(client, geometry)),
                 timed("soil_moisture", fetch_moisture_safe(client, lat, lon, start, end)),
-                timed("forecast", fetch_forecast_safe(client, lat, lon, today) if request.date >= today else no_forecast()))
+                timed("forecast", fetch_forecast_safe(client, lat, lon, today) if request.date >= today else no_forecast()),
+                timed("ifs_forecast", fetch_ifs_safe(client, lat, lon, today) if request.date >= today else no_ifs()))
         timings["sources_parallel"] = round(time.perf_counter() - t0, 2)
 
     sources = [uldk_info, *weather_sources(weather_result), soil_info]
@@ -1174,9 +1294,11 @@ async def build_report(request: ReportRequest, today: date | None = None,
         _satellite_result, satellite_info = await finish_satellite(satellite_task, satellite_started)
         sources.append(satellite_info)
         sources.append(hydro_info)
+        sources.append(watercourse_info)
         sources.append(moisture_info)
-        return _no_weather_report(request, parcel, sources, started, timings, soil,
-                                  hydrology_section(hydro_result, hydro_info, None, False))
+        hydrology = hydrology_section(hydro_result, hydro_info, None, False)
+        add_watercourse(hydrology, watercourse, watercourse_info, parcel is None)
+        return _no_weather_report(request, parcel, sources, started, timings, soil, hydrology)
 
     t0 = time.perf_counter()
     soil_assumed = soil_data is None
@@ -1185,6 +1307,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
     status = water_status(computed, soil_assumed)
     status.forecast_reason = forecast_reason
     project_forecast(status, computed, forecast)
+    status.ml_forecast = ml_forecast(computed, soil_data.layers if soil_data else None, ifs, ifs_reason, today)
     irrigation_need = irrigation_need_section(computed)
     history = history_section(computed)
     causes = causes_section(computed, status, soil_assumed)
@@ -1202,6 +1325,12 @@ async def build_report(request: ReportRequest, today: date | None = None,
     sources.append(satellite_info)
 
     limitations = list(MODEL_LIMITATIONS)
+    if crop.season_override is None:
+        limitations.append("Terminy siewu i zbioru oszacowano z kalendarza gatunku.")
+    else:
+        limitations.append("Terminy siewu i zbioru podane dla pola dotyczą jednego sezonu. Pozostałe terminy oszacowano.")
+        if crop.next_sowing_date is not None:
+            limitations.append("Data kolejnego siewu służy do oceny przerwy po zbiorze. Bilans kolejnej uprawy opiera się na kalendarzu gatunku.")
     last = computed.dates[-1]
     if last < end:
         limitations.insert(0, f"Dane pogodowe kończą się {fmt_date(last)}, czyli {plural_days((end - last).days)} "
@@ -1212,15 +1341,11 @@ async def build_report(request: ReportRequest, today: date | None = None,
         limitations.insert(0, "Brak danych o glebie: bilans policzono dla gleby umownej, wynik jest orientacyjny.")
 
     hydrology = hydrology_section(hydro_result, hydro_info, status.class_key, computed.in_season)
+    add_watercourse(hydrology, watercourse, watercourse_info, parcel is None)
     sources.append(hydro_info)
     soil_moisture = soil_moisture_section(moisture, moisture_info, end, status.class_key)
     sources.append(moisture_info)
-    sources.append(SourceInfo(
-        key="watercourses", name="Mapa Podziału Hydrograficznego Polski MPHP10k (Wody Polskie, ISOK)", status=Status.no_data,
-        reason="Dane wektorowe cieków (WFS) wymagają logowania, a publiczna usługa WMS daje sam obraz, więc odległości "
-               "działki od cieku nie policzono.",
-        impact=HYDROLOGY_IMPACT, resolution="skala 1:10 000",
-        url="https://isok.gov.pl/inspire.html", license="CC BY 4.0 (dane.gov.pl); pobieranie wektorów wymaga logowania"))
+    sources.append(watercourse_info)
     river_cause = hydrology_cause(hydrology)
     if river_cause:
         if not causes.items and status.class_key not in ("moderate", "severe"):
@@ -1247,7 +1372,7 @@ async def build_report(request: ReportRequest, today: date | None = None,
     return ReportResponse(
         generated_at=datetime.now(timezone.utc), elapsed_s=round(time.perf_counter() - started, 2),
         request=request, analysis_date=request.date, parcel=_parcel_info(parcel) if parcel else None,
-        crop=crop_info(computed, request.date), summary=summary,
+        crop=crop_info(computed, request), summary=summary,
         water_status=status, satellite=satellite, history=history, causes=causes, soil=soil,
         soil_moisture=soil_moisture, irrigation_need=irrigation_need, terrain=terrain_ref, hydrology=hydrology, recommendations=recommendations,
         limitations=limitations, sources=sources, timings_s=timings)

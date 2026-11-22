@@ -53,11 +53,61 @@ export function upsertField(fields, field) {
     : [field, ...fields];
 }
 
+/** Zastępuje edytowane pole (także po zmianie działki na inną) bez tworzenia duplikatów identyfikatora. */
+export function replaceField(fields, previousId, field) {
+  if (!previousId || previousId === field.id) return upsertField(fields, field);
+  const withoutDuplicate = fields.filter((entry) => entry.id !== field.id);
+  return withoutDuplicate.some((entry) => entry.id === previousId)
+    ? withoutDuplicate.map((entry) => (entry.id === previousId ? field : entry))
+    : [field, ...withoutDuplicate];
+}
+
+export function removeField(fields, id) {
+  return fields.filter((entry) => entry.id !== id);
+}
+
+/** Dane pola dla serwera (`POST /api/fields`). Dzisiejsza data = pole „na dziś”: serwer przelicza je codziennie.
+ *  W trybie testowym raport liczy się dla punktu, a obrys testowy dorysowuje frontend. */
+export function fieldInput({ name = '', parcel, point, crop, date, test = false,
+  sowing_date, harvest_date, next_sowing_date }) {
+  return {
+    name: name.trim(), crop, date: date === today() ? null : date, test,
+    ...(sowing_date ? { sowing_date } : {}),
+    ...(harvest_date ? { harvest_date } : {}),
+    ...(next_sowing_date ? { next_sowing_date } : {}),
+    ...(parcel && !test ? { parcel_id: parcel.id } : { point: { lat: point.lat, lon: point.lon } }),
+  };
+}
+
+/** Dane pola z gotowego raportu (raport z linku, pola zapisane dawniej w przeglądarce). Raport liczony na dzień,
+ *  w którym powstał, oznacza pole „na dziś”. */
+export function inputFromReport(report, name = '') {
+  const test = report.parcel?.id === 'TEST';
+  const forToday = report.analysis_date === report.generated_at?.slice(0, 10);
+  return fieldInput({
+    ...report.request,
+    name, crop: report.crop.key, date: forToday ? today() : report.analysis_date, test,
+    parcel: report.request.parcel_id && !test ? { id: report.request.parcel_id } : null,
+    point: report.request.point ?? report.parcel?.centroid,
+  });
+}
+
+/** Czy dane do analizy się zmieniły (sama zmiana nazwy nie wymaga liczenia). */
+export function sameReportInputs(initial, form) {
+  const saved = initial?.input;
+  if (!saved) return false;
+  const next = fieldInput(form);
+  return next.crop === saved.crop && next.date === (saved.date ?? null) && next.test === Boolean(saved.test)
+    && ['sowing_date', 'harvest_date', 'next_sowing_date'].every((key) => (next[key] ?? null) === (saved[key] ?? null))
+    && (next.parcel_id ?? null) === (saved.parcel_id ?? null)
+    && next.point?.lat === saved.point?.lat && next.point?.lon === saved.point?.lon;
+}
+
 export function fieldHref(id) {
   return '#pole/' + encodeURIComponent(id);
 }
 
-export const TABS = ['podsumowanie', 'rekomendacje', 'gleba', 'pogoda', 'teren', 'historia', 'zrodla'];
+export const TABS = ['podsumowanie', 'rekomendacje', 'prace', 'gleba', 'pogoda', 'teren', 'historia', 'zrodla'];
 
 /** Pole z adresu: `#pole/<id>` albo `#pole/<id>/<zakładka>` (id zakodowane, więc bez „/”), `#podglad[/zakładka]`. */
 export function route(hash) {
@@ -79,15 +129,16 @@ export function fieldTabHref(id, tab) {
 const URGENCY = { severe: 0, moderate: 1, watch: 2, none: 3 };
 /** Pola od najpilniejszego (silny niedobór na górze); pola bez oceny na końcu. */
 export function byUrgency(fields) {
-  return [...fields].sort((a, b) => (URGENCY[a.report.water_status.class_key] ?? 4) - (URGENCY[b.report.water_status.class_key] ?? 4));
+  const rank = (field) => URGENCY[field.report?.water_status?.class_key] ?? 4;
+  return [...fields].sort((a, b) => rank(a) - rank(b));
 }
 
 export function actionItems(fields) {
   return byUrgency(fields)
     .flatMap((field) => {
-      const { retention = [], agrotechnical = [], irrigation = [], field_checks = [] } = field.report.recommendations ?? {};
-      const first = (field.report.water_status.class_key === 'severe' ? irrigation[0] : null)
-        ?? retention[0] ?? agrotechnical[0] ?? irrigation[0] ?? field_checks[0];
+      const { retention = [], agrotechnical = [], irrigation = [], field_checks = [] } = field.report?.recommendations ?? {};
+      // Retencja ma zawsze pierwszeństwo przed nawadnianiem (kolejność narzucona przez zadanie KOWR).
+      const first = retention[0] ?? agrotechnical[0] ?? irrigation[0] ?? field_checks[0];
       return first ? [{ field, action: first }] : [];
     });
 }

@@ -531,17 +531,18 @@ export function Field3D({ report, height = 420, cropArea = null, toolbar = null,
       {hovered === 'crop' && <CropTip report={report} rootCm={rootCm}/>}
       {active && <LayerTip layer={active} profile={profile}/>}
     </div>
-    <div className="mt-3 min-h-12">
+    <div className="mt-3">
       <p className="text-[13px] font-medium leading-snug text-neutral-700">
         {crop.name} · {label ?? crop.stage_name?.split(' (')[0] ?? 'faza nieznana'}
         {assumed && <span className="font-normal text-neutral-500"> · kształt umowny (raport dla punktu)</span>}
       </p>
-      <p className="mt-1 max-w-[72ch] text-[12px] leading-relaxed text-neutral-500">
-        {layers.length ? `${layers.length} ${layersWord(layers.length)} gleby (SoilGrids). ` : 'Brak profilu gleby: warstwa umowna. '}
-        {fill != null && rootCm > 0 ? `Niebieski odcień do ${number(rootCm)} cm: zapas wody w strefie korzeni (${number(fill * 100)}%). ` : ''}
-        {/* wskazówka do myszy nie ma sensu na papierze */}
-        <span className="no-print">Najedź na uprawę albo warstwę gleby, żeby zobaczyć szczegóły.</span>
-      </p>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-neutral-500">
+        {layers.length === 0 && <span>Brak profilu gleby · warstwa umowna</span>}
+        {fill != null && rootCm > 0 && <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="size-2 rounded-full bg-water-500"/>
+          <span>Zapas w strefie korzeni <span className="num font-medium text-neutral-700">{number(fill * 100)}%</span></span>
+        </span>}
+      </div>
     </div>
   </div>;
 }

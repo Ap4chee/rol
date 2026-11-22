@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { actionItems, fieldFromReport, fieldHref, FULL_ID, oldestDate, readFields, route, satelliteMeasurements, seasonMonths, upsertField, waterPercent } from './model.js';
+import { actionItems, fieldFromReport, fieldHref, FULL_ID, inputFromReport, oldestDate, readFields, removeField, replaceField, route, sameReportInputs, satelliteMeasurements, seasonMonths, today, upsertField, waterPercent } from './model.js';
 
 test('identyfikatory i zapis pola zachowują działki o nietypowych numerach', () => {
   const id = '022602_1.0003.AR_4.59/2';
@@ -32,11 +32,12 @@ test('kalendarz rozpoznaje lata przestępne i okres uprawy przez granicę roku',
   assert.deepEqual(seasonMonths({ critical_from: '2025-11-12', critical_to: '2026-02-01' }), [10, 11, 0, 1]);
 });
 
-test('zadania biorą zalecenia z raportów i wskazują najpierw silny niedobór', () => {
+test('zadania biorą zalecenia z raportów i wskazują najpierw silny niedobór, z pierwszeństwem retencji', () => {
   const field = (id, key, recommendations) => ({ id, report: { water_status: { class_key: key }, recommendations } });
   const entries = [field('a', 'moderate', { retention: [{ title: 'Zatrzymaj wodę' }] }),
-    field('b', 'severe', { irrigation: [{ title: 'Podlej' }] }), field('c', 'none', {})];
-  assert.deepEqual(actionItems(entries).map((item) => item.action.title), ['Podlej', 'Zatrzymaj wodę']);
+    field('b', 'severe', { retention: [{ title: 'Okrywa gleby' }], irrigation: [{ title: 'Podlej' }] }),
+    field('c', 'severe', { irrigation: [{ title: 'Podlej' }] }), field('d', 'none', {})];
+  assert.deepEqual(actionItems(entries).map((item) => item.action.title), ['Okrywa gleby', 'Podlej', 'Zatrzymaj wodę']);
 });
 
 test('sąsiednie warstwy tej samej gleby łączą się w jedną', async () => {
@@ -60,4 +61,46 @@ test('adres pola niesie zakładkę, a identyfikator z ukośnikiem przechodzi bez
   assert.deepEqual(routeTab(fieldTabHref(id, 'nieznana')), { id, tab: 'podsumowanie' });
   assert.deepEqual(routeTab('#podglad/pogoda'), { id: 'preview', tab: 'pogoda' });
   assert.equal(route('#dodaj'), null);
+});
+
+test('edycja i usuwanie pól zachowują porządek bez duplikatów i wykrywają samą zmianę nazwy', () => {
+  const mk = (id, name, extra = {}) => ({
+    id, name,
+    report: {
+      analysis_date: '2026-07-01', crop: { key: 'maize' },
+      parcel: { id, number: id }, request: { parcel_id: id }, ...extra,
+    },
+  });
+  const a = mk('a', 'Pole A'), b = mk('b', 'Pole B'), c = mk('c', 'Pole C');
+  // zmiana działki zastępuje edytowane pole na miejscu
+  assert.deepEqual(replaceField([a, b, c], 'b', mk('d', 'Pole D')).map((f) => f.id), ['a', 'd', 'c']);
+  // zmiana działki na już zapisaną nie tworzy duplikatu
+  assert.deepEqual(replaceField([a, b, c], 'b', mk('a', 'Pole A nowe')).map((f) => [f.id, f.name]),
+    [['a', 'Pole A nowe'], ['c', 'Pole C']]);
+  // usuwanie zostawia pozostałe pola
+  assert.deepEqual(removeField([a, b, c], 'b').map((f) => f.id), ['a', 'c']);
+  // sama zmiana nazwy vs zmiana danych wejściowych (porównanie z danymi pola zapisanymi na serwerze)
+  const saved = { id: 'a', name: 'Pole A', input: { parcel_id: 'a', point: null, crop: 'maize', date: '2026-07-01', test: false } };
+  assert.equal(sameReportInputs(saved, { parcel: { id: 'a' }, point: null, crop: 'maize', date: '2026-07-01' }), true);
+  assert.equal(sameReportInputs(saved, { parcel: { id: 'a' }, point: null, crop: 'potato', date: '2026-07-01' }), false);
+  assert.equal(sameReportInputs(saved, { parcel: { id: 'a' }, point: null, crop: 'maize', date: '2026-06-30' }), false);
+  assert.equal(sameReportInputs(saved, { parcel: { id: 'a' }, crop: 'maize', date: '2026-07-01', sowing_date: '2026-05-01' }), false);
+  assert.equal(sameReportInputs(saved, { parcel: { id: 'b' }, point: null, crop: 'maize', date: '2026-07-01' }), false);
+  assert.equal(sameReportInputs(saved, { parcel: null, point: { lat: 52, lon: 19 }, crop: 'maize', date: '2026-07-01', test: true }), false);
+  // pole na dziś (date: null) zostaje na dziś, gdy formularz ma dzisiejszą datę
+  assert.equal(sameReportInputs({ input: { ...saved.input, date: null } }, { parcel: { id: 'a' }, crop: 'maize', date: today() }), true);
+  // pole oparte na punkcie bez działki
+  const pt = { input: { parcel_id: null, point: { lat: 52, lon: 19 }, crop: 'maize', date: '2026-07-01', test: false } };
+  assert.equal(sameReportInputs(pt, { parcel: null, point: { lat: 52, lon: 19 }, crop: 'maize', date: '2026-07-01' }), true);
+  assert.equal(sameReportInputs(pt, { parcel: null, point: { lat: 52, lon: 19.1 }, crop: 'maize', date: '2026-07-01' }), false);
+});
+
+test('dane pola z raportu: działka, punkt, obrys testowy i pole na dziś', () => {
+  const base = { crop: { key: 'maize' }, analysis_date: '2026-07-01', generated_at: '2026-07-03T10:00:00Z' };
+  assert.deepEqual(inputFromReport({ ...base, request: { parcel_id: 'x' }, parcel: { id: 'x' } }, ' Pod lasem '),
+    { name: 'Pod lasem', crop: 'maize', date: '2026-07-01', test: false, parcel_id: 'x' });
+  assert.equal(inputFromReport({ ...base, request: { parcel_id: 'x', harvest_date: '2026-09-21' } }).harvest_date, '2026-09-21');
+  assert.deepEqual(inputFromReport({ ...base, request: { point: { lat: 52, lon: 19 } }, parcel: { id: 'TEST' } }).point, { lat: 52, lon: 19 });
+  assert.equal(inputFromReport({ ...base, request: { point: { lat: 52, lon: 19 } }, parcel: { id: 'TEST' } }).test, true);
+  assert.equal(inputFromReport({ ...base, generated_at: '2026-07-01T06:00:00Z', request: { parcel_id: 'x' } }).date, null);
 });

@@ -61,6 +61,8 @@ class Facts:
     bare_evaporation_mm: float | None        # parowanie z odkrytej gleby w tym okresie (z bilansu)
     bare_from: date | None = None
     bare_to: date | None = None
+    uses_field_dates: bool = False
+    next_sowing_provided: bool = False
     satellite_green_cover: bool | None = None   # co pokazuje najnowsze czyste zdjęcie (None = brak zdjęcia)
     satellite_agreement: str | None = None      # confirms | diverges | inconclusive
     satellite_field_check: bool = False
@@ -109,6 +111,10 @@ def build(f: Facts) -> Result:
     out = Result()
     stressed = f.class_key in ("moderate", "severe")
     whole_field = "Cała działka."
+    is_potato = f.crop_key == "potato"
+    sowing_noun = "sadzenia" if is_potato else "siewu"
+    sowing_before = "przed sadzeniem" if is_potato else "przed siewem"
+    sowing_verb = "sadź" if is_potato else "siej"
 
     # ---------- RETENCJA GLEBOWA ----------
     has_bare_period = (not f.perennial and f.bare_period_days is not None
@@ -130,8 +136,9 @@ def build(f: Facts) -> Result:
     if has_bare_period and (loses_water_when_bare or _is_vulnerable(f) or _soil_is_light(f)):
         harvest = f.harvest_day
         late_harvest = (harvest.month, harvest.day) > CATCH_CROP_LATEST_SOWING
+        dates_source = "terminy pola i kalendarz gatunku" if f.uses_field_dates else "kalendarz umowny"
         reasons = [f"Po zbiorze ({harvest.strftime('%d.%m')}) pole zostaje bez uprawy przez ok. {plural_days(f.bare_period_days)}, "
-                   f"do siewu {f.next_sowing_day.strftime('%d.%m')} (kalendarz umowny)."]
+                   f"do {sowing_noun} {f.next_sowing_day.strftime('%d.%m')} ({dates_source})."]
         if bare_sentence:
             reasons.append(bare_sentence.strip())
         if _is_vulnerable(f):
@@ -140,7 +147,7 @@ def build(f: Facts) -> Result:
             reasons.append(f"Gleba utrzymuje tylko {fmt(f.awc_mm_per_m)} mm wody dostępnej na metr głębokości.")
         cover_seen = f.satellite_green_cover is True and f.stage == "off_season"
         confidence = "średnia"
-        confidence_reason = ("Długość przerwy wynika z umownego kalendarza uprawy, a straty na parowanie z modelu bilansu; "
+        confidence_reason = ("Długość przerwy oszacowano na podstawie dostępnych terminów, a straty na parowanie z modelu bilansu; "
                              "nie wiemy, czy okrywa już jest stosowana.")
         if f.satellite_green_cover is False and f.stage == "off_season":
             confidence = "wysoka"
@@ -154,25 +161,28 @@ def build(f: Facts) -> Result:
                 "być puste. Okrywa ogranicza parowanie i spływ." + bare_sentence,
                 "średnia", "Ze zdjęcia nie da się odróżnić międzyplonu od chwastów albo innej uprawy."))
         elif late_harvest or f.bare_period_days < CATCH_CROP_MIN_DAYS:
-            too_short = ("Na międzyplon ścierniskowy jest po tym zbiorze za późno." if late_harvest
+            too_short = ("Na międzyplon po tym zbiorze jest już za późno." if late_harvest
                          else "Przerwa jest za krótka na międzyplon, ale wystarczy, żeby odkryta gleba traciła wodę.")
+            residues = "rozdrobnione łęty i resztki po zbiorze" if is_potato else "rozdrobnione resztki (słomę, łęty, liście)"
             out.retention.append(Rec(
-                "residue_cover", "retention", "Zostaw resztki pożniwne jako okrywę gleby",
-                "Po zbiorze zostaw rozdrobnione resztki (słomę, łęty, liście) na powierzchni aż do uprawy przedsiewnej, "
+                "residue_cover", "retention", "Zostaw resztki po zbiorze jako okrywę gleby" if is_potato else "Zostaw resztki pożniwne jako okrywę gleby",
+                f"Po zbiorze zostaw {residues} na powierzchni aż do uprawy {sowing_before}, "
                 "zamiast od razu je przyorywać. " + too_short,
                 whole_field, " ".join(reasons), confidence, confidence_reason,
                 {"bare_period_days": f.bare_period_days, "evaporation_share": evaporation_share}))
         else:
             dry_now = stressed and f.stage == "off_season"
             latest = f"{CATCH_CROP_LATEST_SOWING[1]:02d}.{CATCH_CROP_LATEST_SOWING[0]:02d}"
-            what = (f"Po zbiorze wysiej międzyplon ścierniskowy, najlepiej do {latest}, "
+            what = (f"Po wykopkach wysiej międzyplon (np. gorczycę, facelię lub żyto), najlepiej do {latest}, "
+                    "i zostaw go jako okrywę do późnej jesieni albo jako mulcz do wiosny.") if is_potato else (
+                    f"Po zbiorze wysiej międzyplon ścierniskowy, najlepiej do {latest}, "
                     "i zostaw go jako okrywę do późnej jesieni albo jako mulcz do wiosny.")
             if dry_now:
                 what += (" Teraz gleba jest przesuszona: żywy międzyplon też zużywa wodę, więc przy braku opadu "
-                         "lepiej zostawić same resztki pożniwne.")
+                         "lepiej zostawić same resztki po zbiorze.")
             out.retention.append(Rec(
-                "cover_crop", "retention", "Międzyplon albo resztki pożniwne po zbiorze", what, whole_field,
-                " ".join(reasons), confidence, confidence_reason,
+                "cover_crop", "retention", "Międzyplon albo okrywa po zbiorze" if is_potato else "Międzyplon albo resztki pożniwne po zbiorze",
+                what, whole_field, " ".join(reasons), confidence, confidence_reason,
                 {"bare_period_days": f.bare_period_days, "evaporation_share": evaporation_share}))
 
     if not f.soil_assumed and f.soc_0_30_g_kg is not None and (_soil_is_light(f) or f.soc_0_30_g_kg < LOW_SOC_G_KG) \
@@ -203,8 +213,10 @@ def build(f: Facts) -> Result:
             "buffer_strip_watercourse", "retention", "Pas trwałej roślinności wzdłuż cieku",
             "Utrzymaj albo załóż pas trawy, krzewów lub drzew między uprawą a ciekiem i nie uprawiaj gleby do samego brzegu.",
             f"Granica działki od strony cieku{name}.",
-            f"Ciek{name} przebiega ok. {fmt(f.watercourse_distance_m)} m od granicy działki (mapa hydrograficzna MPHP10k). "
-            "Pas roślinności zatrzymuje spływającą wodę i glebę, zanim trafią do cieku.",
+            (f"Ciek{name} przecina działkę albo biegnie jej granicą (mapa hydrograficzna MPHP10k). "
+             if f.watercourse_distance_m == 0 else
+             f"Ciek{name} przebiega ok. {fmt(f.watercourse_distance_m)} m od granicy działki (mapa hydrograficzna MPHP10k). ")
+            + "Pas roślinności zatrzymuje spływającą wodę i glebę, zanim trafią do cieku.",
             "średnia", "Odległość odczytano z mapy w skali 1:10 000; szerokość pasa trzeba dobrać na miejscu."))
 
     if f.river_class in ("low", "very_low") and f.river_evidence:
@@ -238,7 +250,8 @@ def build(f: Facts) -> Result:
             "Działanie zapobiegawcze: bilans nie pokazuje teraz niedoboru, a historia działki nie wskazuje częstych susz."))
 
     # ---------- AGROTECHNIKA ----------
-    if not f.perennial and (_is_vulnerable(f) or _soil_is_light(f)):
+    # Ziemniak wymaga uprawy redlinowej, więc nie proponujemy dla niego siewu bezpośredniego ani uprawy bezorkowej.
+    if not f.perennial and not is_potato and (_is_vulnerable(f) or _soil_is_light(f)):
         why = []
         if _is_vulnerable(f):
             why.append(_vulnerability_sentence(f))
@@ -253,8 +266,8 @@ def build(f: Facts) -> Result:
 
     if not f.perennial and f.seasons_total >= 5 and f.seasons_with_long_stress >= max(FREQUENT_STRESS_SEASONS, f.seasons_total // 2):
         out.agrotechnical.append(Rec(
-            "crop_choice", "agrotechnical", "Dopasuj odmianę i termin siewu do częstych niedoborów",
-            f"Dla uprawy „{f.crop_name.lower()}” wybieraj odmiany wcześniejsze albo o większej tolerancji na suszę i siej w "
+            "crop_choice", "agrotechnical", f"Dopasuj odmianę i termin {sowing_noun} do częstych niedoborów",
+            f"Dla uprawy „{f.crop_name.lower()}” wybieraj odmiany wcześniejsze albo o większej tolerancji na suszę i {sowing_verb} w "
             "najwcześniejszym zalecanym terminie, żeby okres krytyczny przypadł, zanim zapas wody się wyczerpie.",
             whole_field,
             _vulnerability_sentence(f) + (f" Mediana to {fmt(f.median_stress_days)} dni stresu w sezonie." if f.median_stress_days else ""),
@@ -286,12 +299,14 @@ def build(f: Facts) -> Result:
 
     if not f.in_season and f.stage == "off_season" and stressed and f.next_sowing_day is not None \
             and 0 <= (f.next_sowing_day - f.analysis_day).days <= 75:
+        term = "podanym" if f.next_sowing_provided else "umownym"
         out.agrotechnical.append(Rec(
-            "save_spring_water", "agrotechnical", "Oszczędzaj wodę przed siewem",
-            "Ogranicz przedsiewne uprawki do niezbędnego minimum i siej w najwcześniejszym możliwym terminie.", whole_field,
-            f"Na {plural_days((f.next_sowing_day - f.analysis_day).days)} przed umownym terminem siewu w glebie brakuje "
+            "save_spring_water", "agrotechnical", f"Oszczędzaj wodę {sowing_before}",
+            f"Ogranicz uprawki {sowing_before} do niezbędnego minimum i {sowing_verb} w najwcześniejszym możliwym terminie.",
+            whole_field,
+            f"Na {plural_days((f.next_sowing_day - f.analysis_day).days)} przed {term} terminem {sowing_noun} w glebie brakuje "
             f"{fmt(f.depletion_mm)} mm wody z {fmt(f.taw_mm)} mm możliwego zapasu.",
-            "średnia", "Stan zapasu pochodzi z bilansu; termin siewu jest umowny."))
+            "średnia", f"Stan zapasu pochodzi z bilansu; obliczenie uwzględnia {('podany' if f.next_sowing_provided else 'umowny')} termin {sowing_noun}."))
 
     # ---------- NAWADNIANIE (opcjonalne, na końcu) ----------
     if not f.in_season:
@@ -306,12 +321,18 @@ def build(f: Facts) -> Result:
         to_threshold = max(f.depletion_mm - f.raw_mm, 0.0)
         thresholds = [max(d - r, 0.0) for d, r in f.variants]
         refills = [d for d, _ in f.variants]
+        if f.depletion_mm <= 30.0:
+            dose_guidance = (f"Wystarczy jedna dawka do {fmt(f.depletion_mm)} mm (nie więcej niż ubytek, "
+                             "żeby nadmiar nie przesiąkł poniżej korzeni).")
+        else:
+            doses = max(2, round(f.depletion_mm / 25.0))
+            dose_word = "dawki" if doses % 10 in (2, 3, 4) and doses % 100 not in (12, 13, 14) else "dawek"
+            dose_guidance = (f"Podziel to na dawki po 20–30 mm (ok. {doses} {dose_word} po 25 mm), żeby woda zdążyła wsiąknąć "
+                             f"i nie spłynęła; łącznie nie przekraczaj ubytku ({fmt(f.depletion_mm)} mm), bo nadmiar przesiąknie poniżej korzeni.")
         out.irrigation.append(Rec(
             "irrigation_optional", "irrigation", "Nawodnienie, jeśli masz dostęp do wody i instalację",
             f"Rozważ nawodnienie w najbliższych dniach. Do progu bez stresu brakuje ok. {fmt(to_threshold)} mm netto, a do pełnego "
-            f"zapasu {fmt(f.depletion_mm)} mm (1 mm = 10 m³ na hektar). Jednorazowo nie podawaj więcej niż {fmt(f.depletion_mm)} mm: "
-            "nadmiar przesiąknie poniżej korzeni. Dawkę podziel na mniejsze, żeby woda nie spłynęła, a przed spodziewanym "
-            "deszczem odłóż zabieg.",
+            f"zapasu {fmt(f.depletion_mm)} mm (1 mm = 10 m³ na hektar). {dose_guidance} Przed spodziewanym deszczem odłóż zabieg.",
             "Najpierw fragmenty pola o najlżejszej glebie.",
             f"Niedobór pozostaje mimo działań retencyjnych, które działają w dłuższym czasie: ubytek {fmt(f.depletion_mm)} mm "
             f"przekracza próg stresu ({fmt(f.raw_mm)} mm), a uprawa jest w fazie, w której brak wody obniża plon.",

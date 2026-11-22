@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 # pamięć podręczna odpowiedzi zewnętrznych usług (tworzona przy pierwszym uruchomieniu)
 cache/
+# zapisane pola rolników (SQLite, tworzone przy pierwszym uruchomieniu)
+data/
 .env
 # lokalne katalogi robocze narzędzi AI
 .claude/

@@ -4,8 +4,9 @@ import { SectionHeader } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 export const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
-export const TAB_LABELS = { podsumowanie: 'Podsumowanie', rekomendacje: 'Rekomendacje', gleba: 'Gleba', pogoda: 'Pogoda',
-  teren: 'Teren i woda', historia: 'Historia', zrodla: 'Źródła' };
+export const TAB_LABELS = { podsumowanie: 'Podsumowanie', rekomendacje: 'Rekomendacje', prace: 'Prace polowe', gleba: 'Gleba',
+  pogoda: 'Pogoda', teren: 'Teren i woda', historia: 'Historia', zrodla: 'Źródła' };
+// „Prace polowe” nie trafiają do PDF: to plan z bieżącej prognozy, a nie część raportu na datę analizy
 // kolejność w PDF: ocena → przyczyny → rekomendacje → źródła (narzucona przez zadanie)
 export const PRINT_ORDER = ['podsumowanie', 'historia', 'pogoda', 'gleba', 'teren', 'rekomendacje', 'zrodla'];
 

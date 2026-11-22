@@ -31,12 +31,18 @@ const ACTION_PHOTOS = { residue_cover: 'mulcz', cover_crop: 'miedzyplon', organi
   buffer_strip_watercourse: 'zadrzewienia', buffer_strip_flow_path: 'zadrzewienia', protect_depression: 'zaglebienie' };
 const GROUP_IMAGES = { retention: 'retencja', agrotechnical: 'agrotechnika', irrigation: 'nawadnianie', field_check: 'ogledziny' };
 
+/** Adres obrazka działania i czy to zdjęcie (kadrowane), czy ilustracja grupy (cała, na tle). */
+export function actionArt(action, group) {
+  const photo = ACTION_PHOTOS[action];
+  return { photo: Boolean(photo), src: photo ? `/design/${photo}.jpg` : `/design/akcja-${GROUP_IMAGES[group]}.png` };
+}
+
 /** Obrazek działania: zdjęcie zabiegu albo ilustracja grupy (te same co w „Najbliższych działaniach” na pulpicie). */
 function ActionImage({ action, group }) {
-  const photo = ACTION_PHOTOS[action];
+  const { photo, src } = actionArt(action, group);
   // bez loading="lazy": przy druku zakładka jest daleko w dokumencie i obrazki mogłyby się nie wczytać
   return <span aria-hidden className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-neutral-100 ring-1 ring-inset ring-black/[0.04]">
-    <img src={photo ? `/design/${photo}.jpg` : `/design/akcja-${GROUP_IMAGES[group]}.png`} alt="" width="44" height="44" decoding="async"
+    <img src={src} alt="" width="44" height="44" decoding="async"
       className={photo ? 'size-full object-cover' : 'size-9 object-contain'}/>
   </span>;
 }
@@ -137,24 +143,12 @@ export function Irrigation({ report, terrainActions, intro }) {
   </Section>;
 }
 
-const actionsWord = (n) => n === 1 ? 'działanie'
-  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'działania' : 'działań';
-
-/** Odpowiedź na „co robić?” w jednym zdaniu, zanim pojawią się szczegóły. */
-function answer(data, groups) {
-  if (data.status !== 'ok') return undefined;
-  const total = groups.reduce((n, group) => n + group.items.length, 0);
-  const head = total ? `Do zrobienia: ${total} ${actionsWord(total)}${total > 1 ? ', od najważniejszego' : ''}.`
-    : 'Raport nie wskazuje działań dla tego pola.';
-  return groups.at(-1).items.length ? head : `${head} Nawadnianie nie jest teraz potrzebne.`;
-}
-
 /**
  * Rekomendacje w stałej kolejności (retencja → agrotechnika → nawadnianie), z działaniami z analizy terenu
  * dopisanymi do swoich grup, i lista oględzin pola. Grupy bez działań to jeden wiersz, żeby nie udawały kroków.
  * `intro`: wejście grup przy pierwszym pokazaniu raportu.
  */
-export function Recommendations({ report, terrainActions, intro = false }) {
+export function Recommendations({ report, terrainActions, printing = false, intro = false }) {
   const data = report.recommendations;
   const groups = GROUPS.map((group) => ({ ...group, items: groupActions(data, terrainActions, group.key) }));
   const shown = new Set();
@@ -163,7 +157,7 @@ export function Recommendations({ report, terrainActions, intro = false }) {
   ].map((item) => [item.key, item])).values()];
   const checksMotion = enter(intro, 3);
 
-  return <Section title="Co robić?" lead={answer(data, groups)}>
+  return <Section title="Co robić?">
     <Note section={data}/>
     <div className="mt-6 max-w-6xl space-y-8">
       {groups.map(({ key, title, items }, i) => {
@@ -185,6 +179,7 @@ export function Recommendations({ report, terrainActions, intro = false }) {
         </div>;
       })}
     </div>
+    {printing && <div className="mt-14"><Irrigation report={report} terrainActions={terrainActions} intro={false}/></div>}
     {checks.length > 0 && <div className={cn('mt-14 max-w-6xl', checksMotion.className)} style={checksMotion.style}>
       <h3 className="font-sans text-[16px] font-semibold tracking-tight text-neutral-950">Co sprawdzić na polu</h3>
       <ul className="surface mt-4 divide-y divide-black/[0.06]">

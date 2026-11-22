@@ -103,3 +103,14 @@ export function generateReport(request, signal) {
   return api('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request), signal });
 }
+
+/** Pola zapisane na serwerze; raporty liczy tam worker (zaraz po zapisie, potem raz na dobę). */
+export const listFields = (signal) => api('/api/fields', { signal });
+
+export function saveField(input, previousId, signal) {
+  const query = previousId ? '?previous_id=' + encodeURIComponent(previousId) : '';
+  return api('/api/fields' + query, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input), signal });
+}
+
+export const deleteField = (id) => api('/api/fields?id=' + encodeURIComponent(id), { method: 'DELETE' });

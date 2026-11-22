@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Printer, RefreshCw, Save } from 'lucide-react';
+import { Check, Pencil, Printer, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toaster';
@@ -7,6 +7,7 @@ import { TextStates } from '@/components/spectrumui/text-states';
 import { usePrinting } from '@/lib/printing';
 import { cn } from '@/lib/utils';
 import { CropTile, TILE } from './Dashboard.jsx';
+import { FieldworkTab } from './Fieldwork.jsx';
 import { ParcelOutline, Status } from './ui.jsx';
 import { dateText, number, TABS } from './model.js';
 import { HistoryTab } from './report/HistoryTab.jsx';
@@ -32,7 +33,7 @@ function SaveIcon({ done }) {
 }
 
 /** Widok pola: nagłówek z działaniami i zakładki raportu; przy drukowaniu wszystkie części jedna pod drugą. */
-export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }) {
+export function Report({ field, tab, onTab, onSave, onEdit, onDelete, onSatellite, saved }) {
   const title = useRef(null);
   const tabs = useRef(null);
   const printing = usePrinting();
@@ -63,7 +64,7 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
   function save() {
     if (!onSave(field)) return;
     setJustSaved(true);
-    toast({ title: 'Raport zapisany w tej przeglądarce.', status: 'success' });
+    toast({ title: 'Zapisano pole. Raport będzie odświeżany codziennie.', status: 'success' });
   }
 
   /** Zmiana zakładki; gdy pasek zakładek jest przyklejony, treść zaczyna się od góry, a nie w połowie. */
@@ -80,7 +81,8 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
     podsumowanie: () => <Summary report={report} terrain={terrain} satellite={satellite} sat={sat} limited={limited}
       onTab={openTab} printing={printing} intro={intro('podsumowanie')}/>,
     rekomendacje: () => <Recommendations report={report} terrainActions={terrainActions}
-      intro={intro('rekomendacje')}/>,
+      printing={printing} intro={intro('rekomendacje')}/>,
+    prace: () => <FieldworkTab report={report}/>,
     gleba: () => <SoilTab report={report} printing={printing} intro={intro('gleba')}/>,
     pogoda: () => <WeatherTab report={report}/>,
     teren: () => <TerrainTab report={report} terrain={terrain} control={topo}/>,
@@ -91,11 +93,15 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
   // numer i obręb zamiast identyfikatora EGiB (pełny identyfikator jest w zakładce Źródła)
   const parcelText = parcel?.number ? [`działka ${parcel.number}`, parcel.region && `obręb ${parcel.region}`].filter(Boolean).join(', ')
     : parcel?.id ?? 'wskazany punkt';
+  const dataDay = water.last_data_day;
+  const dateLabel = dataDay && dataDay !== report.analysis_date
+    ? `dane pogody do ${dateText(dataDay)} (analiza na ${dateText(report.analysis_date)})`
+    : `stan na ${dateText(report.analysis_date)}`;
   const facts = [
     { text: report.crop.name },
     parcel?.area_ha != null && { text: `${number(parcel.area_ha, 2)} ha` },
     { text: parcelText, wrap: true },
-    { text: `stan na ${dateText(report.analysis_date)}` },
+    { text: dateLabel, wrap: true },
   ].filter(Boolean);
   const saveLabel = justSaved ? 'Zapisano' : saved ? 'Zapisz' : 'Zapisz pole';
 
@@ -124,8 +130,11 @@ export function Report({ field, tab, onTab, onSave, onEdit, onSatellite, saved }
       </div>
       </div>
       <div className="no-print flex shrink-0 items-center gap-2">
-        <Button variant="secondary" icon={<RefreshCw/>} onClick={onEdit} className="max-sm:w-10 max-sm:px-0">
-          <span className="max-sm:sr-only">Przelicz</span></Button>
+        <Button variant="secondary" icon={<Pencil/>} onClick={onEdit} className="max-sm:w-10 max-sm:px-0">
+          <span className="max-sm:sr-only">Edytuj</span></Button>
+        {saved && <Button variant="secondary" icon={<Trash2/>} onClick={onDelete}
+          className="hover:border-severe/30 hover:bg-severe-soft hover:text-severe-ink max-sm:w-10 max-sm:px-0">
+          <span className="max-sm:sr-only">Usuń</span></Button>}
         <Button variant="secondary" icon={<Printer/>} onClick={() => window.print()} className="max-sm:w-10 max-sm:px-0">
           <span className="max-sm:sr-only">PDF</span></Button>
         <Button onClick={save} className="max-sm:flex-1">

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ForecastDays } from '../Dashboard.jsx';
 import { dateText, number, today } from '../model.js';
 import { Note } from '../ui.jsx';
@@ -18,17 +19,32 @@ function measure(value, unit) {
   return <>{value}<span className="text-[0.6em] font-normal text-neutral-500">&nbsp;{unit}</span></>;
 }
 
-/** Zakładka „Pogoda”: prognoza na 7 dni, opad i parowanie na tle 10 lat, wnioski. */
+/** Zakładka „Pogoda”: przewijana prognoza do 16 dni w spójnej karcie, opad i parowanie na tle 10 lat, wnioski. */
 export function WeatherTab({ report }) {
   const water = report.water_status;
   const balance = water.climatic_water_balance;
   const position = report.parcel?.centroid ?? report.request.point;
   const isToday = report.analysis_date >= today();
   const causes = (report.causes.items ?? []).filter((cause) => WEATHER_CAUSE.test(cause.key));
-  const forecast = <Section key="forecast" title="Prognoza na 7 dni"
-    lead={isToday ? null : `Od dziś. Nie wchodzi do raportu na ${dateText(report.analysis_date)}.`}>
-    <ForecastDays position={position} size="lg"/>
-    {water.forecast?.length > 0 && <ForecastTable days={water.forecast}/>}
+  const [range, setRange] = useState(null);
+
+  const allForecast = water.forecast ?? [];
+  const syncedForecast = range
+    ? allForecast.filter((d) => d.date >= range.from && d.date <= range.to)
+    : [];
+  const tableDays = syncedForecast.length ? syncedForecast : allForecast.slice(0, 7);
+
+  const forecast = <Section key="forecast" title="Prognoza pogody">
+    <Card className="p-4 sm:p-5 md:p-6">
+      <ForecastDays position={position} size="lg" onRangeChange={setRange}/>
+    </Card>
+    {tableDays.length > 0 && <Card className="mt-5 p-4 sm:p-5 md:p-6">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-sans text-[15px] font-semibold tracking-tight text-neutral-900">Prognozowany zapas wody w glebie</h3>
+        {range?.label && <span className="num text-[12.5px] text-neutral-500">{range.label}</span>}
+      </div>
+      <ForecastTable days={tableDays}/>
+    </Card>}
   </Section>;
   const past = <div key="past" className="grid gap-12 lg:grid-cols-12">
     <Section title="Opad i parowanie na tle 10 lat" className="lg:col-span-7">
@@ -47,9 +63,9 @@ export function WeatherTab({ report }) {
   return <div className="flex flex-col gap-14">{isToday ? [forecast, past] : [past, forecast]}</div>;
 }
 
-/** Bilans puszczony dalej po prognozie: dzień po dniu, zapas na tle progu stresu. */
+/** Bilans puszczony dalej po prognozie: dzień po dniu, zapas na tle progu stresu (zsynchronizowany z oknem karuzeli). */
 function ForecastTable({ days }) {
-  return <Table scroll minWidth={340} className="mt-8 max-w-[640px]">
+  return <Table scroll minWidth={340}>
     <Caption>Czerwony: zapas poniżej progu stresu.<span className="hidden sm:inline"> Kreska: próg stresu.</span></Caption>
     <THead><TR>
       <TH>Dzień</TH><TH className="text-right">Opad</TH><TH className="text-right">Parowanie</TH><TH className="pl-4 sm:pl-6">Zapas wody</TH>
@@ -63,7 +79,7 @@ function ForecastTable({ days }) {
         <TD className="pl-4 sm:pl-6">
           <div className="flex items-center gap-3">
             <span className={stress ? 'w-10 font-semibold' : 'w-10 font-semibold text-neutral-900'}>{number(day.available_pct)}%</span>
-            <div aria-hidden className="hidden w-28 sm:block">
+            <div aria-hidden className="hidden w-36 sm:block md:w-44">
               <Meter size="sm" value={day.available_pct} marker={day.stress_threshold_pct}
                 color={stress ? 'var(--color-severe)' : 'var(--color-water-500)'} track={stress ? 'bg-severe-soft' : 'bg-water-50'}/>
             </div>
@@ -81,6 +97,7 @@ function WeatherWindows({ windows, section }) {
   const max = Math.max(1, ...windows.flatMap((w) => [w.rain_mm, w.rain_median_mm ?? 0, w.et0_mm, w.et0_median_mm ?? 0]));
   // jedna siatka kolumn dla wszystkich okien (subgrid): paski mają tę samą długość toru, więc skala jest naprawdę wspólna
   return <Card className="p-5 md:p-6">
+    <div aria-hidden className="mb-3 text-right text-[12px] text-neutral-500">Analiza / Zwykle</div>
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-4 gap-y-7 sm:gap-x-5">
       {windows.map((w) => <div key={w.days} className="col-span-3 grid grid-cols-subgrid gap-y-3">
         <h3 className="col-span-3 font-sans text-[15px] font-semibold tracking-tight text-neutral-900">Ostatnie {w.days} dni</h3>
@@ -92,7 +109,6 @@ function WeatherWindows({ windows, section }) {
         </dl>
       </div>)}
     </div>
-    <p className="mt-6 text-[12px] text-neutral-500">Kreska i liczba po ukośniku: zwykle (mediana 10 lat).</p>
   </Card>;
 }
 

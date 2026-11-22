@@ -1,19 +1,20 @@
 import { useEffect, useId, useState } from 'react';
-import { motion } from 'motion/react';
-import { ArrowRight, ChevronRight, CloudRain, Droplet, Droplets,Layers, Plus, Sprout, Waves } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
+import { ArrowRight, ChevronLeft, ChevronRight, CloudRain, Droplet, Droplets, Layers, LoaderCircle, Pencil, Plus, Sprout, Trash2, Waves } from 'lucide-react';
+import { SPRING_LAYOUT, SPRING_PRESS } from '@/lib/ease';
 import { Button } from '@/components/ui/button';
 import { Card, Eyebrow } from '@/components/ui/card';
 import { Label, NativeSelect } from '@/components/ui/field';
 import { Meter } from '@/components/ui/meter';
 import { Segmented } from '@/components/ui/segmented';
-import { StatusDot, TONE } from '@/components/ui/status';
+import { StatusBadge, StatusDot, TONE } from '@/components/ui/status';
 import { NumberTicker } from '@/components/spectrumui/number-ticker';
 import { SkeletonReveal } from '@/components/spectrumui/skeleton-reveal';
 import { cn } from '@/lib/utils';
 import { actionItems, byUrgency, dateText, fieldHref, fieldTabHref, number, today, waterPercent } from './model.js';
 import { api, Note, ParcelOutline, Status, statusFill, statusInk, statusTone } from './ui.jsx';
 
-const CROP_IMAGES = { maize: 'kukurydza', winter_wheat: 'pszenica', spring_barley: 'jeczmien', winter_rapeseed: 'rzepak', grassland: 'laka', potato: 'ziemniaki', sugar_beet: 'burak' };
+export const CROP_IMAGES = { maize: 'kukurydza', winter_wheat: 'pszenica', spring_barley: 'jeczmien', winter_rapeseed: 'rzepak', grassland: 'laka', potato: 'ziemniaki', sugar_beet: 'burak' };
 
 // Pierwsze wejście bloku: krótko w górę z przezroczystości. Przy ograniczonym ruchu samo przenikanie, bez przesunięcia.
 const RISE = 'animate-rise motion-reduce:animate-in motion-reduce:fade-in motion-reduce:fill-mode-both';
@@ -25,7 +26,7 @@ let introPlayed = false;   // wejście pulpitu tylko raz na sesję, nie przy pow
 // ---------- pusty pulpit ----------
 
 // Ilustracje 3D (makiety pola z przekrojem gleby) w /design; cień z CSS, bo obrazki mają przezroczyste tło bez cienia
-const ART_SHADOW = 'drop-shadow-[0_10px_14px_rgba(0,0,0,0.12)]';
+export const ART_SHADOW = 'drop-shadow-[0_10px_14px_rgba(0,0,0,0.12)]';
 
 /** Pusty pulpit: ilustracja, jedno zdanie i przycisk; samo dodawanie pola jest w modalu. */
 function EmptyState({ onAdd }) {
@@ -44,7 +45,7 @@ const BUCKETS = [
   ['severe', 'severe', 'silny niedobór'], ['moderate', 'moderate', 'umiarkowany niedobór'],
   ['watch', 'watch', 'do obserwacji'], ['none', 'ok', 'bez niedoboru'],
 ];
-const BUCKET_IMAGES = { severe: 'silny', moderate: 'umiarkowany', watch: 'obserwacja', none: 'ok', unknown: 'brak' };
+export const BUCKET_IMAGES = { severe: 'silny', moderate: 'umiarkowany', watch: 'obserwacja', none: 'ok', unknown: 'brak' };
 
 const fieldsOf = (n) => `z ${n} ${n === 1 ? 'pola' : 'pól'}`;
 // 2–4 pola (bez 12–14) „potrzebują”; 1 pole i 5+ pól „potrzebuje”
@@ -109,9 +110,62 @@ export function CropTile({ crop, className }) {
   </span>;
 }
 
-/** Karta pola (cała jest linkiem): uprawa, stan wody (duży procent zapasu w strefie korzeni, plakietka, pasek), pierwszy krok retencji, na dole szczegóły retencji (pojemność gleby, bilans, ciek).
- *  Działania są obok w „Najbliższe działania”, a pełny opis stanu w raporcie pola, więc karta ich nie powtarza. */
-function FieldCard({ field, style }) {
+// Stan liczenia raportu na serwerze (app/fields.py): worker liczy raport po dodaniu pola i raz na dobę.
+const JOB = { queued: 'W kolejce', running: 'Liczę raport', error: 'Nie udało się policzyć' };
+const refreshedText = (iso) => new Intl.DateTimeFormat('pl-PL', {
+  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).format(new Date(iso));
+
+/** Plakietka liczenia: kręci się, dopóki serwer liczy; przy błędzie podaje powód w podpowiedzi. */
+export function JobBadge({ field, className }) {
+  if (!JOB[field.job]) return null;
+  const failed = field.job === 'error';
+  const label = !field.report ? JOB[field.job] : failed ? 'Nie odświeżono' : 'Odświeżam raport';
+  return <StatusBadge tone={failed ? 'severe' : 'info'} size="sm" spin={!failed} icon={failed ? undefined : LoaderCircle}
+    title={field.error ?? undefined} className={className}>{label}</StatusBadge>;
+}
+
+/** Pasek pod kartą: stan raportu po lewej, edycja i usuwanie po prawej (przyciski nie są zagnieżdżone w <a>). */
+function CardFooter({ field, onEdit, onDelete }) {
+  return <div className="flex items-center justify-end gap-1 border-t border-black/[0.05] bg-neutral-50/70 px-3 py-1.5">
+    <div role="status" className="mr-auto min-w-0 truncate pl-1 text-[12px] text-neutral-500">
+      {/* karta bez raportu pokazuje stan w treści, więc tu tylko przy odświeżaniu istniejącego raportu */}
+      {!field.report ? null : JOB[field.job] ? <JobBadge field={field}/>
+        : field.refreshed_at && <>Odświeżono {refreshedText(field.refreshed_at)}</>}
+    </div>
+    <Button variant="ghost" size="sm" icon={<Pencil/>} aria-label={`Edytuj pole ${field.name}`}
+      onClick={() => onEdit(field)} className="text-neutral-600 max-sm:h-9">Edytuj</Button>
+    <Button variant="ghost" size="sm" icon={<Trash2/>} aria-label={`Usuń pole ${field.name}`}
+      onClick={() => onDelete(field)}
+      className="text-neutral-600 hover:bg-severe-soft hover:text-severe-ink max-sm:h-9">Usuń</Button>
+  </div>;
+}
+
+/** Karta pola, którego pierwszy raport jeszcze się liczy (albo się nie udał): stan zamiast wyniku. */
+function PendingFieldCard({ field, style, onEdit, onDelete }) {
+  const failed = field.job === 'error';
+  return <Card className={cn('flex min-w-0 flex-col overflow-hidden', RISE)} style={style}>
+    <a href={fieldHref(field.id)} className="group flex flex-1 flex-col p-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600">
+      <div className="flex items-center gap-3">
+        <CropTile crop={{ key: field.input.crop }}/>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate font-sans text-[15px] font-semibold leading-snug tracking-tight text-neutral-900">{field.name}</h3>
+          <p className="mt-0.5 truncate text-[13px] text-neutral-500">{field.input.parcel_id ?? 'Wskazany punkt'}</p>
+        </div>
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-neutral-300 transition-[color,translate] duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-neutral-500"/>
+      </div>
+      <div className="mt-5 flex flex-1 flex-col items-start gap-2.5">
+        <JobBadge field={field}/>
+        <p className="text-[13px] leading-snug text-neutral-500">{failed
+          ? `${field.error} Serwer spróbuje ponownie sam.`
+          : 'Pobieram pogodę, glebę i zdjęcia satelitarne. Wynik pojawi się tu sam, zwykle w ciągu minuty.'}</p>
+      </div>
+    </a>
+    <CardFooter field={field} onEdit={onEdit} onDelete={onDelete}/>
+  </Card>;
+}
+
+/** Karta pola: treść jest linkiem do raportu, a u dołu osobny pasek ze stanem raportu, edycją i usuwaniem. */
+function FieldCard({ field, style, onEdit, onDelete }) {
   const { report } = field;
   const water = report.water_status;
   const value = waterPercent(water.result);
@@ -126,9 +180,8 @@ function FieldCard({ field, style }) {
     [Waves, 'Najbliższy ciek', Number.isFinite(brook) && [hydro.nearest_watercourse_name,
       brook < 1000 ? `${number(brook)} m` : `${number(brook / 1000, 1)} km`].filter(Boolean).join(' · ')],
   ].filter(([, , v]) => v);
-  // focus-visible:outline-solid: `outline-none` z Card zeruje styl obrysu w Tailwind v4, więc bez tego fokus klawiatury byłby niewidoczny
-  return <Card asChild interactive className={cn('group flex min-w-0 flex-col p-5 focus-visible:outline-solid', RISE)} style={style}>
-    <a href={fieldHref(field.id)}>
+  return <Card className={cn('flex min-w-0 flex-col overflow-hidden transition-[border-color,box-shadow] duration-200 ease-out hover:border-black/[0.14] hover:shadow-raised', RISE)} style={style}>
+    <a href={fieldHref(field.id)} className="group flex flex-1 flex-col p-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600">
       <div className="flex items-center gap-3">
         <CropTile crop={report.crop}/>
         <div className="min-w-0 flex-1">
@@ -173,6 +226,7 @@ function FieldCard({ field, style }) {
         </dl>
       </div>}
     </a>
+    <CardFooter field={field} onEdit={onEdit} onDelete={onDelete}/>
   </Card>;
 }
 
@@ -212,7 +266,7 @@ function NextActions({ items, style }) {
 // ---------- prognoza pogody ----------
 
 /** Kod pogody WMO → [ilustracja z /design/pogoda-*.png, opis]. */
-function weatherIcon(code) {
+export function weatherIcon(code) {
   if (code === 0) return ['slonce', 'Bezchmurnie'];
   if (code === 1 || code === 2) return ['przejasnienia', 'Częściowe zachmurzenie'];
   if (code === 3) return ['pochmurno', 'Zachmurzenie'];
@@ -239,72 +293,209 @@ const SIZES = {
 const temperature = (value) => `${number(value).replace('-', '−')}°`;
 // w wąskiej kolumnie (sm) opad od 10 mm bez części dziesiętnej, żeby liczby sąsiednich dni się nie zlewały
 const rainText = (mm, big) => `${number(mm, big || mm < 10 ? 1 : 0)} mm`;
+const shortDate = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+const VISIBLE_DAYS = 7;
 
-/** Siedem równych kolumn (dzień, ikona, temperatura maks., opad; w `big` także parowanie). Bez `days`: szkielet tej samej wielkości. */
-function ForecastGrid({ days, big }) {
+/** Punkty zatrzymania karuzeli: pełne 7-dniowe okna bez pustych dziur na końcu (dla 16 dni: 0, 7, 9). */
+function forecastStops(total, visible = VISIBLE_DAYS) {
+  if (total <= visible) return [0];
+  const max = total - visible;
+  const stops = [];
+  for (let i = 0; i < max; i += visible) stops.push(i);
+  stops.push(max);
+  return stops;
+}
+
+/** Jedna komórka dnia w pasku prognozy: w widoku `big` (zakładka Pogoda) spójna kafelka dnia z wyraźną hierarchią. */
+function ForecastCell({ day, big, isToday, s }) {
+  const [icon, label] = weatherIcon(day.weather_code);
+  const wet = day.precipitation_mm >= 5;
+  const weekday = isToday ? 'dziś' : weekdays.format(new Date(day.date + 'T12:00:00Z')).replace('.', '');
+
+  if (big) {
+    return <div className={cn(
+      'flex h-full min-w-0 flex-col items-center rounded-xl border px-2 py-3.5 text-center transition-colors @xl/forecast:px-3 @xl/forecast:py-4',
+      isToday ? 'border-brand-600/25 bg-white shadow-hairline'
+        : wet ? 'border-water-200/80 bg-water-50/70'
+          : 'border-black/[0.06] bg-neutral-50/55')}>
+      <span className={cn('text-[12.5px] font-semibold leading-tight @xl/forecast:text-[13.5px]',
+        isToday ? 'text-brand-700' : 'text-neutral-800')}>{weekday}</span>
+      <span className="num mt-0.5 text-[11px] leading-tight text-neutral-400">{shortDate(day.date)}</span>
+      <span className="my-2.5 flex h-10 items-center justify-center @xl/forecast:my-3 @xl/forecast:h-11">
+        {icon ? <img src={`/design/pogoda-${icon}.png`} alt={label} title={label} width="44" height="44" decoding="async"
+          className="size-9 object-contain @xl/forecast:size-11"/>
+          : <span role="img" aria-label={label} className="text-neutral-400">—</span>}
+      </span>
+      <span className={cn('num text-[18px] font-semibold leading-none tracking-tight text-neutral-950 @xl/forecast:text-[21px]',
+        day.temperature_max_c != null && 'pl-[0.2em]')}>
+        {day.temperature_max_c == null ? '—' : temperature(day.temperature_max_c)}</span>
+      <span className="num mt-1.5 h-3.5 text-[11.5px] leading-none text-neutral-400">
+        {day.temperature_min_c != null ? `noc ${temperature(day.temperature_min_c)}` : ''}</span>
+      <dl className="mt-3 w-full space-y-1 border-t border-black/[0.06] pt-2.5 text-[11px] leading-tight @xl/forecast:text-[12px]">
+        <div className="flex flex-col items-center @2xl/forecast:flex-row @2xl/forecast:justify-between">
+          <dt className="hidden text-neutral-400 @2xl/forecast:inline">Opad</dt>
+          <dd className={cn('num whitespace-nowrap', day.precipitation_mm > 0 ? 'font-semibold text-water-700' : 'text-neutral-400')}>
+            {day.precipitation_mm == null ? '—' : rainText(day.precipitation_mm, true)}</dd>
+        </div>
+        <div className="flex flex-col items-center @2xl/forecast:flex-row @2xl/forecast:justify-between">
+          <dt className="hidden text-neutral-400 @2xl/forecast:inline">Parow.</dt>
+          <dd className="num whitespace-nowrap text-neutral-600">
+            {day.et0_mm == null ? '—' : `${number(day.et0_mm, 1)} mm`}</dd>
+        </div>
+      </dl>
+    </div>;
+  }
+
+  return <div className={cn('flex min-w-0 flex-col items-center', s.cell, wet && 'bg-water-50')}>
+    <span className={cn('flex items-center font-medium', s.day, isToday ? 'text-neutral-900' : 'text-neutral-500')}>
+      {weekday}</span>
+    <span className="num text-[10px] leading-tight text-neutral-400">{shortDate(day.date)}</span>
+    <span className={cn('flex items-center', s.icon)}>
+      {/* brak kodu pogody: kreska zamiast obrazka, żeby nie udawać zachmurzenia */}
+      {icon ? <img src={`/design/pogoda-${icon}.png`} alt={label} title={label} width="40" height="40" decoding="async"
+        className={cn('object-contain', s.glyph)}/>
+        : <span role="img" aria-label={label} className="text-neutral-400">—</span>}</span>
+    {/* znak stopnia przesuwa liczbę w lewo; lewy odstęp centruje same cyfry */}
+    <span className={cn('num flex items-center font-semibold tracking-tight text-neutral-900', s.temp, day.temperature_max_c != null && 'pl-[0.25em]')}>
+      {day.temperature_max_c == null ? '—' : temperature(day.temperature_max_c)}</span>
+    <span className={cn('num flex items-center whitespace-nowrap font-medium tracking-tight text-water-700', s.rain)}>
+      {day.precipitation_mm > 0 && rainText(day.precipitation_mm, false)}</span>
+  </div>;
+}
+
+/** Pasek 7 dni z płynnym przesuwaniem w poziomie (karuzela po wszystkich pobranych dniach prognozy). */
+function ForecastStrip({ days, big, offset, canPrev, canNext }) {
   const s = big ? SIZES.lg : SIZES.sm;
-  if (!days) return <ol aria-hidden className={cn('grid grid-cols-7', s.list)}>
-    {Array.from({ length: 7 }, (_, i) => <li key={i} className={cn('flex flex-col items-center', s.cell)}>
-      <span className={cn('flex items-center', s.day)}><span className="h-2 w-5 rounded-full bg-neutral-200/80"/></span>
-      <span className={cn('flex items-center', s.icon)}><span className={cn('rounded-full bg-neutral-200/80', s.glyph)}/></span>
+  const reduced = useReducedMotion();
+  if (!days) return <ol aria-hidden className={cn('grid grid-cols-7', big ? 'gap-2 @xl/forecast:gap-3' : s.list)}>
+    {Array.from({ length: VISIBLE_DAYS }, (_, i) => <li key={i} className={cn('flex flex-col items-center',
+      big ? 'rounded-xl border border-black/[0.05] bg-neutral-50/50 px-2 py-3.5 @xl/forecast:py-4' : s.cell)}>
+      <span className={cn('flex items-center', s.day)}><span className="h-2.5 w-6 rounded-full bg-neutral-200/80"/></span>
+      <span className="mt-1 h-2.5 w-8 rounded-full bg-neutral-200/60"/>
+      <span className={cn('flex items-center', big ? 'my-2.5 h-10 @xl/forecast:my-3 @xl/forecast:h-11' : s.icon)}>
+        <span className={cn('rounded-full bg-neutral-200/80', s.glyph)}/></span>
       <span className={cn('flex items-center', s.temp)}><span className={cn('rounded-full bg-neutral-200/80', s.bar)}/></span>
-      <span className={s.rain}/>
-      {big && <span className={s.et0}/>}
+      {big && <span className="mt-5 h-7 w-full rounded bg-neutral-200/50"/>}
     </li>)}
   </ol>;
+
   const todayIso = today();
-  return <ol aria-label="Prognoza na 7 dni" className={cn('grid grid-cols-7', s.list)}>
-    {days.map((day) => {
-      const [icon, label] = weatherIcon(day.weather_code);
-      const isToday = day.date === todayIso;
-      return <li key={day.date} className={cn('flex min-w-0 flex-col items-center', s.cell, day.precipitation_mm >= 5 && 'bg-water-50')}>
-        <span className={cn('flex items-center font-medium', s.day, isToday ? 'text-neutral-900' : 'text-neutral-500')}>
-          {isToday ? 'dziś' : weekdays.format(new Date(day.date + 'T12:00:00Z')).replace('.', '')}</span>
-        <span className={cn('flex items-center', s.icon)}>
-          {/* brak kodu pogody: kreska zamiast obrazka, żeby nie udawać zachmurzenia */}
-          {icon ? <img src={`/design/pogoda-${icon}.png`} alt={label} title={label} width="40" height="40" decoding="async"
-            className={cn('object-contain', s.glyph)}/>
-            : <span role="img" aria-label={label} className="text-neutral-400">—</span>}</span>
-        {/* znak stopnia przesuwa liczbę w lewo; lewy odstęp centruje same cyfry */}
-        <span className={cn('num flex items-center font-semibold tracking-tight text-neutral-900', s.temp, day.temperature_max_c != null && 'pl-[0.25em]')}>
-          {day.temperature_max_c == null ? '—' : temperature(day.temperature_max_c)}</span>
-        <span className={cn('num flex items-center whitespace-nowrap font-medium tracking-tight text-water-700', s.rain)}>
-          {day.precipitation_mm > 0 && rainText(day.precipitation_mm, big)}</span>
-        {big && <span className={cn('flex flex-col items-center justify-center text-[10.5px] leading-tight text-neutral-500', s.et0)}>
-          {day.et0_mm != null && <><span className="hidden @xl/forecast:block">parowanie</span>
-            <span className="num whitespace-nowrap text-neutral-600">{number(day.et0_mm, 1)} mm</span></>}</span>}
-      </li>;
-    })}
-  </ol>;
+  const total = days.length;
+  const visible = Math.min(VISIBLE_DAYS, total);
+  const pad = big ? 'px-1 @xl/forecast:px-1.5' : 'px-0.5';
+
+  return <div className={cn('relative overflow-hidden', big ? '-mx-1 @xl/forecast:-mx-1.5' : '-mx-0.5')}>
+    <motion.ol aria-label={`Prognoza pogody na ${total} dni`}
+      className="flex items-stretch"
+      style={{ width: `${(total / visible) * 100}%` }}
+      animate={{ x: `${-(offset / total) * 100}%` }}
+      transition={reduced ? { duration: 0 } : SPRING_LAYOUT}>
+      {days.map((day, idx) => <li key={day.date} style={{ width: `${100 / total}%` }}
+        aria-hidden={idx < offset || idx >= offset + visible}
+        className={cn('shrink-0', pad)}>
+        <ForecastCell day={day} big={big} isToday={day.date === todayIso} s={s}/>
+      </li>)}
+    </motion.ol>
+    {/* subtelne wygaszenie krawędzi tam, gdzie czekają kolejne dni */}
+    <div aria-hidden className={cn('pointer-events-none absolute inset-y-0 left-0 w-5 bg-gradient-to-r from-white to-transparent transition-opacity duration-200',
+      canPrev ? 'opacity-90' : 'opacity-0')}/>
+    <div aria-hidden className={cn('pointer-events-none absolute inset-y-0 right-0 w-5 bg-gradient-to-l from-white to-transparent transition-opacity duration-200',
+      canNext ? 'opacity-90' : 'opacity-0')}/>
+  </div>;
+}
+
+/** Animowany przycisk strzałki do przewijania prognozy w lewo / w prawo. */
+function CarouselArrow({ direction, disabled, onClick, big = false }) {
+  const Icon = direction === 'prev' ? ChevronLeft : ChevronRight;
+  const label = direction === 'prev' ? 'Poprzednie dni prognozy' : 'Kolejne dni prognozy';
+  return <motion.button type="button" disabled={disabled} onClick={onClick} aria-label={label}
+    whileHover={disabled ? undefined : { scale: 1.06 }}
+    whileTap={disabled ? undefined : { scale: 0.92 }}
+    transition={SPRING_PRESS}
+    className={cn('grid place-items-center rounded-full border border-black/[0.08] bg-white text-neutral-700 shadow-hairline',
+      big ? 'size-8' : 'size-7',
+      'transition-[color,background-color,border-color,opacity] duration-150',
+      disabled ? 'cursor-default opacity-35 shadow-none' : 'hover:border-black/[0.16] hover:bg-neutral-50 hover:text-neutral-950')}>
+    <Icon className="size-4" strokeWidth={2}/>
+  </motion.button>;
 }
 
 /**
- * Prognoza na 7 dni od dziś dla współrzędnych (Open-Meteo przez /api/forecast). Ładowanie: szkielet, który przenika
- * w prognozę (Skeleton Reveal ze Spectrum UI). `size="lg"`: większe komórki i parowanie (zakładka Pogoda w raporcie).
+ * Prognoza pogody od dziś dla współrzędnych (Open-Meteo przez /api/forecast, do 16 dni).
+ * Pokazuje zawsze 7 dni w jednym wierszu i pozwala płynnie przewijać strzałkami w lewo i w prawo.
  */
-export function ForecastDays({ position, size = 'sm' }) {
-  const key = position ? new URLSearchParams({ lat: position.lat, lon: position.lon }).toString() : null;
+export function ForecastDays({ position, size = 'sm', onRangeChange }) {
+  const key = position ? new URLSearchParams({ lat: position.lat, lon: position.lon, days: '16' }).toString() : null;
   const [weather, setWeather] = useState(null);
+  const [page, setPage] = useState(0);
+
   useEffect(() => {
+    setPage(0);
     if (!key) return;
     const controller = new AbortController();
     api('/api/forecast?' + key, { signal: controller.signal }).then((data) => setWeather({ key, data }))
       .catch((error) => { if (!controller.signal.aborted) setWeather({ key, data: { status: 'error', reason: error.message } }); });
     return () => controller.abort();
   }, [key]);
+
   const forecast = weather?.key === key ? weather.data : null;
+  const days = forecast?.days;
+  const stops = forecastStops(days?.length ?? 0);
+  const safePage = Math.min(page, stops.length - 1);
+  const offset = stops[safePage] ?? 0;
+  const canPrev = safePage > 0;
+  const canNext = safePage < stops.length - 1;
   const big = size === 'lg';
+
+  const firstVisible = days?.[offset];
+  const lastVisible = days?.[Math.min((days?.length ?? 1) - 1, offset + VISIBLE_DAYS - 1)];
+  const todayIso = today();
+  const rangeLabel = firstVisible && lastVisible
+    ? `${firstVisible.date === todayIso ? 'dziś' : shortDate(firstVisible.date)} – ${shortDate(lastVisible.date)}`
+    : null;
+
+  useEffect(() => {
+    if (onRangeChange && firstVisible && lastVisible) {
+      onRangeChange({ from: firstVisible.date, to: lastVisible.date, label: rangeLabel });
+    }
+  }, [onRangeChange, firstVisible?.date, lastVisible?.date, rangeLabel]);
+
+  function onKeyDown(event) {
+    if (event.key === 'ArrowLeft' && canPrev) { event.preventDefault(); setPage((p) => Math.max(0, p - 1)); }
+    if (event.key === 'ArrowRight' && canNext) { event.preventDefault(); setPage((p) => Math.min(stops.length - 1, p + 1)); }
+  }
+
   if (!key) return <p className="text-[13px] text-neutral-500">Brak współrzędnych pola.</p>;
   if (forecast && forecast.status !== 'ok') {
     return <div role={forecast.status === 'error' ? 'alert' : 'status'}><Note section={forecast} className="my-0"/></div>;
   }
-  return <div className="@container/forecast">
-    <SkeletonReveal loading={!forecast} pulseCount={4} pulseDuration={1200} skeleton={<ForecastGrid big={big}/>}>
-      <ForecastGrid big={big} days={forecast?.days}/>
+
+  return <div className="@container/forecast" onKeyDown={onKeyDown}>
+    {stops.length > 1 && <div className={cn('no-print flex items-center justify-between gap-2', big ? 'mb-4' : 'mb-2.5')}>
+      <span className={cn('num font-medium text-neutral-600', big ? 'text-[13px]' : 'text-[12px] text-neutral-500')}>{rangeLabel}</span>
+      <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1" role="tablist" aria-label="Okres prognozy">
+          {stops.map((stop, idx) => <button key={stop} type="button" role="tab" aria-selected={idx === safePage}
+            aria-label={`Dni ${stop + 1}–${Math.min(days.length, stop + VISIBLE_DAYS)}`}
+            onClick={() => setPage(idx)}
+            className="grid size-4 place-items-center">
+            <span className={cn('block rounded-full transition-[width,background-color] duration-200',
+              idx === safePage ? 'h-1.5 w-3.5 bg-brand-600' : 'size-1.5 bg-neutral-300 hover:bg-neutral-400')}/>
+          </button>)}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <CarouselArrow direction="prev" big={big} disabled={!canPrev} onClick={() => setPage((p) => Math.max(0, p - 1))}/>
+          <CarouselArrow direction="next" big={big} disabled={!canNext} onClick={() => setPage((p) => Math.min(stops.length - 1, p + 1))}/>
+        </div>
+      </div>
+    </div>}
+    <SkeletonReveal loading={!forecast} pulseCount={4} pulseDuration={1200} skeleton={<ForecastStrip big={big} offset={0}/>}>
+      <ForecastStrip big={big} days={days} offset={offset} canPrev={canPrev} canNext={canNext}/>
     </SkeletonReveal>
-    {/* w wąskim widoku `lg` kolumny nie mają podpisu „parowanie”, więc objaśnienie raz pod siatką */}
-    {big && <p className="mt-3 text-[12px] text-neutral-500 @xl/forecast:hidden">Na niebiesko opad, na szaro parowanie.</p>}
-    <p role="status" className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] leading-snug text-neutral-500', big ? 'mt-2 @xl/forecast:mt-4' : 'mt-3')}>
+    {/* w wąskim widoku `lg` kolumny nie mają etykiet „Opad / Parow.”, więc objaśnienie raz pod siatką */}
+    {big && <p className="mt-3 text-[12px] text-neutral-500 @2xl/forecast:hidden">Na niebiesko opad, niżej parowanie (ET0).</p>}
+    <p role="status" className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] leading-snug text-neutral-500',
+      big ? 'mt-4 border-t border-black/[0.06] pt-3' : 'mt-3')}>
       {forecast ? <>
         <span>{forecast.last_wet_day ? <>Ostatni opad &gt;5 mm: <span className="num">{dateText(forecast.last_wet_day)}</span></>
           : forecast.past_days_complete ? 'Brak opadu >5 mm w ostatnich 30 dniach.' : 'Niepełne dane o ostatnich opadach.'}</span>
@@ -327,8 +518,8 @@ function Weather({ fields, style }) {
   const segmented = fields.length <= 3 && fields.every(({ name }) => name.length <= (fields.length === 2 ? 16 : 9));
   return <section aria-labelledby={titleId} className={cn('surface p-5', RISE)} style={style}>
     <div className="flex items-baseline justify-between gap-3">
-      <h2 id={titleId} className="font-sans text-[15px] font-semibold tracking-tight text-neutral-900">Pogoda na 7 dni</h2>
-      <span className="text-[12.5px] text-neutral-500">od dziś</span>
+      <h2 id={titleId} className="font-sans text-[15px] font-semibold tracking-tight text-neutral-900">Prognoza pogody</h2>
+      <span className="text-[12.5px] text-neutral-500">do 16 dni</span>
     </div>
     {fields.length > 1 && (segmented
       // na ekranach dotykowych segmenty mają co najmniej 40 px wysokości
@@ -348,13 +539,15 @@ function Weather({ fields, style }) {
 
 // ---------- pulpit ----------
 
-export function Dashboard({ fields, onAdd }) {
+export function Dashboard({ fields, onAdd, onEdit, onDelete }) {
   const fieldsTitleId = useId();
   const [intro] = useState(() => !introPlayed);
   useEffect(() => { if (fields.length) introPlayed = true; }, [fields.length]);
   if (!fields.length) return <EmptyState onAdd={onAdd}/>;
-  const sorted = byUrgency(fields);
-  const actions = actionItems(fields);
+  // pola bez raportu (pierwsze liczenie trwa albo się nie udało) na górze, potem od najpilniejszego
+  const ready = fields.filter((field) => field.report);
+  const sorted = [...fields.filter((field) => !field.report), ...byUrgency(ready)];
+  const actions = actionItems(ready);
   const date = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'full', timeZone: 'Europe/Warsaw' }).format(new Date());
   // wejście (kaskada kart, pasek, liczniki) raz na sesję; po powrocie z raportu pulpit jest od razu na miejscu
   return <div className={cn('@container/dash flex flex-col gap-10', !intro && '[&_.animate-in]:!animate-none [&_.animate-rise]:!animate-none')}>
@@ -365,21 +558,24 @@ export function Dashboard({ fields, onAdd }) {
       </div>
       <Button icon={<Plus/>} onClick={onAdd}>Dodaj pole</Button>
     </header>
-    <Overview fields={fields} intro={intro}/>
+    {ready.length > 0 && <Overview fields={ready} intro={intro}/>}
     {/* kolumna boczna dopiero od 64rem szerokości pulpitu (prognoza potrzebuje ok. 290 px); węziej karty, a pod nimi panele */}
     <div className="grid gap-x-8 gap-y-10 @5xl/dash:grid-cols-12">
       <section aria-labelledby={fieldsTitleId} className="min-w-0 @5xl/dash:col-span-8">
         <h2 id={fieldsTitleId} className="mb-4 font-display text-[20px] font-semibold leading-[26px] tracking-tight">Pola od najpilniejszego</h2>
         <div className="grid gap-4 @xl/dash:grid-cols-2">
-          {sorted.map((field, i) => <FieldCard key={field.id} field={field}
-            style={riseDelay(80 + STAGGER[Math.min(i, STAGGER.length - 1)])}/>)}
+          {sorted.map((field, i) => {
+            const Tile = field.report ? FieldCard : PendingFieldCard;
+            return <Tile key={field.id} field={field} onEdit={onEdit} onDelete={onDelete}
+              style={riseDelay(80 + STAGGER[Math.min(i, STAGGER.length - 1)])}/>;
+          })}
         </div>
       </section>
       {/* obok kart: górna krawędź równo z pierwszym rzędem kart (wysokość nagłówka 26 px + odstęp 16 px) */}
       <aside aria-label="Działania i pogoda"
         className="grid min-w-0 content-start gap-4 @2xl/dash:grid-cols-2 @5xl/dash:col-span-4 @5xl/dash:grid-cols-1 @5xl/dash:pt-[42px]">
         <NextActions items={actions} style={riseDelay(140)}/>
-        <Weather fields={sorted} style={riseDelay(190)}/>
+        {ready.length > 0 && <Weather fields={byUrgency(ready)} style={riseDelay(190)}/>}
       </aside>
     </div>
   </div>;

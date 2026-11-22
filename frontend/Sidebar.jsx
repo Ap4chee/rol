@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, MapIcon, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -61,7 +61,7 @@ function NavItem({ icon: Icon, label, active = false, compact, reveal, href, onC
   </Tooltip>;
 }
 
-/** Nawigacja: pulpit i dodawanie pola (modal). `compact`: same ikony z dymkami (tylko na komputerze). */
+/** Nawigacja: pulpit, mapa pól i dodawanie pola (modal). `compact`: same ikony z dymkami (tylko na komputerze). */
 export function Sidebar({ page, compact, onToggle, onNavigate, onAdd }) {
   const toggleLabel = compact ? 'Rozwiń menu' : 'Zwiń menu';
   const reveal = useChangedSinceMount(compact);
@@ -70,6 +70,8 @@ export function Sidebar({ page, compact, onToggle, onNavigate, onAdd }) {
     <nav aria-label="Menu główne" className="mt-6">
       <ul className="flex flex-col gap-0.5">
         <li><NavItem href="#" icon={LayoutDashboard} label="Pulpit" active={page === 'dashboard'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
+        <li><NavItem href="#mapa" icon={MapIcon} label="Mapa pól" active={page === 'map'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
+        <li><NavItem href="#plan" icon={CalendarDays} label="Plan prac" active={page === 'plan'} compact={compact} reveal={reveal} onClick={onNavigate}/></li>
         <li><NavItem icon={Plus} label="Dodaj pole" compact={compact} reveal={reveal} onClick={() => { onNavigate(); onAdd(); }}/></li>
       </ul>
     </nav>

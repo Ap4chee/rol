@@ -40,6 +40,7 @@ NASA_POWER_PARAMETERS = "PRECTOTCORR,T2M_MAX,T2M_MIN,ALLSKY_SFC_SW_DWN,WS2M,RH2M
 OPEN_METEO_DAILY = "precipitation_sum,et0_fao_evapotranspiration,temperature_2m_max,temperature_2m_min"
 
 FORECAST_MAX_PAST_DAYS = 92
+FORECAST_MAX_DAYS = 16
 RECENT_CACHE_MAX_AGE_S = 3600.0
 # Po odmowie (np. 429) nie pytamy tego samego dostawcy ponownie przez 10 minut.
 _NEGATIVE_TTL_S = 600.0
@@ -252,12 +253,14 @@ async def fetch_open_meteo_recent(client: httpx.AsyncClient, lat: float, lon: fl
     return series, False
 
 
-# ---------- prognoza na pulpit ----------
+# ---------- prognoza na pulpit i zakładkę Pogoda ----------
 
-def parse_dashboard_forecast(payload: dict, today: date) -> ForecastResponse:
+def parse_dashboard_forecast(payload: dict, today: date, forecast_days: int = 7) -> ForecastResponse:
     daily = payload.get("daily") if isinstance(payload, dict) else None
     if not isinstance(daily, dict) or not isinstance(daily.get("time"), list):
         raise NoData("Prognoza nie zawiera danych dziennych.")
+
+    horizon = min(max(forecast_days, 1), FORECAST_MAX_DAYS)
 
     def read(field: str, i: int) -> float | None:
         values = daily.get(field)
@@ -269,6 +272,7 @@ def parse_dashboard_forecast(payload: dict, today: date) -> ForecastResponse:
 
     rows = {}
     past = {}
+    recent = []
     for i, iso_date in enumerate(daily["time"]):
         try:
             day = date.fromisoformat(iso_date)
@@ -278,12 +282,14 @@ def parse_dashboard_forecast(payload: dict, today: date) -> ForecastResponse:
         ahead = (day - today).days
         if -30 <= ahead < 0:
             past[day] = precip
-        if 0 <= ahead < 7:
+            recent.append(ForecastDay(date=day, precipitation_mm=precip, et0_mm=read("et0_fao_evapotranspiration", i)))
+        if 0 <= ahead < horizon:
             code = read("weather_code", i)
             rows[day] = ForecastDay(
                 date=day, temperature_max_c=read("temperature_2m_max", i),
+                temperature_min_c=read("temperature_2m_min", i),
                 precipitation_mm=precip, et0_mm=read("et0_fao_evapotranspiration", i),
-                weather_code=int(code) if code is not None else None,
+                weather_code=int(code) if code is not None else None, wind_max_kmh=read("wind_speed_10m_max", i),
             )
     if not rows or not any(row.temperature_max_c is not None or row.precipitation_mm is not None
                            for row in rows.values()):
@@ -291,26 +297,28 @@ def parse_dashboard_forecast(payload: dict, today: date) -> ForecastResponse:
     last_wet_day = max((day for day, rain in past.items() if rain is not None and rain > 5), default=None)
     return ForecastResponse(
         status=Status.ok,
-        days=[rows.get(day) or ForecastDay(date=day) for day in (today + timedelta(days=i) for i in range(7))],
-        last_wet_day=last_wet_day,
+        days=[rows.get(day) or ForecastDay(date=day) for day in (today + timedelta(days=i) for i in range(horizon))],
+        recent=sorted(recent, key=lambda row: row.date), last_wet_day=last_wet_day,
         past_days_complete=len(past) == 30 and all(rain is not None for rain in past.values()),
     )
 
 
 async def fetch_dashboard_forecast(client: httpx.AsyncClient, lat: float, lon: float,
-                                   today: date) -> ForecastResponse:
+                                   today: date, days: int = FORECAST_MAX_DAYS) -> ForecastResponse:
     lat, lon = snap(lat), snap(lon)
-    key = f"om_forecast:{lat:.2f},{lon:.2f}:{today}"
+    horizon = min(max(days, 1), FORECAST_MAX_DAYS)
+    key = f"om_forecast16_v2:{lat:.2f},{lon:.2f}:{today}"   # v2: wiatr, Tmin i ostatnie 30 dni w odpowiedzi
     cached = cache.get("weather", key, max_age_s=RECENT_CACHE_MAX_AGE_S)
     if cached is not None:
-        return ForecastResponse.model_validate(cached)
+        forecast = ForecastResponse.model_validate(cached)
+        return forecast.model_copy(update={"days": forecast.days[:horizon]})
     payload = await _get_json(client, OPEN_METEO_FORECAST_URL, {
-        "latitude": lat, "longitude": lon, "past_days": 30, "forecast_days": 7,
-        "daily": OPEN_METEO_DAILY + ",weather_code", "timezone": "Europe/Warsaw",
+        "latitude": lat, "longitude": lon, "past_days": 30, "forecast_days": FORECAST_MAX_DAYS,
+        "daily": OPEN_METEO_DAILY + ",weather_code,wind_speed_10m_max", "timezone": "Europe/Warsaw",
     }, TIMEOUT_WEATHER_RECENT_S, "Open-Meteo Forecast")
-    forecast = parse_dashboard_forecast(payload, today)
+    forecast = parse_dashboard_forecast(payload, today, forecast_days=FORECAST_MAX_DAYS)
     cache.put("weather", key, forecast.model_dump(mode="json"))
-    return forecast
+    return forecast.model_copy(update={"days": forecast.days[:horizon]})
 
 
 # ---------- składanie serii ----------

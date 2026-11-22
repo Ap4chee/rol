@@ -23,11 +23,11 @@ STAT_KEYS = ("candidates", "no_last_scene_or_weather", "no_target_scene", "rows"
 
 def weather_series(g: pd.DataFrame) -> WeatherSeries:
     g = g.sort_values("date")
-    return WeatherSeries([date.fromisoformat(d) for d in g["date"]], g["rain_mm"], g["et0_mm"], g["tmax_c"], g["tmin_c"])
+    return WeatherSeries([date.fromisoformat(d) for d in g["date"]], g["rain_mm"], g["et0_mm"], g["tmax_c"], g.get("tmin_c"))
 
 
-def weather_by_cluster() -> dict[str, WeatherSeries]:
-    w = pd.read_parquet(C.DATA_DIR / "weather.parquet")
+def weather_by_cluster(name: str = "weather.parquet") -> dict[str, WeatherSeries]:
+    w = pd.read_parquet(C.DATA_DIR / name)
     return {cluster: weather_series(g) for cluster, g in w.groupby("cluster")}
 
 

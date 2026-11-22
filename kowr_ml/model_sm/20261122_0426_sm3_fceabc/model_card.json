@@ -1,0 +1,142 @@
+{
+  "name": "kowr_soil_moisture_0_100cm_t0_t13_v3",
+  "run_id": "20261122_0426_sm3_fceabc",
+  "status": "eksperymentalny",
+  "previous_versions": "v1: sm_train.py, v2/v3: sm2_train.py; wszystkie bez zmian obok siebie",
+  "target": "θ(t+k) − θ(t−1) [m3/m3], k = 0…13; θ = dobowa średnia wilgotność gleby 0–100 cm z ERA5-Land, doba Europe/Warsaw; cechy bez ERA5-Land (stan gleby z analizy IFS)",
+  "units": "m3/m3",
+  "features": [
+    "horizon_days",
+    "day_of_year_sin",
+    "day_of_year_cos",
+    "rain_mm_7d",
+    "rain_mm_14d",
+    "rain_mm_30d",
+    "et0_mm_7d",
+    "et0_mm_14d",
+    "et0_mm_30d",
+    "cwb_mm_30d",
+    "tmax_c_mean_7d",
+    "ref_depletion_frac",
+    "days_since_rain_5mm",
+    "fc_rain_mm_to_k",
+    "fc_rain_mm_7d",
+    "fc_t2m_mean_to_k",
+    "ifs_sm_analysis",
+    "ifs_sm_change_to_k",
+    "soil_sand_pct",
+    "soil_clay_pct",
+    "soil_soc_g_kg",
+    "soil_fc_m3m3",
+    "soil_wp_m3m3"
+  ],
+  "features_dropped_no_data": [],
+  "quantiles": [
+    0.1,
+    0.9
+  ],
+  "interval_adjust": 0.0017416962524529132,
+  "hyperparameters": {
+    "learning_rate": 0.1,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 50,
+    "l2_regularization": 1.0
+  },
+  "train_rows_evaluated_model": 50624,
+  "train_rows_final_model": 96740,
+  "seasons": [
+    2023,
+    2024,
+    2025
+  ],
+  "clusters": [
+    "koscian",
+    "gniezno",
+    "inowroclaw",
+    "zulawy",
+    "ketrzyn",
+    "wysokie_maz",
+    "plonsk",
+    "kutno",
+    "sochaczew",
+    "hrubieszow",
+    "biala_podlaska",
+    "sandomierz",
+    "glubczyce",
+    "strzelin",
+    "pyrzyce",
+    "chelmno",
+    "koszalin",
+    "miechow",
+    "przeworsk",
+    "kalisz"
+  ],
+  "test_clusters": [
+    "gniezno",
+    "biala_podlaska",
+    "glubczyce",
+    "pyrzyce"
+  ],
+  "test_season": 2025,
+  "dataset_stats": {
+    "rows": 96740,
+    "rows_by_season": {
+      "2023": 31920,
+      "2024": 31360,
+      "2025": 33460
+    }
+  },
+  "static_missing": {
+    "soil_sand_pct": 2,
+    "soil_clay_pct": 2,
+    "soil_soc_g_kg": 2,
+    "soil_fc_m3m3": 2,
+    "soil_wp_m3m3": 2,
+    "terrain_slope_pct": 20,
+    "terrain_elev_m": 20
+  },
+  "metrics": {
+    "space": {
+      "zero": 0.01054243800803795,
+      "seasonal": 0.005641878495265055,
+      "no_forecast": 0.006121335442605161,
+      "no_static": 0.005160582509484338,
+      "hgb": 0.005233952906264472,
+      "interval_80_coverage": 0.7902970922882427
+    },
+    "time": {
+      "zero": 0.009269995244844438,
+      "seasonal": 0.009763267056882515,
+      "no_forecast": 0.009591036462181958,
+      "no_static": 0.0067905547643540886,
+      "hgb": 0.006839405577039074,
+      "interval_80_coverage": 0.6665047818290496
+    },
+    "space_and_time": {
+      "zero": 0.009749851370889039,
+      "seasonal": 0.00999966008715323,
+      "no_forecast": 0.010289889361255918,
+      "no_static": 0.006915343651124704,
+      "hgb": 0.006905445736243493,
+      "interval_80_coverage": 0.6710998206814106
+    }
+  },
+  "data": {
+    "soil_moisture_label": "ERA5-Land z plików Open-Meteo (s3://openmeteo), CC BY 4.0",
+    "weather_past": "ERA5 z plików Open-Meteo, ET0 FAO-56 (app/core/et0.py), CC BY 4.0",
+    "forecast": "ECMWF IFS open data (s3://ecmwf-forecasts), przebieg 00 UTC z dnia t; 0,4° do 01.2024 (bez wilgotności gleby), potem 0,25°; HRES do 240 h, dalsze doby z przebiegu kontrolnego ensemble (kowr_ml/ifs.py fetch_extension); CC BY 4.0 i ECMWF Terms of Use",
+    "soil": "ISRIC SoilGrids 250 m (app/sources/soilgrids.py) + Saxton–Rawls 2006, działka umowna 200 × 200 m",
+    "terrain": "NMT GUGiK 1 m (app/sources/terrain.py), spadek po wygładzeniu 5 m"
+  },
+  "versions": {
+    "python": "3.14.8",
+    "scikit-learn": "1.9.1",
+    "numpy": "2.5.5",
+    "pandas": "3.1.1"
+  },
+  "limits": [
+    "Etykieta to reanaliza ERA5-Land dla komórki ok. 9 km. ERA5-Land nie ma spływu bocznego, więc teren działki nie może wpływać na etykietę, a gleba tylko przez korelację z glebą komórki.",
+    "Gleba jest stała dla skupiska: przy 20 skupiskach model może jej użyć jako identyfikatora miejsca; rozstrzyga test na odłożonych skupiskach i porównanie z wariantem no_static.",
+    "Prognoza IFS: doby UTC wobec dób Europe/Warsaw w etykiecie; wilgotność z IFS dopiero od 02.2024."
+  ]
+}

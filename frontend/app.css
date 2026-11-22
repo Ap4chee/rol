@@ -2,6 +2,7 @@
    Budowanie: npx @tailwindcss/cli -i frontend/app.css -o static/ui.css --minify (patrz package.json). */
 @import "tailwindcss" source(none);
 @import "tw-animate-css";
+@import "react-day-picker/style.css";
 @source "./";
 
 /* Komponenty Spectrum mają warianty dark:. Aplikacja jest jasna, więc ciemny motyw działa tylko po klasie .dark,
@@ -151,6 +152,23 @@
 
 /* ---------- narzędzia ---------- */
 
+.crop-date-calendar {
+  --rdp-accent-color: var(--color-brand-700);
+  --rdp-accent-background-color: var(--color-brand-50);
+  --rdp-day-width: 36px;
+  --rdp-day-height: 36px;
+  --rdp-day_button-width: 34px;
+  --rdp-day_button-height: 34px;
+  --rdp-day_button-border-radius: .5rem;
+  font-size: .875rem;
+}
+.crop-date-calendar .rdp-month_caption { justify-content: center; font-weight: 600; }
+.crop-date-calendar .rdp-nav { width: 100%; justify-content: space-between; pointer-events: none; }
+.crop-date-calendar .rdp-nav button { pointer-events: auto; border-radius: .5rem; }
+.crop-date-calendar button:enabled:hover { background: var(--color-neutral-100); }
+.crop-date-calendar .rdp-selected .rdp-day_button { background: var(--color-brand-700); color: white; }
+.crop-date-calendar .rdp-selected { font-size: inherit; }
+
 /* Nacisk: każdy element do kliknięcia odpowiada lekkim zmniejszeniem (natychmiastowa informacja zwrotna). */
 @utility press {
   transition-property: transform, background-color, border-color, color, box-shadow, opacity;
@@ -197,8 +215,14 @@
 .water-chart .actual.forecast { stroke-dasharray: 5 5; opacity: 0.85; }
 .water-chart.intro .actual.forecast { animation: chart-fade 0.4s var(--ease-out) 1.1s both; }
 .water-chart .forecast-zone { fill: var(--color-water-50); opacity: 0.8; }
+/* prognoza modelu ML: ciągła linia w kolorze wody z pasem 80%, odróżnia się od przerywanego bilansu na prognozie pogody */
+.water-chart .ml { fill: none; stroke: var(--color-water-600); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.water-chart .ml-band { fill: var(--color-water-200); opacity: 0.55; }
+.water-chart .ml-dot { fill: var(--color-water-600); }
+.water-chart.intro .ml, .water-chart.intro .ml-band { animation: chart-fade 0.4s var(--ease-out) 1.1s both; }
 .water-chart .rain { fill: var(--color-water-400); opacity: 0.65; }
-.water-chart .rain.forecast { opacity: 0.3; }
+.water-chart .rain.forecast { fill: var(--color-water-500); opacity: 0.9; }
+.water-chart .rain-label { font: 600 10px/1 var(--font-mono); fill: var(--color-water-700); paint-order: stroke; stroke: white; stroke-width: 3px; stroke-linejoin: round; }
 .water-chart .today { stroke: var(--color-neutral-400); stroke-width: 1; }
 .water-chart .today-dot { stroke: white; stroke-width: 3; }
 .water-chart.intro .today-dot { animation: chart-fade 0.3s var(--ease-out) 1.1s both; }
@@ -228,6 +252,14 @@
 .map-canvas .ol-attribution { max-width: 82%; font: 10.5px/1.4 var(--font-sans); }
 .map-canvas .ol-attribution ul { color: var(--color-neutral-700); text-shadow: none; }
 .map-canvas .ol-attribution.ol-uncollapsible { background: rgb(255 255 255 / 0.82); border-radius: 8px 0 0 0; }
+/* podkład mapy pól (FieldsMap.jsx) przygaszony, żeby zielone pola były na nim najmocniejsze */
+.fields-map-base { filter: grayscale(0.85) contrast(0.92) brightness(1.04); }
+/* mapa pól bez tła i ramki: kontury sąsiednich jednostek wygaszają się przy krawędziach, więc mapa zlewa się ze stroną */
+.fields-map { background: transparent; box-shadow: none; }
+.fields-map .ol-layer {
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent),
+    linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  mask-composite: intersect; }
 
 /* ---------- model 3D pola (Field3D.jsx): przezroczyste tło, stoi na tle strony ---------- */
 .field3d { position: relative; }

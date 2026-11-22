@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
 SOIL_ASSETS_DIR = ROOT / "outputs" / "assety_gleby" / "webp"
 CACHE_DIR = Path(os.environ.get("KOWR_CACHE_DIR", ROOT / "cache"))
+# dane użytkowników (zapisane pola); w odróżnieniu od cache/ nie wolno ich kasować
+DATA_DIR = Path(os.environ.get("KOWR_DATA_DIR", ROOT / "data"))
 
 # Nagłówek identyfikujący aplikację wobec zewnętrznych usług (bez danych osobowych).
 USER_AGENT = "kowr-retencja-hackathon/0.1 (prototyp niekomercyjny)"

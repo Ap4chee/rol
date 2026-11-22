@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.core.crops import CROPS, Crop, with_season_dates
+
 
 class Status(str, Enum):
     ok = "ok"            # dane są i weszły do obliczeń
@@ -38,11 +40,36 @@ class Point(BaseModel):
     lat: float = Field(ge=48.9, le=55.0, description="szerokość geograficzna, stopnie")
 
 
-class ReportRequest(BaseModel):
+class AddressQuery(BaseModel):
+    query: str = Field(min_length=2, max_length=180)
+
+
+class AddressMatch(BaseModel):
+    label: str
+    region: str
+    point: Point
+    precise: bool
+
+
+class CropTimelineInput(BaseModel):
+    crop: CropKey
+    sowing_date: Date | None = Field(default=None, description="siew lub sadzenie analizowanej uprawy")
+    harvest_date: Date | None = Field(default=None, description="rzeczywisty lub planowany zbiór w tym samym sezonie")
+    next_sowing_date: Date | None = Field(default=None, description="kolejny siew po zbiorze, do oceny okrywy pożniwnej")
+
+    def crop_with_timeline(self) -> Crop:
+        return with_season_dates(CROPS[self.crop.value], self.sowing_date, self.harvest_date, self.next_sowing_date)
+
+    @model_validator(mode="after")
+    def _validate_timeline(self) -> "CropTimelineInput":
+        self.crop_with_timeline()
+        return self
+
+
+class ReportRequest(CropTimelineInput):
     parcel_id: str | None = Field(
         default=None, description="pełny identyfikator działki, np. 060910_2.0011.580/2", max_length=80)
     point: Point | None = Field(default=None, description="punkt wskazany na mapie (zamiast identyfikatora)")
-    crop: CropKey
     date: Date = Field(description="dzień analizy; dane późniejsze niż ta data nie wchodzą do obliczeń")
 
     @model_validator(mode="after")
@@ -180,6 +207,26 @@ class ForecastPoint(BaseModel):
     et0_mm: float
     available_pct: float
     stress_threshold_pct: float
+    typical_p10_pct: float | None = Field(default=None, description="ten sam dzień w 10 poprzednich latach: 10. percentyl")
+    typical_median_pct: float | None = None
+    typical_p90_pct: float | None = None
+
+
+class MlForecastPoint(BaseModel):
+    date: Date
+    available_pct: float = Field(description="zapas działki [% TAW] według modelu wilgotności (mediana)")
+    low_pct: float = Field(description="dolna granica przedziału 80%")
+    high_pct: float = Field(description="górna granica przedziału 80%")
+
+
+class MlForecast(BaseModel):
+    """Prognoza zapasu modelem ML (kowr_ml, model wilgotności v3): zmiana wilgotności 0–100 cm doczepiona do zapasu z t−1."""
+    available: bool
+    reason: str | None = None
+    model_run: str | None = None
+    model_status: str | None = None
+    points: list[MlForecastPoint] = []
+    text: list[str] = []
 
 
 class SeasonSummary(BaseModel):
@@ -214,6 +261,7 @@ class WaterStatus(BaseModel):
     forecast: list[ForecastPoint] = Field(default=[], description="bilans puszczony dalej po prognozie pogody (tylko analiza na dziś)")
     forecast_reason: str | None = Field(default=None, description="dlaczego nie ma prognozy zapasu")
     forecast_stress_day: Date | None = Field(default=None, description="pierwszy dzień prognozy z zapasem poniżej progu stresu")
+    ml_forecast: MlForecast | None = Field(default=None, description="prognoza zapasu modelem ML na 7 dni (tylko analiza na dziś)")
     text: list[str] = []
 
 
@@ -482,7 +530,7 @@ class IrrigationNeed(BaseModel):
     seasons_compared: int = 0
     seasons_without: int = Field(default=0, description="w ilu sezonach nawadnianie nie było potrzebne")
     dose_mm: float | None = Field(default=None, description="typowa pojedyncza dawka, mm")
-    monthly: list[MonthAmount] = Field(default=[], description="mediana na miesiąc w kolejności sezonu")
+    monthly: list[MonthAmount] = Field(default=[], description="średnia na miesiąc w kolejności sezonu")
     text: list[str] = []
 
 
@@ -535,14 +583,80 @@ class CropOption(BaseModel):
 class ForecastDay(BaseModel):
     date: Date
     temperature_max_c: float | None = None
+    temperature_min_c: float | None = None
     precipitation_mm: float | None = None
     et0_mm: float | None = None
     weather_code: int | None = None
+    wind_max_kmh: float | None = Field(default=None, description="największa prędkość wiatru w ciągu doby, 10 m [km/h]")
 
 
 class ForecastResponse(BaseModel):
     status: Status
     reason: str | None = None
     days: list[ForecastDay] = []
+    recent: list[ForecastDay] = Field(default=[], description="30 dni przed dziś (opad, ET0) do bilansu wierzchu gleby")
     last_wet_day: Date | None = None
     past_days_complete: bool = False
+
+
+# ---------- pola rolnika (zapisane na serwerze, raport liczy worker w tle: app/fields.py) ----------
+
+class FieldInput(CropTimelineInput):
+    """Co liczyć dla pola. Raport powstaje w tle po zapisaniu pola i odświeża się raz na dobę."""
+    name: str = Field(default="", max_length=80)
+    parcel_id: str | None = Field(default=None, min_length=5, max_length=80)
+    point: Point | None = None
+    date: Date | None = Field(default=None, description="dzień analizy; brak = zawsze dzisiejszy dzień")
+    test: bool = Field(default=False, description="tryb testowy frontendu: raport dla punktu, obrys rysuje frontend")
+
+    @model_validator(mode="after")
+    def _one_of_parcel_or_point(self) -> "FieldInput":
+        if bool(self.parcel_id) == bool(self.point):
+            raise ValueError("Podaj identyfikator działki albo punkt na mapie (dokładnie jedno z dwojga).")
+        return self
+
+
+class SavedField(BaseModel):
+    id: str
+    name: str
+    input: FieldInput
+    job: str = Field(description="queued (czeka) | running (liczy się) | ok | error (ostatnie liczenie się nie udało)")
+    error: str | None = Field(default=None, description="powód nieudanego liczenia; worker ponowi je sam")
+    report: dict[str, Any] | None = Field(default=None, description="ostatni policzony raport (ReportResponse)")
+    refreshed_at: DateTime | None = Field(default=None, description="kiedy policzono raport w `report`")
+
+
+# ---------- plan prac polowych ----------
+
+class FieldworkRating(BaseModel):
+    rating: str = Field(description="good | caution | avoid | off (poza sezonem tej pracy)")
+    reason: str
+
+
+class FieldworkDay(BaseModel):
+    date: Date
+    rain_mm: float | None = None
+    wind_max_kmh: float | None = None
+    temperature_max_c: float | None = None
+    temperature_min_c: float | None = None
+    weather_code: int | None = Field(default=None, description="kod pogody WMO (Open-Meteo) do ikony dnia")
+    surface_fc_pct: float | None = Field(default=None, description="wilgotność wierzchu 0–10 cm rano, % pojemności polowej")
+    traffic: FieldworkRating
+    sowing: FieldworkRating
+    spraying: FieldworkRating
+    fertilizing: FieldworkRating
+
+
+class FieldworkWindow(BaseModel):
+    date_from: Date
+    date_to: Date
+
+
+class FieldworkResponse(BaseModel):
+    status: Status
+    reason: str | None = None
+    crop: CropKey | None = None
+    soil_assumed: bool = False
+    days: list[FieldworkDay] = []
+    windows: dict[str, FieldworkWindow] = Field(default={}, description="najdłuższy ciąg dobrych dni dla każdej pracy")
+    notes: list[str] = []

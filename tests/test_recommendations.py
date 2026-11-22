@@ -122,3 +122,22 @@ def test_grassland_gets_no_bare_soil_or_tillage_rules():
     result = build(facts)
     assert "cover_crop" not in keys(result.retention) and "residue_cover" not in keys(result.retention)
     assert "reduced_tillage" not in keys(result.agrotechnical)
+
+
+def test_potato_uses_planting_wording_and_skips_no_till():
+    facts = replace(BASE, crop_key="potato", crop_name="Ziemniak", harvest_day=date(2018, 9, 10),
+                    next_sowing_day=date(2019, 4, 20), bare_period_days=221)
+    result = build(facts)
+    assert "reduced_tillage" not in keys(result.agrotechnical)
+    cover = next(r for r in result.retention if r.key == "cover_crop")
+    assert "ścierniskowy" not in cover.what and "sadzenia" in cover.why
+    choice = next(r for r in result.agrotechnical if r.key == "crop_choice")
+    assert "sadź" in choice.what and "siej" not in choice.what
+
+
+def test_large_depletion_irrigation_splits_into_20_30_mm_doses():
+    facts = replace(BASE, depletion_mm=119.0, raw_mm=60.0, taw_mm=150.0, variants=[(119.0, 60.0)])
+    rec = build(facts).irrigation[0]
+    assert "20–30 mm" in rec.what
+    assert "5 dawek po 25 mm" in rec.what
+    assert "Jednorazowo nie podawaj więcej niż 119 mm" not in rec.what

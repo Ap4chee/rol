@@ -9,7 +9,7 @@ from datetime import date, timedelta
 
 import numpy as np
 
-from app.core.crops import Crop, CropDaily, Season, season_for_harvest_year
+from app.core.crops import Crop, CropDaily, Season, season_for_harvest_year, sowing_after
 from app.core.water_balance import BalanceResult
 
 
@@ -144,11 +144,17 @@ def typical_band(dates: list[date], available_pct: np.ndarray, start: int, years
                  min_years: int = 5) -> list[tuple[float, float, float] | None]:
     """Dla dni od `start` do końca serii: percentyle 10, 50 i 90 zapasu wody [%] w tym samym dniu roku
     w `years` poprzednich latach. Pierwszy rok serii (rozbieg bilansu) nie wchodzi. None przy mniej niż `min_years` latach."""
+    return typical_for(dates, available_pct, dates[start:], years, min_years)
+
+
+def typical_for(dates: list[date], available_pct: np.ndarray, targets: list[date], years: int = 10,
+                min_years: int = 5) -> list[tuple[float, float, float] | None]:
+    """Jak typical_band, ale dla dowolnych dni, także spoza serii (dni prognozy): te same dni w poprzednich latach serii."""
     out: list[tuple[float, float, float] | None] = []
-    for i in range(start, len(dates)):
+    for target in targets:
         hist = []
         for k in range(1, years + 1):
-            j = index_of(dates, same_day_years_back(dates[i], k))
+            j = index_of(dates, same_day_years_back(target, k))
             if j is not None and j >= 365:
                 hist.append(float(available_pct[j]))
         if len(hist) < min_years:
@@ -192,7 +198,7 @@ def irrigation_need(dates: list[date], crop: Crop, crop_daily: CropDaily, irriga
         out.update(typical_mm=float(np.median(totals)), dry_mm=float(np.percentile(totals, 90)),
                    seasons_without=int(sum(1 for t in totals if t < 1)),
                    dose_mm=float(np.median(doses)) if len(doses) else None,
-                   monthly=[(m, float(np.median([p["months"].get(m, 0.0) for p in past]))) for m in order])
+                   monthly=[(m, float(np.mean([p["months"].get(m, 0.0) for p in past]))) for m in order])
     return out
 
 
@@ -220,8 +226,11 @@ def bare_period_stats(dates: list[date], crop: Crop, balance: BalanceResult, rai
         return None
     last = dates[-1]
     for label in range(last.year + 1, last.year - 3, -1):
-        start = season_for_harvest_year(crop, label - 1).harvest
-        end = min(season_for_harvest_year(crop, label).sowing - timedelta(days=1), last)
+        previous = season_for_harvest_year(crop, label - 1)
+        start = previous.harvest
+        # Zliczamy wyłącznie dni bez uprawy w bilansie, najwyżej do podanego kolejnego siewu.
+        next_sowing = min(season_for_harvest_year(crop, label).sowing, sowing_after(crop, previous))
+        end = min(next_sowing - timedelta(days=1), last)
         lo, hi = (start - dates[0]).days, (end - dates[0]).days + 1
         if lo < 0 or hi - lo < min_days:
             continue

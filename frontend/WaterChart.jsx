@@ -8,12 +8,30 @@ const MIN_WIDTH = 240;                 // węższego nie rysujemy; szerszy niż 
 const TIP = { width: 224, gap: 12 };   // dymek: szerokość (w-56, mieści „opad 13,5 mm · próg stresu 45%” w jednej linii) i odstęp od kursora
 const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'];
 const FORECAST_LABEL_WIDTH = 66;       // szerokość napisu „prognoza →” (mono 10,5 px)
+const FORECAST_SHARE = 0.22;           // część szerokości dla dni prognozy: rok historii jest gęsty, a prognoza czytelna
+const RAIN_H = 26;                     // najwyższy słupek opadu w historii [px]
+const FORECAST_RAIN_H = 48;            // w prognozie wyższy i podpisany w mm (własna skala, od 5 mm w górę)
 
 const percent = (value) => (Number.isFinite(value) ? `${number(value)}%` : '—');
 const mm = (value) => (Number.isFinite(value) ? `${number(value, 1)} mm` : '—');
+const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
 
-/** Zapas wody w strefie korzeni (% TAW) w ostatnich miesiącach na tle tych samych dni w 10 latach, z prognozą. */
-export function WaterChart({ series, forecast = [], color, height = 300, intro = false }) {
+/** Prognoza: dni bilansu na prognozie pogody i dni modelu ML (`ml.points`) złączone po dacie. */
+function futurePoints(forecast, mlPoints) {
+  const byDate = new Map(forecast.map((p) => [p.date, { ...p, kind: 'forecast' }]));
+  for (const p of mlPoints) {
+    byDate.set(p.date, { ...(byDate.get(p.date) ?? { date: p.date, kind: 'forecast' }),
+      ml_pct: p.available_pct, ml_low: p.low_pct, ml_high: p.high_pct });
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Zapas wody w strefie korzeni (% TAW) na tle tych samych dni w 10 latach, z prognozą.
+ * Od razu widać cały okres z backendu i pełną prognozę; dni prognozy mają szerszą oś (FORECAST_SHARE), żeby opad i linie były czytelne.
+ * `ml`: prognoza modelu uczenia maszynowego (water_status.ml_forecast) – linia z pasem 80% obok bilansu na prognozie pogody.
+ */
+export function WaterChart({ series, forecast = [], ml = null, color, height = 300, intro = false }) {
   const box = useRef(null);
   const hintId = useId();
   const [width, setWidth] = useState(800);
@@ -27,37 +45,69 @@ export function WaterChart({ series, forecast = [], color, height = 300, intro =
     observer.observe(box.current);
     return () => observer.disconnect();
   }, []);
-  const points = [...series.map((p) => ({ ...p, kind: 'past' })), ...forecast.map((p) => ({ ...p, kind: 'forecast' }))];
+
+  const mlPoints = ml?.available ? ml.points ?? [] : [];
+  const future = futurePoints(forecast, mlPoints);
+  const past = series.map((p) => ({ ...p, kind: 'past' }));
+  if (mlPoints.length && past.length) {   // linia modelu startuje z dzisiejszego zapasu
+    const last = past[past.length - 1];
+    past[past.length - 1] = { ...last, ml_pct: last.available_pct, ml_low: last.available_pct, ml_high: last.available_pct };
+  }
+  const points = [...past, ...future];
   const today = series.length - 1;
+  const todayShown = today >= 0;
+
   // klawiatura jak w wykresach Spectrum (strzałki, Home/End, Escape); pierwszy krok liczony od dziś, nie od końca prognozy
-  const setIndexFromToday = useCallback((next) => setHover((current) => (typeof next === 'function' ? next(current ?? today) : next)), [today]);
+  const setIndexFromToday = useCallback((next) => setHover((current) => (typeof next === 'function'
+    ? next(current ?? clamp(today, 0, points.length - 1)) : next)), [today, points.length]);
   const keys = useHoverIndexKeys({ count: points.length, setIndex: setIndexFromToday });
   if (points.length < 2) return <div ref={box}>
     <ChartEmpty height={height} title="Za mało dni, żeby narysować przebieg zapasu." description=""/>
   </div>;
 
-  const w = width - PAD.left - PAD.right, h = height - PAD.top - PAD.bottom;
-  const x = (i) => PAD.left + w * i / (points.length - 1);
-  const y = (pct) => PAD.top + h * (1 - Math.min(100, Math.max(0, pct)) / 100);
+  const w = width - PAD.left - PAD.right, ht = height - PAD.top - PAD.bottom;
+  const nFuture = points.length - 1 - today;   // dni prognozy po „dziś”
+  const hasForecast = todayShown && nFuture > 0;
+  // oś w dwóch odcinkach: historia do „dziś” na (1 − FORECAST_SHARE) szerokości, prognoza na resztę
+  const split = hasForecast ? PAD.left + w * (1 - FORECAST_SHARE) : PAD.left + w;
+  const pastStep = (split - PAD.left) / Math.max(hasForecast ? today : points.length - 1, 1);
+  const futureStep = hasForecast ? (PAD.left + w - split) / nFuture : 0;
+  const isPast = (i) => !hasForecast || i <= today;
+  const x = (i) => (isPast(i) ? PAD.left + pastStep * i : split + futureStep * (i - today));
+  const indexAt = (px) => (!hasForecast || px <= split
+    ? Math.round((px - PAD.left) / pastStep) : today + Math.round((px - split) / futureStep));
+  const y = (pct) => PAD.top + ht * (1 - clamp(pct, 0, 100) / 100);
   const line = (key, from = 0, to = points.length) => points.slice(from, to)
     .map((p, j) => (p[key] == null ? null : `${x(from + j).toFixed(1)},${y(p[key]).toFixed(1)}`)).filter(Boolean).join(' ');
-  const band = series.map((p, i) => (p.typical_p90_pct == null ? null : [i, p])).filter(Boolean);
-  const bandPath = band.length > 1
-    ? `M${band.map(([i, p]) => `${x(i)},${y(p.typical_p90_pct)}`).join('L')}L${[...band].reverse().map(([i, p]) => `${x(i)},${y(p.typical_p10_pct)}`).join('L')}Z`
-    : null;
-  const maxRain = Math.max(10, ...points.map((p) => p.rain_mm ?? 0));
-  const rainH = 26;
+  const area = (hi, lo) => {
+    const span = points.map((p, i) => (p[hi] == null || p[lo] == null ? null : [i, p])).filter(Boolean);
+    return span.length > 1
+      ? `M${span.map(([i, p]) => `${x(i)},${y(p[hi])}`).join('L')}L${[...span].reverse().map(([i, p]) => `${x(i)},${y(p[lo])}`).join('L')}Z`
+      : null;
+  };
+  const bandPath = area('typical_p90_pct', 'typical_p10_pct');
+  const mlBandPath = area('ml_high', 'ml_low');
+  // opad: w historii wspólna skala od 10 mm, w prognozie własna od 5 mm z podpisem, żeby kilka mm było widać
+  const pastRainMax = Math.max(10, ...points.filter((_, i) => isPast(i)).map((p) => p.rain_mm ?? 0));
+  const futureRainMax = Math.max(5, ...points.filter((_, i) => !isPast(i)).map((p) => p.rain_mm ?? 0));
+  const rainBars = points.map((p, i) => {
+    if (!(p.rain_mm > 0.5)) return null;
+    const inPast = isPast(i);
+    const barH = (inPast ? RAIN_H : FORECAST_RAIN_H) * p.rain_mm / (inPast ? pastRainMax : futureRainMax);
+    const barW = inPast ? Math.max(2, pastStep / 1.25) : Math.max(4, futureStep * 0.6);
+    return { i, p, inPast, x: x(i) - barW / 2, y: PAD.top + ht - barH, w: barW, h: barH };
+  }).filter(Boolean);
   const months = points.map((p, i) => [i, p.date]).filter(([, d]) => d.slice(8) === '01');
+  const forecastFrom = clamp(today, 0, points.length - 1);
   // napis przy linii „dziś” stoi nad prognozą; gdy pas prognozy jest za wąski (telefon), po lewej stronie linii, żeby nie wystawał
-  const labelRight = forecast.length > 0 && x(today) + 8 + FORECAST_LABEL_WIDTH <= width;
+  const labelRight = hasForecast && x(today) + 8 + FORECAST_LABEL_WIDTH <= width;
   const active = hover == null ? null : points[hover];
   // dymek po prawej stronie kursora, przy prawej krawędzi po lewej; zawsze w granicach wykresu
   const tipLeft = active ? Math.max(0, Math.min(width - TIP.width,
     x(hover) + TIP.gap + TIP.width <= width ? x(hover) + TIP.gap : x(hover) - TIP.gap - TIP.width)) : 0;
 
   function move(event) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const i = Math.round((event.clientX - rect.left - PAD.left) / w * (points.length - 1));
+    const i = indexAt(event.clientX - event.currentTarget.getBoundingClientRect().left);
     setFromKeys(false);
     setHover(i >= 0 && i < points.length ? i : null);
   }
@@ -73,15 +123,16 @@ export function WaterChart({ series, forecast = [], color, height = 300, intro =
   function onFocus(event) {
     if (!event.currentTarget.matches(':focus-visible')) return;
     setFromKeys(true);
-    setHover((current) => current ?? today);
+    setHover((current) => current ?? clamp(today, 0, points.length - 1));
   }
 
   return <div ref={box} className={intro ? 'water-chart intro' : 'water-chart'}>
     <div className="relative select-none rounded-lg focus-visible:outline-offset-4" tabIndex={0} role="group" aria-label="Wykres zapasu wody"
       aria-describedby={hintId} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={() => setHover(null)}>
       {/* viewBox: przy wydruku wykres skaluje się do szerokości strony zamiast obcinać prawą część */}
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)} role="img"
-        aria-label="Zapas wody w strefie korzeni w ostatnich miesiącach na tle 10 lat">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img"
+        onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}
+        aria-label="Zapas wody w strefie korzeni na tle 10 lat, z prognozą">
         {[0, 25, 50, 75, 100].map((v) => <g key={v}>
           {/* włosowe linie siatki, ostre na każdym ekranie; linia 0% o ton mocniejsza: na niej stoją słupki opadu */}
           <line x1={PAD.left} x2={PAD.left + w} y1={y(v)} y2={y(v)} className="grid" shapeRendering="crispEdges"
@@ -89,29 +140,35 @@ export function WaterChart({ series, forecast = [], color, height = 300, intro =
           <text x={PAD.left - 8} y={y(v) + 4} textAnchor="end" className="axis">{v}%</text>
         </g>)}
         {/* miesiące tuż pod osią (należą do niej), nie w połowie drogi do legendy */}
-        {months.map(([i, d]) => <text key={d} x={x(i)} y={PAD.top + h + 17} textAnchor="middle" className="axis">{MONTHS[Number(d.slice(5, 7)) - 1]}</text>)}
-        {points.map((p, i) => p.rain_mm > 0.5 && <rect key={p.date} x={x(i) - Math.max(1, w / points.length / 2.5)} width={Math.max(2, w / points.length / 1.25)}
-          y={PAD.top + h - rainH * p.rain_mm / maxRain} height={rainH * p.rain_mm / maxRain} className={`rain ${p.kind}`}/>)}
+        {months.map(([i, d]) => <text key={d} x={x(i)} y={PAD.top + ht + 17} textAnchor="middle" className="axis">{MONTHS[Number(d.slice(5, 7)) - 1]}</text>)}
+        {hasForecast && <rect x={x(forecastFrom)} y={PAD.top} width={x(points.length - 1) - x(forecastFrom)} height={ht} className="forecast-zone"/>}
+        {rainBars.map((b) => <rect key={b.p.date} x={b.x} width={b.w} y={b.y} height={b.h} rx={b.inPast ? 0 : 1.5} className={`rain ${b.p.kind}`}/>)}
+        {/* podpis w pełnych mm (od 1 mm): dni prognozy stoją blisko siebie, a dokładna wartość jest w dymku */}
+        {rainBars.filter((b) => !b.inPast && b.p.rain_mm >= 1).map((b) => <text key={`mm-${b.p.date}`} x={b.x + b.w / 2} y={b.y - 4}
+          textAnchor="middle" className="rain-label">{number(b.p.rain_mm)}</text>)}
         {bandPath && <path d={bandPath} className="band"/>}
-        <polyline points={line('typical_median_pct', 0, series.length)} className="median"/>
+        <polyline points={line('typical_median_pct')} className="median"/>
         <polyline points={line('stress_threshold_pct')} className="threshold"/>
-        {forecast.length > 0 && <rect x={x(today)} y={PAD.top} width={x(points.length - 1) - x(today)} height={h} className="forecast-zone"/>}
-        <polyline points={line('available_pct', 0, series.length)} pathLength={1} className="actual past" style={{ stroke: color }}/>
-        {forecast.length > 0 && <polyline points={line('available_pct', today, points.length)} className="actual forecast" style={{ stroke: color }}/>}
-        <line x1={x(today)} x2={x(today)} y1={PAD.top} y2={PAD.top + h} className="today"/>
+        {mlBandPath && <path d={mlBandPath} className="ml-band"/>}
+        <polyline points={line('available_pct', 0, todayShown ? today + 1 : points.length)} pathLength={1} className="actual past" style={{ stroke: color }}/>
+        {hasForecast && <polyline points={line('available_pct', forecastFrom)} className="actual forecast" style={{ stroke: color }}/>}
+        {hasForecast && <polyline points={line('ml_pct', forecastFrom)} className="ml"/>}
+        {todayShown && <line x1={x(today)} x2={x(today)} y1={PAD.top} y2={PAD.top + ht} className="today"/>}
         {/* bez wartości nie ma kropki (y(null) wypadłby na 0%, a to byłaby zmyślona liczba) */}
-        {Number.isFinite(series[today]?.available_pct)
-          && <circle cx={x(today)} cy={y(series[today].available_pct)} r={6} style={{ fill: color }} className="today-dot"/>}
+        {todayShown && Number.isFinite(points[today]?.available_pct)
+          && <circle cx={x(today)} cy={y(points[today].available_pct)} r={6} style={{ fill: color }} className="today-dot"/>}
         {/* biała obwódka pod napisem: czytelny także wtedy, gdy przechodzi przez niego linia zapasu */}
-        <text x={x(today) + (labelRight ? 8 : -8)} y={PAD.top + 12} textAnchor={labelRight ? 'start' : 'end'} className="axis strong"
+        {todayShown && <text x={x(today) + (labelRight ? 8 : -8)} y={PAD.top + 12} textAnchor={labelRight ? 'start' : 'end'} className="axis strong"
           style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3, strokeLinejoin: 'round' }}>
-          {forecast.length ? 'prognoza →' : dateText(series[today].date)}</text>
+          {hasForecast ? 'prognoza →' : dateText(series[series.length - 1].date)}</text>}
         {active && <g className="no-print">
           {/* kursor przerywany, żeby nie mylił się z ciągłą linią „dziś” */}
-          <line x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + h} className="cursor" strokeDasharray="3 3"
+          <line x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + ht} className="cursor" strokeDasharray="3 3"
             style={{ stroke: 'var(--color-neutral-400)' }}/>
           {Number.isFinite(active.available_pct)
             && <circle cx={x(hover)} cy={y(active.available_pct)} r={4.5} style={{ fill: color }} stroke="white" strokeWidth={2}/>}
+          {active.kind === 'forecast' && Number.isFinite(active.ml_pct)
+            && <circle cx={x(hover)} cy={y(active.ml_pct)} r={4.5} className="ml-dot" stroke="white" strokeWidth={2}/>}
         </g>}
       </svg>
       {/* przy przesuwaniu dymek tylko zmienia miejsce (bez animacji); krótko pojawia się tylko pierwszy raz */}
@@ -122,8 +179,10 @@ export function WaterChart({ series, forecast = [], color, height = 300, intro =
     </div>
     <p id={hintId} className="sr-only">Strzałkami w lewo i w prawo przejdziesz po kolejnych dniach.</p>
     <div className="sr-only" aria-live="polite">{fromKeys && active && <DayReadout point={active} color={color}/>}</div>
-    <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12px] leading-4 text-neutral-500 sm:pl-10">
+    <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 px-4 text-[12px] leading-4 text-neutral-500 sm:pl-10 sm:pr-0">
       <Key label="zapas na tym polu"><line x1="1.25" x2="14.75" y1="5" y2="5" className="actual" style={{ stroke: color }}/></Key>
+      {forecast.length > 0 && <Key label="bilans na prognozie pogody"><line x1="1.25" x2="14.75" y1="5" y2="5" className="actual forecast" style={{ stroke: color }}/></Key>}
+      {mlPoints.length > 0 && <Key label="prognoza modelu AI (pas: 80%)"><rect width="16" height="10" rx="2" className="ml-band"/><line x1="1.25" x2="14.75" y1="5" y2="5" className="ml"/></Key>}
       <Key label="zwykle w tych dniach (10 lat, 10–90%)"><rect width="16" height="10" rx="2" className="band"/></Key>
       <Key label="mediana 10 lat"><line x1="2" x2="14" y1="5" y2="5" className="median"/></Key>
       <Key label="próg stresu uprawy"><line x1="1.5" x2="14.5" y1="5" y2="5" className="threshold"/></Key>
@@ -135,23 +194,31 @@ export function WaterChart({ series, forecast = [], color, height = 300, intro =
 /** Opis jednego dnia: w dymku nad wykresem i ten sam tekst dla czytnika ekranu. */
 function DayReadout({ point, color }) {
   const strong = 'font-medium text-neutral-800';
+  const forecastDay = point.kind === 'forecast';
+  const hasMl = forecastDay && Number.isFinite(point.ml_pct);
   return <>
-    <p className="eyebrow num">{dateText(point.date)}{point.kind === 'forecast' && <span className="text-water-700"> · prognoza</span>}</p>
-    <p className="mt-2 flex items-baseline gap-1.5 leading-none tracking-tight">
+    <p className="eyebrow num">{dateText(point.date)}{forecastDay && <span className="text-water-700"> · prognoza</span>}</p>
+    {hasMl && <p className="mt-2 flex items-baseline gap-1.5 leading-none tracking-tight">
+      <span aria-hidden="true" className="h-[3px] w-3 shrink-0 self-center rounded-full bg-water-600"/>
+      <span className="text-[13px] font-medium text-neutral-600">Model AI</span>{' '}
+      <span className="num text-[18px] font-semibold text-neutral-950">{percent(point.ml_pct)}</span>
+      <span className="num text-[12px] text-neutral-500">({number(point.ml_low)}–{number(point.ml_high)}%)</span>
+    </p>}
+    {Number.isFinite(point.available_pct) && <p className="mt-2 flex items-baseline gap-1.5 leading-none tracking-tight">
       <span aria-hidden="true" className="h-[3px] w-3 shrink-0 self-center rounded-full" style={{ background: color }}/>
-      <span className="text-[13px] font-medium text-neutral-600">Zapas</span>{' '}
-      <span className="num text-[18px] font-semibold text-neutral-950">{percent(point.available_pct)}</span>
-    </p>
+      <span className="text-[13px] font-medium text-neutral-600">{forecastDay ? 'Bilans' : 'Zapas'}</span>{' '}
+      <span className={`num font-semibold text-neutral-950 ${hasMl ? 'text-[15px]' : 'text-[18px]'}`}>{percent(point.available_pct)}</span>
+    </p>}
     {/* frazy się nie łamią w środku: przy wąskim dymku zawija się tylko między nimi */}
     <div className="num mt-2.5 space-y-0.5 text-[12px] leading-snug text-neutral-500">
       {point.typical_median_pct != null && <p>
         <span className="whitespace-nowrap">typowo <span className={strong}>{number(point.typical_median_pct)}%</span></span>{' '}
         <span className="whitespace-nowrap">(zwykle {number(point.typical_p10_pct)}–{number(point.typical_p90_pct)}%)</span>
       </p>}
-      <p>
+      {(point.rain_mm != null || point.stress_threshold_pct != null) && <p>
         <span className="whitespace-nowrap">opad <span className={strong}>{mm(point.rain_mm)}</span></span>{' · '}
         <span className="whitespace-nowrap">próg stresu <span className={strong}>{percent(point.stress_threshold_pct)}</span></span>
-      </p>
+      </p>}
     </div>
   </>;
 }

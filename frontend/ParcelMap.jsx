@@ -27,7 +27,45 @@ function terrainStyle(ol, feature) {
   return new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#41bbed', width: 3 }) });
 }
 
-export function ParcelMap({ parcel, terrain, point, onPick }) {
+// Ortofotomapa z WMTS (gotowe kafle, ok. 0,1 s na kafel) zamiast WMS (każdy kafel renderowany na żądanie, ok. 1,5 s).
+// Siatka EPSG:3857 z GetCapabilities GUGiK: poziomy 0–19, identyfikatory „EPSG:3857:z”, róg siatki jak w Google/OSM.
+export function ortoSource(ol) {
+  const extent3857 = ol.proj.get('EPSG:3857').getExtent();
+  const zooms = Array.from({ length: 20 }, (_, z) => z);
+  return new ol.source.WMTS({
+    url: 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution',
+    layer: 'ORTOFOTOMAPA', matrixSet: 'EPSG:3857', format: 'image/jpeg', style: 'default', requestEncoding: 'KVP',
+    tileGrid: new ol.tilegrid.WMTS({
+      origin: ol.extent.getTopLeft(extent3857),
+      resolutions: zooms.map((z) => ol.extent.getWidth(extent3857) / 256 / 2 ** z),
+      matrixIds: zooms.map((z) => `EPSG:3857:${z}`),
+    }),
+    attributions: 'Ortofotomapa: © GUGiK (Geoportal)',
+  });
+}
+
+// Granice działek z KIEG jako kafle: doczytują się kawałkami przy przybliżaniu i przesuwaniu, zamiast jednego dużego obrazu
+// po każdym ruchu. Węzeł integracja01 wprost: główny adres integracja.gugik.gov.pl przekierowuje (21.11.2026) na
+// img.php bez parametrów i zwraca nie-obraz, który zasłaniał ortofotomapę na biało.
+export function bordersLayer(ol, options = {}) {
+  return new ol.layer.Tile({ minZoom: 14, ...options, source: new ol.source.TileWMS({
+    url: 'https://integracja01.gugik.gov.pl/cgi-bin/KrajowaIntegracjaEwidencjiGruntow',
+    params: { LAYERS: 'dzialki,numery_dzialek', FORMAT: 'image/png', TRANSPARENT: 'TRUE', VERSION: '1.3.0' },
+    hidpi: false, transition: 0, attributions: 'Granice działek: © GUGiK (KIEG)',
+  }) });
+}
+
+/** Wybrana działka: jasnożółty obrys z poświatą (widoczny na zdjęciu lotniczym), wskazany punkt jako zielona kropka. */
+export function parcelStyle(ol) {
+  return [new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,241,162,.35)', width: 9 }) }), new ol.style.Style({
+    stroke: new ol.style.Stroke({ color: '#fff1a2', width: 3 }),
+    fill: new ol.style.Fill({ color: 'rgba(255,241,162,.18)' }),
+    image: new ol.style.Circle({ radius: 6, fill: new ol.style.Fill({ color: '#205338' }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 2 }) }),
+  })];
+}
+
+export function ParcelMap({ parcel, terrain, point, onPick, location }) {
   const target = useRef(null);
   const instance = useRef(null);
   const pick = useRef(onPick);
@@ -42,29 +80,10 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     const parcelSource = new ol.source.Vector();
     const terrainSource = new ol.source.Vector();
     const maskSource = new ol.source.Vector();
-    // Ortofotomapa z WMTS (gotowe kafle, ok. 0,1 s na kafel) zamiast WMS (każdy kafel renderowany na żądanie, ok. 1,5 s).
-    // Siatka EPSG:3857 z GetCapabilities GUGiK: poziomy 0–19, identyfikatory „EPSG:3857:z”, róg siatki jak w Google/OSM.
-    const extent3857 = ol.proj.get('EPSG:3857').getExtent();
-    const zooms = Array.from({ length: 20 }, (_, z) => z);
-    const orto = new ol.layer.Tile({ minZoom: 9, source: new ol.source.WMTS({
-      url: 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution',
-      layer: 'ORTOFOTOMAPA', matrixSet: 'EPSG:3857', format: 'image/jpeg', style: 'default', requestEncoding: 'KVP',
-      tileGrid: new ol.tilegrid.WMTS({
-        origin: ol.extent.getTopLeft(extent3857),
-        resolutions: zooms.map((z) => ol.extent.getWidth(extent3857) / 256 / 2 ** z),
-        matrixIds: zooms.map((z) => `EPSG:3857:${z}`),
-      }),
-      attributions: 'Ortofotomapa: © GUGiK (Geoportal)',
-    }) });
+    const locationSource = new ol.source.Vector();
+    const orto = new ol.layer.Tile({ minZoom: 9, source: ortoSource(ol) });
     const osm = new ol.layer.Tile({ source: new ol.source.OSM(), maxZoom: 9 });
-    // Granice działek z KIEG jako kafle: doczytują się kawałkami przy przybliżaniu i przesuwaniu, zamiast jednego dużego obrazu
-    // po każdym ruchu. Węzeł integracja01 wprost: główny adres integracja.gugik.gov.pl przekierowuje (21.11.2026) na
-    // img.php bez parametrów i zwraca nie-obraz, który zasłaniał ortofotomapę na biało.
-    const borders = new ol.layer.Tile({ minZoom: 14, source: new ol.source.TileWMS({
-      url: 'https://integracja01.gugik.gov.pl/cgi-bin/KrajowaIntegracjaEwidencjiGruntow',
-      params: { LAYERS: 'dzialki,numery_dzialek', FORMAT: 'image/png', TRANSPARENT: 'TRUE', VERSION: '1.3.0' },
-      hidpi: false, transition: 0, attributions: 'Granice działek: © GUGiK (KIEG)',
-    }) });
+    const borders = bordersLayer(ol);
     const defaults = ol.control.defaults.defaults ?? ol.control.defaults;
     const map = new ol.Map({
       target: target.current,
@@ -73,21 +92,19 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
         source: maskSource,
         style: new ol.style.Style({ fill: new ol.style.Fill({ color: 'rgba(12, 22, 17, .74)' }) }),
       }), new ol.layer.Vector({
-        source: parcelSource,
-        style: [new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,241,162,.35)', width: 9 }) }), new ol.style.Style({
-          stroke: new ol.style.Stroke({ color: '#fff1a2', width: 3 }),
-          fill: new ol.style.Fill({ color: 'rgba(255,241,162,.18)' }),
-          image: new ol.style.Circle({ radius: 6, fill: new ol.style.Fill({ color: '#205338' }),
-            stroke: new ol.style.Stroke({ color: '#fff', width: 2 }) }),
-        })],
-      }), new ol.layer.Vector({ source: terrainSource, style: (f) => terrainStyle(ol, f) })],
+        source: parcelSource, style: parcelStyle(ol),
+      }), new ol.layer.Vector({ source: terrainSource, style: (f) => terrainStyle(ol, f) }),
+      new ol.layer.Vector({ source: locationSource, style: new ol.style.Style({
+        image: new ol.style.Circle({ radius: 6, fill: new ol.style.Fill({ color: '#146b8c' }),
+          stroke: new ol.style.Stroke({ color: '#fff', width: 2.5 }) }),
+      }) })],
       view: new ol.View({ center: ol.proj.fromLonLat([19.4, 52.0]), zoom: 6, maxZoom: 20 }),
     });
     map.on('singleclick', ({ coordinate }) => {
       const [lon, lat] = ol.proj.toLonLat(coordinate);
       pick.current?.({ lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) });
     });
-    instance.current = { map, osm, orto, borders, parcelSource, terrainSource, maskSource, format: new ol.format.GeoJSON() };
+    instance.current = { map, osm, orto, borders, parcelSource, terrainSource, maskSource, locationSource, format: new ol.format.GeoJSON() };
     return () => { instance.current = null; map.setTarget(undefined); map.dispose(); };
   }, [ol]);
 
@@ -102,6 +119,24 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
   useEffect(() => {
     const data = instance.current;
     if (!data) return;
+    data.locationSource.clear();
+    if (!location) return;
+    const center = ol.proj.fromLonLat([location.point.lon, location.point.lat]);
+    data.locationSource.addFeature(new ol.Feature(new ol.geom.Point(center)));
+    const view = data.map.getView();
+    const zoom = location.precise ? 16 : 14.75;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    view.cancelAnimations();
+    if (reduced || view.getZoom() < 9) {
+      view.setCenter(center);
+      view.setZoom(reduced ? zoom : zoom - 1.75);
+    }
+    if (!reduced) view.animate({ center, zoom, duration: 420, easing: ol.easing.easeOut });
+  }, [location, ol]);
+
+  useEffect(() => {
+    const data = instance.current;
+    if (!data) return;
     data.parcelSource.clear();
     data.maskSource.clear();
     const geometry = parcel?.geometry ?? (point ? { type: 'Point', coordinates: [point.lon, point.lat] } : null);
@@ -111,7 +146,10 @@ export function ParcelMap({ parcel, terrain, point, onPick }) {
     data.parcelSource.addFeature(feature);
     const view = data.map.getView();
     if (!focus) {
-      view.fit(feature.getGeometry().getExtent(), { maxZoom: 17, padding: [35, 35, 35, 35] });
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      view.cancelAnimations();
+      view.fit(feature.getGeometry().getExtent(),
+        { maxZoom: 17, padding: [35, 35, 35, 35], duration: reduced ? 0 : 280, easing: ol.easing.easeOut });
       return;
     }
     // Widok jednej działki: wszystko poza jej granicą przyciemnione (maska z dziurą w kształcie działki).

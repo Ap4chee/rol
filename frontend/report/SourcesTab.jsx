@@ -57,6 +57,7 @@ export function SourcesTab({ report }) {
       <AccordionItem value="limits">
         <AccordionTrigger className="font-semibold text-neutral-900">Czego nie wiemy ({limitations.length})</AccordionTrigger>
         <AccordionContent>
+          {water.uncertainty_text && <p className="mb-4 max-w-[76ch] text-[13.5px] text-neutral-700">{water.uncertainty_text}</p>}
           <ul className="flex max-w-[76ch] list-disc flex-col gap-1.5 pl-5 text-[13.5px] text-neutral-700 marker:text-neutral-300">
             {limitations.map((line, i) => <li key={i}>{line}</li>)}
           </ul>
@@ -78,6 +79,10 @@ export function SourcesTab({ report }) {
               </TD>
             </TR>)}</TBody>
           </Table>}
+          {report.soil?.status === 'ok' && report.soil.text?.length > 0 && <>
+            <h4 className="mt-6 font-sans text-[14px] font-semibold tracking-tight text-neutral-900">Profil gleby</h4>
+            <div className="mt-1.5 max-w-[76ch] text-[13.5px] text-neutral-700"><Paragraphs lines={report.soil.text}/></div>
+          </>}
           {report.crop.assumptions?.length > 0 && <>
             <h4 className="mt-6 font-sans text-[14px] font-semibold tracking-tight text-neutral-900">Założenia o uprawie</h4>
             <div className="mt-1.5 max-w-[76ch] text-[13.5px] text-neutral-700"><Paragraphs lines={report.crop.assumptions}/></div>

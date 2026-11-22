@@ -69,3 +69,13 @@ test('przeliczanie zapisanego pola zaczyna od jego działki albo punktu', () => 
   const withPoint = initialSelection({ report: { request: { point: { lat: 51, lon: 22 } }, parcel: null } });
   assert.deepEqual(withPoint.point, { lat: 51, lon: 22 });
 });
+
+test('adres ustawia okolicę mapy, działkę trzeba wskazać osobno', () => {
+  const location = { label: 'Niedrzwica Kościelna', point: { lat: 51, lon: 22 } };
+  const located = run([{ type: 'start', seq: 1 }, { type: 'located', seq: 1, location }]);
+  assert.equal(isReady(located), false);
+  const selected = run([{ type: 'start', seq: 2 }, { type: 'selected', seq: 2, parcel, fromMap: true }], located);
+  assert.equal(selected.query, location.label);
+  assert.equal(selected.location, location);
+  assert.equal(isReady(selected), true);
+});

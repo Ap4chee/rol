@@ -19,10 +19,14 @@ export const POINT_ONLY = 'Usługa działek jest niedostępna. Raport będzie do
 /** Stan początkowy (także przy przeliczaniu zapisanego pola). */
 export function initialSelection(initial) {
   const report = initial?.report;
+  const input = initial?.input;   // dane pola z serwera: są także, zanim policzy się pierwszy raport
+  const parcel = input?.test ? null : report?.parcel ?? null;   // obrys testowy to nie działka
   return {
-    query: report?.request.parcel_id ?? report?.parcel?.id ?? '',
-    parcel: report?.parcel ?? null,
-    point: report?.parcel ? null : report?.request.point ?? null,
+    query: input?.parcel_id ?? report?.request.parcel_id ?? report?.parcel?.id ?? '',
+    parcel,
+    savedParcelId: !parcel ? input?.parcel_id ?? null : null,
+    point: parcel ? null : input?.point ?? report?.request.point ?? null,
+    location: null,
     candidates: [], truncated: false,
     message: '',
     problem: null,          // { kind: 'not_found' | 'failure', text }
@@ -38,11 +42,11 @@ export function insidePoland({ lat, lon }) {
 
 /** Wybór gotowy do analizy: działka albo punkt (gdy usługa działek nie odpowiada), bez trwającego sprawdzania. */
 export function isReady(state) {
-  return !state.checking && Boolean(state.parcel || state.point);
+  return !state.checking && Boolean(state.parcel || state.savedParcelId || state.point);
 }
 
-const RESPONSES = new Set(['candidates', 'selected', 'pointOnly', 'notFound', 'failed']);
-const cleared = { parcel: null, point: null, candidates: [], truncated: false, message: '', problem: null };
+const RESPONSES = new Set(['candidates', 'located', 'selected', 'pointOnly', 'notFound', 'failed']);
+const cleared = { parcel: null, savedParcelId: null, point: null, candidates: [], truncated: false, message: '', problem: null };
 
 /**
  * Przejścia stanu. Każde nowe wskazanie ustala `seq` (numer z licznika w komponencie); odpowiedzi serwera niosą
@@ -59,6 +63,9 @@ const cleared = { parcel: null, point: null, candidates: [], truncated: false, m
 export function selectionReducer(state, event) {
   if (RESPONSES.has(event.type) && event.seq !== state.seq) return state;   // spóźniona odpowiedź
   switch (event.type) {
+    case 'mode':
+      return { ...state, query: event.query, location: null, candidates: [], truncated: false, message: '', problem: null,
+        checking: false, seq: event.seq };
     case 'edit':
       return { ...state, ...cleared, query: event.query, checking: false, seq: event.seq };
     case 'start':
@@ -68,9 +75,13 @@ export function selectionReducer(state, event) {
       return { ...state, ...cleared, checking: false, seq: event.seq, problem: { kind: 'failure', text: event.text } };
     case 'candidates':
       return { ...state, checking: false, candidates: event.list, truncated: Boolean(event.truncated),
-        message: event.truncated ? 'Wybierz działkę lub doprecyzuj nazwę obrębu.' : 'Wybierz swoją działkę z wyników.' };
+        message: event.address ? 'Wybierz miejsce z wyników.' : event.truncated
+          ? 'Wybierz działkę lub doprecyzuj nazwę obrębu.' : 'Wybierz swoją działkę z wyników.' };
+    case 'located':
+      return { ...state, ...cleared, checking: false, location: event.location, query: event.location.label };
     case 'selected':
-      return { ...state, ...cleared, checking: false, parcel: event.parcel, query: event.parcel.id };
+      return { ...state, ...cleared, checking: false, parcel: event.parcel,
+        query: event.fromMap && state.location ? state.query : event.parcel.id };
     case 'pointOnly':
       return { ...state, ...cleared, checking: false, point: event.point, message: POINT_ONLY };
     case 'notFound':   // lista kandydatów zostaje: rolnik może wybrać inną pozycję

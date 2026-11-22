@@ -1,5 +1,5 @@
 import { Field3D } from '../Field3D.jsx';
-import { balanceText, number, soilProfile } from '../model.js';
+import { balanceText, dateText, number, soilProfile } from '../model.js';
 import { Note } from '../ui.jsx';
 import { Card } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
@@ -11,6 +11,7 @@ import { Section } from './shared.jsx';
 // Frakcje uziarnienia: pole warstwy, nazwa, kolor z @theme (app.css).
 const FRACTIONS = [['sand_pct', 'piasek', 'bg-sand'], ['silt_pct', 'pył', 'bg-silt'], ['clay_pct', 'ił', 'bg-clay']];
 const DRY = new Set(['low', 'very_low']);
+const MOISTURE_LABEL = { very_low: 'Bardzo sucho', low: 'Sucho', normal: 'W normie', high: 'Wilgotniej' };
 
 /** Zakładka „Gleba”: model 3D pola, profil gleby i wilgotność warstw w okolicy. */
 export function SoilTab({ report, printing, intro = false }) {
@@ -119,22 +120,36 @@ function SoilLegend({ balanceCm, rootsNowCm, deeper }) {
 
 /** Wilgotność warstw z modelu regionalnego (okolica działki): pasek = teraz, kreska = mediana z 10 lat. */
 function RegionalMoisture({ layers }) {
+  const firstDay = layers[0].current_to;
+  const sameDay = layers.every((layer) => layer.current_to === firstDay);
   return <Card className="p-5 md:p-6">
+    <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-neutral-600">
+      <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-1.5 w-4 rounded-full bg-neutral-400"/>Wilgotność w analizie</span>
+      <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-3 w-0.5 rounded-full bg-neutral-900"/>Zwykle</span>
+    </div>
     <ul className="flex flex-col gap-6">
       {layers.map((layer) => {
         const dry = DRY.has(layer.class_key);
         return <li key={layer.key}>
           <div className="flex items-baseline justify-between gap-3">
             <p className="min-w-0 text-[14px] font-medium text-neutral-900 first-letter:uppercase">{layer.label}</p>
-            <p className="num shrink-0 text-[12px] text-neutral-500">
-              {layer.bottom_cm == null ? 'cały profil' : `${layer.top_cm}–${layer.bottom_cm} cm`}</p>
+            <span className={cn('shrink-0 text-[12.5px]', dry ? 'font-semibold text-moderate-ink' : 'text-neutral-600')}>
+              {MOISTURE_LABEL[layer.class_key] ?? layer.class_label}
+            </span>
           </div>
-          <Meter className="mt-3" size="lg" value={100 * layer.current} marker={100 * layer.median} label={`Wilgotność: ${layer.label}`}
+          <Meter className="mt-2.5" size="lg" value={100 * layer.current} marker={100 * layer.median}
+            label={`Wilgotność ${layer.label}, zwykle ${number(100 * layer.median)}%`}
             color={dry ? 'var(--color-moderate)' : 'var(--color-water-500)'} track={dry ? 'bg-moderate-soft' : 'bg-water-50'}/>
-          <p className={cn('mt-2.5 text-[12.5px]', dry ? 'font-semibold text-moderate-ink' : 'text-neutral-500')}>{layer.class_label}</p>
+          {(layer.bottom_cm != null || !sameDay) && <div className="num mt-2 flex flex-wrap gap-x-3 text-[12px] text-neutral-500">
+            {layer.bottom_cm != null && <span>{layer.top_cm}–{layer.bottom_cm} cm</span>}
+            {!sameDay && layer.current_to && <span>Dane do {dateText(layer.current_to)}</span>}
+          </div>}
         </li>;
       })}
     </ul>
-    <p className="mt-6 text-[12px] text-neutral-500">Pasek: teraz · kreska: zwykle (10 lat) · NASA POWER, ok.&nbsp;50&nbsp;km</p>
+    <div className="mt-5 flex flex-wrap justify-between gap-x-3 gap-y-1 border-t border-black/[0.06] pt-3 text-[12px] text-neutral-500">
+      <span>NASA POWER · siatka ok. 50 km</span>
+      {sameDay && firstDay && <span className="num">Dane do {dateText(firstDay)}</span>}
+    </div>
   </Card>;
 }
