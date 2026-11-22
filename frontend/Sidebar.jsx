@@ -18,12 +18,14 @@ function useChangedSinceMount(value) {
   return changed;
 }
 
-/** Znak marki: kropla nad falą (ten sam rysunek co ikona karty przeglądarki) na zielonym kafelku. */
+/** Znak marki: kiełek wyrastający nad falą (ten sam rysunek co ikona karty przeglądarki) na zielonym kafelku. */
 function BrandMark() {
   return <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-[8px] bg-brand-700 text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.16),0_1px_2px_rgb(13_35_23/0.28)]">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" className="size-[17px]">
-      <path d="M12 2c-3 4-5 6-5 9a5 5 0 0 0 10 0c0-3-2-5-5-9Z"/>
-      <path d="M3 19q4.5-3 9 0t9 0"/>
+      <path d="M3 20q4.5-2.5 9 0t9 0"/>
+      <path d="M12 19.5V11"/>
+      <path d="M12 14c-3.5 0-5.5-2-5.5-5.5 3.5 0 5.5 2 5.5 5.5Z"/>
+      <path d="M12 11c0-4 2-6.5 6-6.5 0 4-2.5 6.5-6 6.5Z"/>
     </svg>
   </span>;
 }
