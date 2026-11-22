@@ -8,6 +8,7 @@ import { Explanation, Section } from '@/shared/ui/section';
 import { SkeletonReveal } from '@/shared/ui/effects';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Button } from '@/shared/ui/button';
+import { Callout } from '@/shared/ui/callout';
 import { Spinner } from '@/shared/ui/spinner';
 import { measure, Stat, StatGrid, wrapping } from '@/shared/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
@@ -16,7 +17,7 @@ const SLOPE_LABELS = ['Średni spadek', 'Najbardziej strome 10%'];
 // Komórki liczb: etykieta może zająć dwie linie (wąska kolumna obok mapy), liczby i tak stoją w jednej linii na dole.
 const SLOPE_CELLS = 'md:grid-cols-2 [&>*]:flex [&>*]:flex-col [&>*]:justify-between [&>*]:gap-1';
 
-/** Zakładka „Teren i woda”: mapa z drogami spływu, spadki i przyczyny z terenu, rzeki w okolicy. */
+/** Zakładka „Teren i woda”: mapa z drogami spływu, spadki i przyczyny z terenu, użytkowanie terenu, rzeki w okolicy. */
 export function TerrainTab({ report, terrain, control }) {
   const hydro = report.hydrology;
   const pending = terrain?.status === 'pending';
@@ -50,6 +51,12 @@ export function TerrainTab({ report, terrain, control }) {
         </div>
       </Section>
     </div>
+    {/* raporty zapisane przed dodaniem tego źródła nie mają pola land_use */}
+    {report.land_use && <Section title="Użytkowanie terenu"
+      lead="Co mapa pokrycia terenu pokazuje na działce i czy zgadza się to z wybraną uprawą.">
+      <Note section={report.land_use}/>
+      {report.land_use.status === 'ok' && <LandUse use={report.land_use}/>}
+    </Section>}
     <Section title="Rzeki w okolicy" lead="Najbliższy wodowskaz IMGW-PIB: czy susza dotyczy też wód w okolicy pola.">
       <Note section={hydro}/>
       {hydro.status === 'ok' ? <Rivers hydro={hydro}/> : <Explanation lines={hydro.text}/>}
@@ -70,6 +77,23 @@ function SlopeStats({ terrain, pending }) {
         <span className="font-normal text-neutral-400">&gt;&nbsp;</span>{measure(number(terrain.slope_p90_pct, 1), '%')}</>}/>
     </StatGrid>
   </SkeletonReveal>;
+}
+
+/** Udziały klas pokrycia terenu na działce (ESA WorldCover) i wniosek policzony na serwerze. */
+function LandUse({ use }) {
+  const shown = use.classes.filter((item) => item.share_pct >= 5).slice(0, 3);
+  // zdania z serwera: [udziały, (mało pikseli), wniosek, zastrzeżenie o mapie]; udziały są już w liczbach wyżej
+  const lines = use.text.slice(1);
+  const verdict = lines.length > 1 ? lines[lines.length - 2] : null;
+  const warn = use.verdict === 'not_farmland' || use.verdict === 'partly_other' || use.crop_matches === false;
+  return <>
+    <StatGrid className="md:grid-cols-3">
+      {(shown.length ? shown : use.classes.slice(0, 1)).map((item) => <Stat key={item.key}
+        label={wrapping(item.label.charAt(0).toUpperCase() + item.label.slice(1))} value={measure(number(item.share_pct), '%')}/>)}
+    </StatGrid>
+    {warn && verdict && <Callout tone="warning" className="mt-5 max-w-[76ch]">{verdict}</Callout>}
+    <Explanation lines={warn ? lines.filter((line) => line !== verdict) : lines}/>
+  </>;
 }
 
 /** Najbliższy wodowskaz IMGW-PIB: stan teraz na tle tych samych dni w poprzednich latach. */
