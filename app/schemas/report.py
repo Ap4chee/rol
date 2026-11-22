@@ -10,6 +10,7 @@ from app.schemas.common import CropKey, CropTimelineInput, Point, SourceInfo
 from app.schemas.observations import (
     HydrologySection,
     IrrigationNeed,
+    LandUseSection,
     Recommendations,
     SatelliteSection,
     SoilMoistureSection,
@@ -53,6 +54,7 @@ class ReportResponse(BaseModel):
     irrigation_need: IrrigationNeed | None = None
     terrain: TerrainRef
     hydrology: HydrologySection
+    land_use: LandUseSection | None = None
     recommendations: Recommendations
     limitations: list[str] = []
     sources: list[SourceInfo] = []

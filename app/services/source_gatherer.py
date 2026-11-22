@@ -32,6 +32,7 @@ from app.sources import (
     sentinel,
     soilgrids,
     weather,
+    worldcover,
 )
 from app.sources import soil_moisture as moisture_source
 
@@ -40,6 +41,7 @@ log = logging.getLogger(__name__)
 ProgressFn = Callable[[str, str], None]
 TIMEOUT_HYDRO_TOTAL_S = 20.0
 TIMEOUT_WATERCOURSE_S = 20.0
+TIMEOUT_LAND_USE_S = 15.0
 # źródło pobierane równolegle → etap pokazywany rolnikowi w trakcie liczenia
 PROGRESS_STAGE = {"weather": "weather", "soil": "soil", "hydrology": "water"}
 NO_FORECAST_FOR_PAST = "Prognoza zapasu jest liczona tylko dla analizy na dziś."
@@ -74,6 +76,8 @@ class SourceBundle:
     moisture_info: SourceInfo
     satellite: SatelliteJob
     timings: dict[str, float] = field(default_factory=dict)
+    land_use: dict[int, int] | None = None   # kod klasy WorldCover → liczba pikseli działki
+    land_use_info: SourceInfo = field(default_factory=sources_info.land_use_not_fetched)
 
 
 class SourceGatherer:
@@ -114,7 +118,8 @@ class SourceGatherer:
             for_today = request.date >= today
             t0 = time.perf_counter()
             weather_result, (soil, soil_info), (hydro, hydro_info), (watercourse, watercourse_info), \
-                (moisture, moisture_info), (forecast, forecast_reason), (ifs, ifs_reason) = await asyncio.gather(
+                (moisture, moisture_info), (forecast, forecast_reason), (ifs, ifs_reason), \
+                (land_use, land_use_info) = await asyncio.gather(
                     timed("weather", weather.fetch_weather(client, lat, lon, window.start, window.end, today)),
                     timed("soil", self.fetch_soil(client, geometry)),
                     timed("hydrology", self.fetch_hydrology(client, lon, lat, request.date, today)),
@@ -124,13 +129,15 @@ class SourceGatherer:
                           else _constant((None, NO_FORECAST_FOR_PAST))),
                     # data historyczna: model wilgotności nie działa z zasady, bez ramki w raporcie
                     timed("ifs_forecast", self.fetch_ifs(client, lat, lon, today) if for_today
-                          else _constant((None, None))))
+                          else _constant((None, None))),
+                    timed("land_use", self.fetch_land_use(geometry)))
             timings["sources_parallel"] = round(time.perf_counter() - t0, 2)
         return SourceBundle(
             parcel=parcel, lon=lon, lat=lat, weather=weather_result, soil=soil, hydrology=hydro,
             watercourse=watercourse, moisture=moisture, forecast=forecast, forecast_reason=forecast_reason,
             ifs=ifs, ifs_reason=ifs_reason, parcel_info=parcel_info, soil_info=soil_info, hydrology_info=hydro_info,
-            watercourse_info=watercourse_info, moisture_info=moisture_info, satellite=satellite, timings=timings)
+            watercourse_info=watercourse_info, moisture_info=moisture_info, satellite=satellite, timings=timings,
+            land_use=land_use, land_use_info=land_use_info)
 
     @staticmethod
     def _start_satellite(parcel: parcels.Parcel | None, day: date, today: date, budget_s: float) -> SatelliteJob:
@@ -226,6 +233,30 @@ class SourceGatherer:
             info.status, info.reason, info.impact = Status.error, str(exc), impact
         info.elapsed_s = round(time.perf_counter() - t0, 2)
         return result, info
+
+    @staticmethod
+    async def fetch_land_use(geometry: BaseGeometry) -> tuple[dict[int, int] | None, SourceInfo]:
+        """Pokrycie terenu na działce z mapy ESA WorldCover (odczyt rastra w wątku)."""
+        t0 = time.perf_counter()
+        info = sources_info.land_use_source()
+        impact = sources_info.LAND_USE_NO_IMPACT
+        counts = None
+        try:
+            counts, info.from_cache = await asyncio.wait_for(
+                asyncio.to_thread(worldcover.fetch_counts, geometry), TIMEOUT_LAND_USE_S)
+        except NoData as exc:
+            info.status, info.reason, info.impact = Status.no_data, str(exc), impact
+        except TimeoutError:
+            info.status, info.impact = Status.error, impact
+            info.reason = f"Mapa pokrycia terenu nie odpowiedziała w {TIMEOUT_LAND_USE_S:.0f} s."
+        except (SourceError, RuntimeError) as exc:
+            info.status, info.reason, info.impact = Status.error, str(exc), impact
+        except Exception as exc:  # odczyt rastra w wątku może zgłosić dowolny wyjątek biblioteki
+            log.warning("Odczyt mapy pokrycia terenu się nie udał", exc_info=exc)
+            info.status, info.impact = Status.error, impact
+            info.reason = f"Błąd odczytu mapy pokrycia terenu ({type(exc).__name__})."
+        info.elapsed_s = round(time.perf_counter() - t0, 2)
+        return counts, info
 
     @staticmethod
     async def fetch_moisture(client: httpx.AsyncClient, lat: float, lon: float, start: date, end: date

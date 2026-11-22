@@ -35,7 +35,7 @@ class Point(BaseModel):
 
 class SourceInfo(BaseModel):
     """Jedno źródło danych użyte (albo nieużyte) w raporcie."""
-    key: str = Field(description="uldk | weather | weather_recent | soil | satellite | terrain | hydrology")
+    key: str = Field(description="uldk | weather | weather_recent | soil | satellite | terrain | hydrology | land_use")
     name: str = Field(description="nazwa źródła i dostawcy")
     status: Status
     reason: str | None = Field(default=None, description="powód braku danych lub błędu; uwaga przy statusie ok")

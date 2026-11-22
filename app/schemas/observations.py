@@ -192,6 +192,26 @@ class SoilMoistureSection(BaseModel):
     text: list[str] = []
 
 
+class LandUseClass(BaseModel):
+    key: str = Field(description="cropland | grassland | trees | shrubs | built_up | bare | water | wetland | …")
+    label: str
+    share_pct: float = Field(description="udział pikseli działki w tej klasie, %")
+
+
+class LandUseSection(BaseModel):
+    """Użytkowanie terenu z mapy pokrycia terenu. Sprawdza założenie o uprawie, nie zmienia bilansu."""
+    status: Status
+    reason: str | None = None
+    map_year: int | None = Field(default=None, description="rok, którego stan pokazuje mapa")
+    pixels: int | None = Field(default=None, description="piksele mapy (ok. 10 m) policzone dla działki")
+    classes: list[LandUseClass] = Field(default=[], description="klasy od największego udziału")
+    farmland_pct: float | None = Field(default=None, description="grunty orne oraz łąki i pastwiska razem, %")
+    verdict: str | None = Field(default=None, description="farmland | partly_other | not_farmland")
+    crop_matches: bool | None = Field(
+        default=None, description="czy dominująca klasa pasuje do rodzaju uprawy (orna albo użytek zielony)")
+    text: list[str] = []
+
+
 class MonthAmount(BaseModel):
     month: int = Field(description="1–12")
     mm: float

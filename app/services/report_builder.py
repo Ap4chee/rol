@@ -22,6 +22,7 @@ from app.presentation.sections import (
     history,
     hydrology,
     irrigation,
+    land_use,
     limitations,
     recommendations,
     satellite,
@@ -122,27 +123,34 @@ class ReportBuilder:
         hydro = hydrology.hydrology_section(bundle.hydrology, bundle.hydrology_info, status.class_key, c.in_season)
         hydrology.add_watercourse(hydro, bundle.watercourse, bundle.watercourse_info, parcel is None)
         moisture = soil_moisture.soil_moisture_section(bundle.moisture, bundle.moisture_info, window.end, status.class_key)
-        sources += [sat_info, bundle.hydrology_info, bundle.moisture_info, bundle.watercourse_info]
+        sources += [sat_info, bundle.hydrology_info, bundle.moisture_info, bundle.watercourse_info,
+                    bundle.land_use_info]
+        use = land_use.land_use_section(bundle.land_use, bundle.land_use_info, c.crop, parcel is None)
         causes.add_river_cause(balance.causes, hydro, status)
         recs = recommendations.recommendations_section(recommendations.recommendation_facts(
             c, status, balance.history, bundle.soil.layers if bundle.soil else None, soil_part, sat_section,
             sat_field_check, hydro))
+        land_use.add_field_check(recs, use, c.crop)
+        crop_part = crop.crop_info(c, request)
+        crop_part.assumptions += land_use.assumption(use)
         return ReportResponse(
             generated_at=datetime.now(UTC), elapsed_s=round(time.perf_counter() - started, 2),
             request=request, analysis_date=request.date, parcel=parcel_info(parcel) if parcel else None,
-            crop=crop.crop_info(c, request), summary=summary.summary(status, c.in_season, recs),
+            crop=crop_part, summary=summary.summary(status, c.in_season, recs),
             water_status=status, satellite=sat_section, history=balance.history, causes=balance.causes, soil=soil_part,
             soil_moisture=moisture, irrigation_need=balance.irrigation, terrain=summary.terrain_ref(parcel),
-            hydrology=hydro, recommendations=recs,
-            limitations=limitations.limitations(c.crop, c.dates[-1], window.end, request.date >= today,
-                                                bundle.soil is None),
+            hydrology=hydro, land_use=use, recommendations=recs,
+            limitations=[*land_use.limitation(use),
+                         *limitations.limitations(c.crop, c.dates[-1], window.end, request.date >= today,
+                                                  bundle.soil is None)],
             sources=sources, timings_s=bundle.timings)
 
     async def _without_weather(self, request: ReportRequest, bundle: SourceBundle, sources: list[SourceInfo],
                                soil_part: SoilSection, started: float) -> ReportResponse:
         """Bez pogody nie ma bilansu: raport mówi to wprost i pokazuje tylko to, co od pogody nie zależy."""
         _result, sat_info = await self._gatherer.finish_satellite(bundle.satellite)
-        sources += [sat_info, bundle.hydrology_info, bundle.watercourse_info, bundle.moisture_info]
+        sources += [sat_info, bundle.hydrology_info, bundle.watercourse_info, bundle.moisture_info,
+                    bundle.land_use_info]
         hydro = hydrology.hydrology_section(bundle.hydrology, bundle.hydrology_info, None, False)
         hydrology.add_watercourse(hydro, bundle.watercourse, bundle.watercourse_info, bundle.parcel is None)
         crop_ = request.crop_with_timeline()
@@ -150,6 +158,7 @@ class ReportBuilder:
             generated_at=datetime.now(UTC), elapsed_s=round(time.perf_counter() - started, 2),
             request=request, analysis_date=request.date,
             parcel=parcel_info(bundle.parcel) if bundle.parcel else None, soil=soil_part, hydrology=hydro,
+            land_use=land_use.land_use_section(bundle.land_use, bundle.land_use_info, crop_, bundle.parcel is None),
             sources=sources, timings_s=bundle.timings, **summary.no_weather_sections(request.crop, crop_.name))
 
 

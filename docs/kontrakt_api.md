@@ -46,6 +46,7 @@ Wyjście (`ReportResponse`), pola najwyższego poziomu:
 | `soil_moisture` | wilgotność 3 warstw w okolicy (NASA POWER, ok. 50 km) na tle tych samych dni w 10 latach, albo jawny brak danych |
 | `terrain` | `pending` i adres, pod którym frontend dociąga teren i spływ |
 | `hydrology` | odległość do najbliższego cieku albo jawny brak danych |
+| `land_use` | użytkowanie terenu z mapy ESA WorldCover (stan z 2021 r.): `classes` (klasa, nazwa, udział w %), `farmland_pct` (grunty orne oraz łąki i pastwiska), `verdict` (`farmland`, `partly_other`, `not_farmland`), `crop_matches`, zdania w `text`; albo jawny brak danych. Nie zmienia bilansu |
 | `recommendations` | `retention`, `agrotechnical`, `irrigation`, `field_checks`; każda pozycja: co, gdzie, dlaczego, pewność z uzasadnieniem i `timing` (`now`, `after_harvest`, `long_term`) |
 | `limitations` | uproszczenia modelu i braki danych |
 | `sources` | lista źródeł ze statusem i datami |

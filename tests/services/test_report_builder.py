@@ -68,8 +68,9 @@ def test_report_from_fake_sources_has_all_sections_in_order():
     assert report.water_status.status == Status.ok
     assert report.water_status.class_key in CLASS_KEYS
     assert [s.key for s in report.sources] == [
-        "uldk", "weather", "soil", "satellite", "hydrology", "soil_moisture", "watercourses"]
-    assert report.soil.assumed and report.limitations[0].startswith("Brak danych o glebie")
+        "uldk", "weather", "soil", "satellite", "hydrology", "soil_moisture", "watercourses", "land_use"]
+    assert report.land_use.status == Status.no_data and "gruntem rolnym" in report.limitations[0]
+    assert report.soil.assumed and report.limitations[1].startswith("Brak danych o glebie")
     assert report.satellite.status == Status.no_data and report.terrain.status == Status.no_data
     assert report.history.status == Status.ok and len(report.history.seasons) >= 3
     assert report.recommendations.status == Status.ok
@@ -91,7 +92,8 @@ def test_without_weather_report_says_why_and_skips_dependent_sections():
     assert report.water_status.status == Status.error
     assert report.recommendations.status == Status.no_data
     assert report.summary == report.limitations
-    assert [s.key for s in report.sources][-4:] == ["satellite", "hydrology", "watercourses", "soil_moisture"]
+    assert [s.key for s in report.sources][-5:] == [
+        "satellite", "hydrology", "watercourses", "soil_moisture", "land_use"]
     assert "Bez pogody" in report.sources[1].impact
 
 

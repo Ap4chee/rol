@@ -22,6 +22,8 @@ from app.schemas.observations import (  # noqa: F401
     HydrologySection,
     HydroYear,
     IrrigationNeed,
+    LandUseClass,
+    LandUseSection,
     MonthAmount,
     NdmiForecast,
     Recommendation,

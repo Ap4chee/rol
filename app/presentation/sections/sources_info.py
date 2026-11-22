@@ -8,7 +8,7 @@ from datetime import date
 
 from app.core.textfmt import fmt, fmt_date, plural_days
 from app.schemas import SourceInfo, Status
-from app.sources import egib_wfs, imgw_hydro, mphp, sentinel, soilgrids, weather
+from app.sources import egib_wfs, imgw_hydro, mphp, sentinel, soilgrids, weather, worldcover
 from app.sources import soil_moisture as moisture_source
 
 SOIL_ASSUMED_IMPACT = ("Bilans policzono dla gleby umownej (glina: 40% piasku, 20% iłu). Wynik jest orientacyjny, "
@@ -23,6 +23,8 @@ MOISTURE_NO_IMPACT = ("Bilans wodny działki nie zależy od tych danych: brakuje
                       "warstw gleby w okolicy z poprzednimi latami.")
 NO_TERRAIN_IMPACT = ("Bez modelu terenu raport nie ocenia spadku ani dróg spływu. "
                      "Bilans wodny i pozostałe rekomendacje nie zależą od tego źródła.")
+LAND_USE_NO_IMPACT = ("Bez mapy pokrycia terenu raport nie sprawdza, czy działka jest gruntem rolnym. "
+                      "Bilans wodny liczy się dla uprawy podanej w formularzu.")
 PARCEL_POINT_ONLY_IMPACT = ("Raport policzono dla wskazanego punktu, bez granicy działki: nie ma powierzchni, "
                             "wskaźników satelitarnych dla pola ani analizy spływu.")
 PARCEL_FALLBACK_REASON = ("ULDK nie odpowiadało, więc granicę działki pobrano z zapasowej usługi GUGiK "
@@ -79,6 +81,19 @@ def watercourse_source() -> SourceInfo:
         url="https://isok.gov.pl/inspire.html",
         license="usługa WMS: brak warunków dostępu i użytkowania; zbiór na dane.gov.pl: CC BY 4.0",
         notes=["Geometria cieków z publicznej usługi WMS (zapytanie GetFeatureInfo), bez logowania."])
+
+
+def land_use_source() -> SourceInfo:
+    return SourceInfo(
+        key="land_use", name=worldcover.SOURCE_NAME, status=Status.ok,
+        resolution="piksel ok. 10 m, klasy pokrycia terenu", license=worldcover.LICENSE, url=worldcover.URL,
+        data_date=f"stan z {worldcover.MAP_YEAR} r.", notes=[worldcover.ATTRIBUTION])
+
+
+def land_use_not_fetched() -> SourceInfo:
+    info = land_use_source()
+    info.status, info.reason, info.impact = Status.no_data, "Mapy pokrycia terenu nie pobrano.", LAND_USE_NO_IMPACT
+    return info
 
 
 def moisture_source_info() -> SourceInfo:

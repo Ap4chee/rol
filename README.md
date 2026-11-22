@@ -89,6 +89,7 @@ Ograniczenie: dysk Cloud Run jest ulotny. Restart lub nowe wdrożenie kasuje zap
   - Profil gleby, założenia o uprawie, źródła z datami i statusem, ograniczenia.
 - **Data poza okresem wzrostu**: raport mówi to wprost, pokazuje stan zapasu wody w glebie i miniony sezon.
 - **Awaria źródła**: raport powstaje, brak jest nazwany w tabeli źródeł razem z wpływem na wniosek. Bez pogody raport mówi, że oceny niedoboru nie da się policzyć.
+- **Użytkowanie terenu**: raport podaje, jaką część działki mapa pokrycia terenu ESA WorldCover (stan z 2021 r.) pokazuje jako grunty orne, łąki, las, zabudowę albo wodę, i czy zgadza się to z wybraną uprawą (zdanie w „Założeniach o uprawie” w zakładce Źródła, pole `land_use` w API). Gdy co najmniej połowa działki nie jest gruntem rolnym, w „Co sprawdzić na polu” pojawia się punkt „Sprawdź, czy wskazałeś właściwą działkę”, a w „Czego nie wiemy” pierwsze zdanie mówi, że bilans policzono tak, jakby uprawa rosła na całej działce. Mapa nie zmienia bilansu ani pozostałych rekomendacji.
 - **Druk i PDF**: przycisk „PDF” w widoku pola otwiera systemowe okno drukowania; aby pobrać plik, wybierz w nim „Zapisz jako PDF”. Wydruk składa wszystkie zakładki w jeden dokument w kolejności: ocena, historia, pogoda, gleba, teren i woda, rekomendacje, źródła.
 - **Tryb testowy** (`?test` w adresie): w formularzu pojawia się przełącznik, który podmienia w widoku obrys działki na umowny kształt i dodaje obszar zasiewu. Analiza i tak liczy się na żywo dla wskazanego punktu. Służy do sprawdzania modelu 3D, nie jest częścią zwykłej ścieżki rolnika.
 - **Odnośnik do raportu**: `http://127.0.0.1:8000/?parcel=060910_2.0011.580/2&crop=winter_wheat&date=2026-11-21` (raport i tak liczy się od nowa).
@@ -129,6 +130,7 @@ app/
     nmt_geotiff.py     arkusze NMT GUGiK z opendata.geoportal.gov.pl, lokalnie jako GeoTIFF
     imgw_hydro.py      wodowskazy IMGW-PIB: bieżące pomiary i archiwum dobowe przepływów
     mphp.py            najbliższy ciek z mapy MPHP10k (Wody Polskie) przez WMS GetFeatureInfo
+    worldcover.py      pokrycie terenu z mapy ESA WorldCover 10 m: okno pod działką z pliku COG, liczba pikseli na klasę
     soil_moisture.py   NASA POWER: wilgotność gleby w 3 warstwach (MERRA-2), 11 lat
     ifs_forecast.py    prognoza ECMWF IFS (wejście modelu wilgotności)
   core/                obliczenia bez sieci (dane wchodzą jako argumenty), wyniki jako dataclassy
@@ -144,6 +146,7 @@ app/
     analysis.py        okna 30/60/90 dni, klimatyczny bilans wodny, historia 10 sezonów
     satellite_logic.py zgodność wskaźników z bilansem
     hydrology.py       przepływ z 7 dni na tle tych samych dni w poprzednich latach, zgodność z bilansem
+    land_use.py        udziały klas pokrycia terenu na działce i ocena, czy to grunt rolny
     soil_moisture.py   wilgotność warstw w okolicy na tle tych samych dni w poprzednich latach
     flow.py            Priority-Flood, D8, powierzchnia zasilająca
     terrain_analysis.py spadek, drogi spływu i punkty na granicy działki z wycinka NMT
@@ -181,6 +184,7 @@ Zmierzone 21.11.2026 na pustej pamięci podręcznej, działka `060910_2.0011.580
 | Pogoda: odmowa Open-Meteo Archive (429), NASA POWER 11 lat, dobór ostatnich dni | 2–3 s |
 | Gleba: SoilGrids WCS, 54 warstwy równolegle | 4–5 s |
 | Hydrologia: lista wodowskazów IMGW i 11–20 plików archiwum (pusta pamięć podręczna) | 1–5 s |
+| Użytkowanie terenu: okno mapy ESA WorldCover pod działką | 0,5–1,5 s |
 | Satelita: szukanie scen, maski SCL 26 scen, pasma 3 scen | 10–14 s |
 | Obliczenia (bilans 11 lat w 3 wariantach gleby, historia, reguły) | 0,05 s |
 | **Raport razem** (źródła idą równolegle) | **11–15 s** |
@@ -214,12 +218,13 @@ Wszystkie dane są bezpłatne. Żadne źródło nie wymaga klucza ani konta. War
 | Teren | NMT GUGiK 1 m (PL-EVRF2007-NH): arkusz wskazany przez skorowidz WFS pobierany bezpośrednio z opendata.geoportal.gov.pl, zapisany w `cache/nmt/` jako GeoTIFF; wycinek z buforem 200 m wokół działki | na żywo przy pierwszym użyciu arkusza, osobny endpoint | Brak opłat, dowolne wykorzystanie |
 | Hydrologia (rzeki) | IMGW-PIB, API danych publicznych (`api/data/hydro/`, zapas `hydro2/`): czynne wodowskazy ze współrzędnymi, ostatni stan wody [cm] i przepływ [m³/s]. Archiwum danych dobowych (`dane_hydrologiczne/dobowe/`): stan i przepływ z każdego dnia, lata hydrologiczne do 2025 (do 31.10.2025) | na żywo: lista wodowskazów (pamięć podręczna 3 h) i pliki archiwum tylko dla 7 dni wokół daty analizy w każdym z 11 lat (pliki niezmienne, raz pobrane zostają na dysku) | Bezpłatne; regulamin IMGW-PIB wymaga podania źródła („Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy”) i informacji o przetworzeniu danych, oba zdania są w raporcie. Według regulaminu nieodpłatne użycie obejmuje cele prywatne, a w każdym celu dane o wysokiej wartości (rozporządzenie wykonawcze KE 2023/138); użycie w działalności gospodarczej poza tym wymaga umowy z IMGW-PIB. Przed wdrożeniem przez KOWR trzeba to potwierdzić z IMGW-PIB (regulamin sprawdzony 21.11.2026 na danepubliczne.imgw.pl/regulations) |
 | Hydrologia (cieki przy działce) | MPHP10k (Wody Polskie, ISOK), warstwa `HY.Network` z publicznego WMS `wody.isok.gov.pl/wss/INSPIRE/INSPIRE_HY_10k_2019_WMS`: najbliższy ciek i jego nazwa do 800 m od granicy działki. WFS z wektorami wymaga logowania, więc geometrię bierzemy z odpowiedzi GetFeatureInfo w JSON (dwa zapytania: zgrubne okno i doprecyzowanie wokół najbliższego punktu; serwer obcina BUFFER do 25 px). Rowów melioracyjnych w tej warstwie często nie ma | na żywo, pamięć podręczna 30 dni | Usługa: „Brak warunków dostępu i użytkowania”, „Brak ograniczeń w publicznym dostępie” (GetCapabilities, sprawdzone 22.11.2026); zbiór na dane.gov.pl: CC BY 4.0 |
+| Użytkowanie terenu | ESA WorldCover 10 m 2021 v200: klasy pokrycia terenu (grunty orne, trawy, drzewa, zabudowa, woda i inne), piksel 1/12000° (w Polsce ok. 6 × 9 m), stan z 2021 r. Pliki COG po 3° × 3° w otwartym zasobniku AWS (`esa-worldcover.s3.eu-central-1.amazonaws.com`), bez konta | na żywo: tylko okno pod działką (zapytania zakresowe HTTP), wynik w pamięci podręcznej bez terminu, bo mapa się nie zmienia | CC BY 4.0; atrybucja w tabeli źródeł raportu: „© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium” (esa-worldcover.org, sprawdzone 21.11.2026). Limitów zasobnika nie znaleźliśmy w dokumentacji |
 
 Podstawa prawna bezpłatnego udostępniania danych GUGiK: art. 40a ust. 2 Prawa geodezyjnego i kartograficznego (zmiana z 16.04.2020, Dz.U. 2020 poz. 782).
 
 ### Co jest pobierane na żywo, a co przygotowane wcześniej
 
-Na żywo, przy każdym raporcie: działka, pogoda, gleba, zdjęcia satelitarne, model terenu, wodowskazy IMGW, cieki MPHP10k, podkłady mapy.
+Na żywo, przy każdym raporcie: działka, pogoda, gleba, zdjęcia satelitarne, model terenu, wodowskazy IMGW, cieki MPHP10k, pokrycie terenu ESA WorldCover, podkłady mapy.
 
 Przygotowane wcześniej i zapisane w repozytorium:
 
@@ -290,6 +295,7 @@ Pamięć podręczna `cache/` powstaje dopiero przy uruchomieniu i nie jest czę�
 6. **Satelita**: mediana NDVI i NDMI po pikselach z roślinnością (SCL 4, środki pikseli w działce, co najmniej 6 pikseli i 65% pokrycia). Wskaźniki służą tylko do sprawdzenia bilansu: raport mówi, czy go potwierdzają, czy się z nim rozchodzą.
 7. **Teren**: wypełnienie zagłębień Priority-Flood, kierunki D8, powierzchnia zasilająca; na mapie drogi spływu powyżej 0,05 ha i punkty, w których przecinają granicę działki.
 8. **Rekomendacje**: reguły z jawnymi progami. Każda podaje, co zrobić, gdzie, dlaczego (z wartościami tej działki) i jak pewny jest wniosek. Lista retencji nigdy nie jest pusta: gdy działka nie ma niedoboru, częstych susz ani lekkiej gleby, raport podaje działanie zapobiegawcze z zapasem wody tej działki i jej historią.
+9. **Użytkowanie terenu**: udział pikseli mapy ESA WorldCover w każdej klasie, liczony po pikselach, których środek leży w działce (dla działki węższej niż kilka pikseli: po wszystkich, których dotyka). Grunty rolne to grunty orne oraz łąki i pastwiska. Progi: co najmniej 50% poza gruntami rolnymi daje ostrzeżenie i punkt do sprawdzenia, co najmniej 20% daje wzmiankę. Wynik służy tylko do sprawdzenia założenia o uprawie (`app/core/land_use.py`).
 
 ## Model ML: prognoza zmiany NDMI na 7–14 dni
 
@@ -392,6 +398,7 @@ Testy bez sieci (`.venv\Scripts\python.exe -m pytest -q`):
 - Funkcja pedotransferowa: wszystkie 12 wierszy tabeli 3 Saxtona i Rawlsa (2006), np. glina 40% piasku i 20% iłu: 28% i 14% objętości.
 - SoilGrids: wagi komórek i wartości dla działki 580/2 zgodne z `tests/fixtures/soilgrids_niedrzwica_koscielna_580_2.json` (0–5 cm: piasek 33,7%, pył 48,2%, ił 18,1%).
 - Spływ: sztuczne powierzchnie (płaszczyzna, dolina, zagłębienie), reguły rekomendacji, zgodność satelity z bilansem.
+- Użytkowanie terenu: udziały klas i progi (pole, las, działka częściowo zadrzewiona), nazwa arkusza mapy z położenia, ostrzeżenie bez zmiany pozostałych rekomendacji, jawny brak mapy.
 - Prognoza: siedem dni od daty w Polsce, zachowanie braków danych i rzeczywistego opadu 0 mm.
 - Plan prac: mokry wierzch po deszczu przy małym parowaniu (listopad) blokuje wjazd, a po suchym tygodniu latem nie; wiatr i opad przy opryskach; siew tylko w terminie siewu; nawożenie przed ulewą i przy zatrzymanej wegetacji odradzane; brak prognozy opadu daje „brak danych”, a nie zgadywaną ocenę; najlepsze okno. Zapytanie z raportu (`npm test`): uziarnienie 0–10 cm ważone grubością warstw.
 - Satelita: przesunięcie reflektancji z metadanych sceny. Gdy scena ma je już odjęte w pikselach, nie odejmujemy go drugi raz (wartości z tej samej sceny w obu kolekcjach).
@@ -407,6 +414,7 @@ Sprawdzenia na prawdziwych danych (wymagają sieci):
 | `scripts/checks/check_weather_providers.py` | ET0 liczone z NASA POWER wobec ET0 z Open-Meteo na wspólnych dniach | 66 dni, dwa punkty: stosunek sum ET0 1,07 i 0,97; opadu 0,78 i 1,19 |
 | `scripts/checks/check_terrain.py` | spływ dla 580/2 | największy odpływ 1,60 ha przy południowo-wschodniej granicy (wzorzec 1,63 ha); liczba punktów 5 + 2 wobec 4 + 4 we wzorcu |
 | `scripts/dev/acceptance.py` | pusty cache i wymuszone awarie źródeł (`KOWR_FAIL`) | raport powstaje, brak jest nazwany |
+| ręczne raporty z pokryciem terenu (22.11.2026) | sześć raportów na żywo: 580/2 (pszenica 22.11.2026 i użytki zielone 20.06.2023), Nacław 119/2 (jęczmień 15.07.2018), punkt w Puszczy Białowieskiej, punkt przy Śniardwach, punkt w centrum Warszawy; do tego `KOWR_FAIL=land_use` | 580/2: grunty orne 97% (89 pikseli), zgodne z pszenicą, przy użytkach zielonych raport mówi o niezgodności; Nacław: grunty orne 81%, łąki 19%; Puszcza: drzewa 100% i Warszawa: zabudowa 100%, w obu ostrzeżenie i punkt „Sprawdź, czy wskazałeś właściwą działkę”; Śniardwy: łąki 87%, drzewa 10% (niezgodne z ziemniakiem). Odczyt mapy 0,5–1,5 s. Przy wymuszonej awarii raport powstaje, a brak jest nazwany w źródłach i ograniczeniach |
 | `scripts/dev/sweep_poland.py` | przegląd odporności na pustej pamięci podręcznej: 24 punkty z całej Polski (niziny, góry, wybrzeże, krańce wschodnie i zachodnie, miasto, las, jezioro) w datach 2016–2026 i dla 7 upraw; z `--cached-parcels` 8 przypadków dla działek z granicą zapisaną w `cache/uldk` | Drugi przebieg (21.11.2026 wieczorem, ULDK już działał): 24 z 24 raportów z granicą działki, mediana 15,0 s, najdłuższy 25,1 s, żaden powyżej 30 s. Zdjęcia satelitarne: wynik w 14 przypadkach, w 6 status „liczę” (wynik dochodzi po raporcie), w 4 powód braku (chmury, brak zielonej roślinności). Najwolniejsze źródła: archiwum IMGW przy pierwszym użyciu (do 17 s) i zdjęcia satelitarne. Open-Meteo odmawiało (429), pogodę dał NASA POWER. Przegląd wykrył raport bez żadnej rekomendacji (rzepak, Dolny Śląsk, 10.05.2023, bez niedoboru); dodaliśmy zapobiegawczą rekomendację retencyjną, która pojawia się, gdy żadna inna reguła retencji nie zadziała. Pierwszy przebieg (przy awarii ULDK): 24 z 24 raportów, mediana 11,9 s, najdłuższy 15,5 s, granice z zapasowego WFS ewidencji |
 | `scripts/dev/run_report.py`, `scripts/dev/http_check.py` | raport z wiersza poleceń i przez HTTP | |
 | `scripts/dev/snapshot_report.py <katalog>` | JSON raportów 580/2 (15.07.2018 i 20.06.2025) i punktu w Wielkopolsce bez pól zależnych od czasu; `diff -r` dwóch katalogów pokazuje, czy zmiana w kodzie zmieniła wynik | przy podziale `app/report.py` na warstwy (22.11.2026): raporty identyczne |
@@ -426,6 +434,7 @@ Sprawdzian merytoryczny: jęczmień jary 15.07.2018 w Wielkopolsce (gm. Kościan
 - **Teren**: wynik czysto topograficzny. Liczba punktów na granicy zależy od progu łączenia. Usługa WCS NMT GUGiK przestała odpowiadać (22.11.2026), więc pobieramy cały arkusz NMT (ok. 36 MB ASCII GRID, 20–30 s) z opendata.geoportal.gov.pl przy pierwszej działce na nim; kolejne działki z tego arkusza liczą się z lokalnego GeoTIFF-a w 1–2 s. Bierzemy najnowszy rocznik skorowidza z oczkiem 1 m. Gdy pobranie się nie uda, raport zostaje bez dróg spływu i rekomendacji terenowych i mówi to wprost.
 - **Zakres dat pilnuje formularz, nie API.** `POST /api/report` odrzuca datę z przyszłości, ale przyjmuje dzień starszy niż 10 lat. Raport wtedy powstaje, a sekcja satelitarna podaje brak zdjęć (archiwum Sentinel-2 L2A zaczyna się w 2017 r.).
 - **Hydrologia**: stan rzeki pochodzi z najbliższego wodowskazu IMGW (do 40 km) i opisuje całą zlewnię powyżej niego, nie wodę na polu; zbiorniki i zrzuty mogą go zmieniać. Archiwum IMGW kończy się 31.10.2025, a bieżący pomiar dotyczy tylko dnia dzisiejszego, więc dla dat od 01.11.2025 do wczoraj raport podaje brak danych hydrologicznych. Bieżący pomiar to pojedynczy odczyt, porównywany ze średnimi z 7 dni. Brak danych o odległości od cieków i o wodzie gruntowej (patrz tabela źródeł).
+- **Użytkowanie terenu**: mapa ESA WorldCover pokazuje stan z 2021 r., także w raportach dla innych lat, i pochodzi z automatycznej klasyfikacji zdjęć: bywa, że myli łąkę z polem uprawnym. Nie rozróżnia upraw, sadów ani ugorów. Raport nie blokuje analizy dla lasu, zabudowy czy wody: liczy bilans dla podanej uprawy i ostrzega. Rekomendacje nie są dopasowywane do klas użytków z ewidencji gruntów (EGiB), bo aplikacja ich nie pobiera.
 - **FAO-56**: tabele pochodzą z wydania z 1998 r. dostępnego na fao.org. Materiał KOWR cytuje wydanie poprawione z 2025 r.; nie porównaliśmy tabel między wydaniami.
 - **Progi reguł** rekomendacji i zgodności satelity z bilansem są założeniami roboczymi zapisanymi jako stałe w kodzie, nie wartościami z publikacji.
 - **Granice działek: ULDK, a przy jego awarii zbiorczy WFS ewidencji GUGiK.** 21.11.2026 wieczorem ULDK i KIEG przekierowywały każde zapytanie, z różnych adresów IP, na stronę zastępczą `integracja01.gugik.gov.pl/resp/`. Zbiorczy WFS stoi na innym serwerze i wtedy działał: na 5 działkach pobranych wcześniej z ULDK dał tę samą granicę (powierzchnia zgodna do 0,0001 ha). Raport podaje w tabeli źródeł, z której usługi pochodzi granica. Przy awarii ULDK działają pełny identyfikator, kliknięcie na mapie oraz wyszukiwanie „nazwa obrębu numer” (kod TERYT obrębu z usługi WFS PRG GUGiK, a następnie działka z WFS ewidencji; nie obejmuje działek zapisanych w arkuszach `AR_n`). Gdy zawiodą obie usługi, działki zapisane wcześniej w pamięci podręcznej działają, a dla nowych raport powstaje dla wskazanego punktu: bez powierzchni, zdjęć satelitarnych pola i spływu.
