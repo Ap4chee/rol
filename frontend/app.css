@@ -74,7 +74,7 @@
   --color-clay: #6d4230;
 
   /* Semantyka shadcn/ui, z której korzystają komponenty Spectrum. */
-  --color-canvas: #f3f3ef;
+  --color-canvas: #f2eee4;   /* ciepłe, lniane tło strony (kontrast neutral-600: 6,2:1) */
   --color-background: #ffffff;
   --color-foreground: #0e100d;
   --color-card: #ffffff;
