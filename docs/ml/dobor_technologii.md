@@ -65,6 +65,8 @@ Dla predykcji w aplikacji (jedno pole): wyszukanie scen ok. 2,5 s, SCL dla scen 
 
 ## 4. Układ repo
 
+Plan sprzed implementacji. Obecny układ (`runtime/`, `pipeline/`, `experiments/`, `models/`) opisuje `kowr_ml/__init__.py`.
+
 ```
 kowr_ml/
   fields.py        # ULDK, GSA -> fields.parquet
