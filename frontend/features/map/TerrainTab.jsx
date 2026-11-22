@@ -9,18 +9,12 @@ import { SkeletonReveal } from '@/shared/ui/effects';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
-import { Stat, StatGrid } from '@/shared/ui/stat';
+import { measure, Stat, StatGrid, wrapping } from '@/shared/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 
 const SLOPE_LABELS = ['Średni spadek', 'Najbardziej strome 10%'];
 // Komórki liczb: etykieta może zająć dwie linie (wąska kolumna obok mapy), liczby i tak stoją w jednej linii na dole.
 const SLOPE_CELLS = 'md:grid-cols-2 [&>*]:flex [&>*]:flex-col [&>*]:justify-between [&>*]:gap-1';
-const wrapping = (text) => <span className="whitespace-normal">{text}</span>;
-
-/** Duża liczba z jednostką: jednostka mniejsza i jaśniejsza (np. 1,2 m³/s, 4,5%), twarda spacja przed jednostką. */
-function measure(value, unit) {
-  return <>{value}<span className="text-[0.6em] font-normal text-neutral-500">{unit === '%' ? unit : <>&nbsp;{unit}</>}</span></>;
-}
 
 /** Zakładka „Teren i woda”: mapa z drogami spływu, spadki i przyczyny z terenu, rzeki w okolicy. */
 export function TerrainTab({ report, terrain, control }) {

@@ -3,18 +3,10 @@ import { number } from '@/shared/format/number';
 import { Card } from '@/shared/ui/card';
 import { Note } from '@/shared/ui/note';
 import { Explanation, Section } from '@/shared/ui/section';
-import { Stat, StatGrid } from '@/shared/ui/stat';
+import { measure, Stat, StatGrid, wrapping } from '@/shared/ui/stat';
 import { Tooltip } from '@/shared/ui/tooltip';
 import { cn } from '@/shared/lib/cn';
 import { daysWord, sameDayLead, seasonMonths, seasonStats, stressSeasons } from './logic.js';
-
-/** Duża liczba z jednostką: jednostka mniejsza i jaśniejsza (np. 285 mm, 88%), twarda spacja przed jednostką. */
-function measure(value, unit) {
-  return <>{value}<span className="text-[0.6em] font-normal text-neutral-500">{unit === '%' ? unit : <>&nbsp;{unit}</>}</span></>;
-}
-
-// Etykieta liczby, która może zająć dwie linie (Stat domyślnie ucina tekst).
-const wrapping = (text) => <span className="whitespace-normal">{text}</span>;
 
 // rząd dużych liczb: na telefonie dwie kolumny zamiast długiej listy, szerzej jeden rząd
 const STATS = 'grid grid-cols-2 gap-x-6 gap-y-5 sm:flex sm:flex-wrap sm:gap-x-12';

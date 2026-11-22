@@ -5,18 +5,13 @@ import { minus, number } from '@/shared/format/number';
 import { Note } from '@/shared/ui/note';
 import { Card } from '@/shared/ui/card';
 import { Meter } from '@/shared/ui/meter';
-import { Stat } from '@/shared/ui/stat';
+import { measure, Stat } from '@/shared/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 import { CauseList } from '@/shared/ui/cause-list';
 import { Section } from '@/shared/ui/section';
 
 // przyczyny pogodowe: opad, przeniesiony zapas, parowanie, upał, zapotrzebowanie uprawy
 const WEATHER_CAUSE = /rain|precip|carry|et0|heat|temp|demand/;
-
-/** Duża liczba z jednostką: jednostka mniejsza i jaśniejsza (twarda spacja przed jednostką). */
-function measure(value, unit) {
-  return <>{value}<span className="text-[0.6em] font-normal text-neutral-500">&nbsp;{unit}</span></>;
-}
 
 /** Zakładka „Pogoda”: przewijana prognoza do 16 dni w spójnej karcie, opad i parowanie na tle 10 lat, wnioski. */
 export function WeatherTab({ report }) {

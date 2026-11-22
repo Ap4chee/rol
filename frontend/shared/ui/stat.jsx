@@ -19,3 +19,11 @@ export function StatGrid({ className, children }) {
     {children}
   </div>;
 }
+
+/** Duża liczba z jednostką: jednostka mniejsza i jaśniejsza (np. 285 mm, 88%), twarda spacja przed jednostką poza „%”. */
+export function measure(value, unit) {
+  return <>{value}<span className="text-[0.6em] font-normal text-neutral-500">{unit === '%' ? unit : <>&nbsp;{unit}</>}</span></>;
+}
+
+/** Etykieta liczby, która może zająć dwie linie (Stat domyślnie ucina tekst). */
+export const wrapping = (text) => <span className="whitespace-normal">{text}</span>;

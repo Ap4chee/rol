@@ -1,9 +1,9 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
-import { dateText } from '@/shared/format/date';
-import { number } from '@/shared/format/number';
+import { dateText, MONTHS } from '@/shared/format/date';
+import { mm as millimetres, number } from '@/shared/format/number';
 import { ChartEmpty, useHoverIndexKeys } from '@/shared/ui/effects';
+import { futurePoints } from './logic.js';
 
-const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
 const PAD = { top: 16, right: 16, bottom: 30, left: 40 };   // dół: tylko na podpisy miesięcy
 const MIN_WIDTH = 240;                 // węższego nie rysujemy; szerszy niż kolumna telefonu dawałby poziome przewijanie
 const TIP = { width: 224, gap: 12 };   // dymek: szerokość (w-56, mieści „opad 13,5 mm · próg stresu 45%” w jednej linii) i odstęp od kursora
@@ -14,18 +14,8 @@ const RAIN_H = 26;                     // najwyższy słupek opadu w historii [p
 const FORECAST_RAIN_H = 48;            // w prognozie wyższy i podpisany w mm (własna skala, od 5 mm w górę)
 
 const percent = (value) => (Number.isFinite(value) ? `${number(value)}%` : '—');
-const mm = (value) => (Number.isFinite(value) ? `${number(value, 1)} mm` : '—');
+const mm = (value) => (Number.isFinite(value) ? millimetres(value, 1) : '—');
 const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
-
-/** Prognoza: dni bilansu na prognozie pogody i dni modelu ML (`ml.points`) złączone po dacie. */
-function futurePoints(forecast, mlPoints) {
-  const byDate = new Map(forecast.map((p) => [p.date, { ...p, kind: 'forecast' }]));
-  for (const p of mlPoints) {
-    byDate.set(p.date, { ...(byDate.get(p.date) ?? { date: p.date, kind: 'forecast' }),
-      ml_pct: p.available_pct, ml_low: p.low_pct, ml_high: p.high_pct });
-  }
-  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-}
 
 /**
  * Zapas wody w strefie korzeni (% TAW) na tle tych samych dni w 10 latach, z prognozą.
