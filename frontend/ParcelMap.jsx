@@ -85,9 +85,16 @@ export function ParcelMap({ parcel, terrain, point, onPick, location }) {
     const osm = new ol.layer.Tile({ source: new ol.source.OSM(), maxZoom: 9 });
     const borders = bordersLayer(ol);
     const defaults = ol.control.defaults.defaults ?? ol.control.defaults;
+    const interactionDefaults = ol.interaction.defaults.defaults ?? ol.interaction.defaults;
+    // Mapa w raporcie pokazuje jedną działkę w stałej skali: bez przybliżania i oddalania (przesuwanie zostaje).
+    // Mapa wyboru działki (onPick) musi dać się przybliżyć, żeby trafić w swoje pole.
+    const fixedZoom = !pick.current;
     const map = new ol.Map({
       target: target.current,
-      controls: defaults({ attributionOptions: { collapsible: false } }),
+      controls: defaults({ attributionOptions: { collapsible: false }, zoom: !fixedZoom }),
+      interactions: interactionDefaults(fixedZoom
+        ? { mouseWheelZoom: false, doubleClickZoom: false, pinchZoom: false, keyboard: false, shiftDragZoom: false }
+        : {}),
       layers: [osm, orto, borders, new ol.layer.Vector({
         source: maskSource,
         style: new ol.style.Style({ fill: new ol.style.Fill({ color: 'rgba(12, 22, 17, .74)' }) }),
