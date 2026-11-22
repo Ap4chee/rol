@@ -16,8 +16,8 @@ from shapely.geometry import box
 from app.core.flow import slope_percent
 from app.infra.geo import reproject
 from app.sources import NoData, SourceError
-from app.sources.soilgrids import fetch_soil
 from app.sources.nmt_geotiff import fetch_dem
+from app.sources.soilgrids import fetch_soil
 from kowr_ml.pipeline import config as C
 from kowr_ml.runtime.soil_moisture import SOIL_FEATURES, soil_features
 

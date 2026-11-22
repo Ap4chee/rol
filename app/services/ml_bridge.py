@@ -63,6 +63,17 @@ def _as_date(value) -> date | None:
     return date.fromisoformat(str(value)[:10])
 
 
+def warm_up() -> None:
+    """Wczytuje oba modele przy starcie serwera, żeby pierwszy raport po restarcie nie czekał na nie kilka sekund.
+    Funkcja blokuje (joblib czyta z dysku), więc wołamy ją w wątku."""
+    try:
+        from kowr_ml import NdmiForecaster, SoilMoistureForecaster
+        for forecaster in (SoilMoistureForecaster.default(), NdmiForecaster.default()):
+            _ = forecaster.bundle
+    except Exception:   # brak modelu nie blokuje raportów; raport poda powód przy prognozie
+        log.exception("Nie udało się wczytać modeli ML przy starcie")
+
+
 def predict_ndmi(observations: list[Observation], weather: DailyWeather, day: date,
                  location: tuple[float, float] | None) -> NdmiPrediction | None:
     """Prognoza NDMI albo None poza sezonem modelu. location to (lat, lon) w EPSG:4326."""

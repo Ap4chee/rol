@@ -17,6 +17,7 @@ from app.config import SATELLITE_DEFERRED_BUDGET_S
 from app.core.dates import InvalidAnalysisDate, today_warsaw
 from app.persistence.field_repository import FieldRepository, StoredField
 from app.schemas import FieldInput, ReportRequest, SavedField, Status
+from app.services import ml_bridge
 from app.services.errors import ReportUnavailable
 from app.services.report_builder import ReportBuilder
 
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 WORKERS = 2            # tyle raportów naraz; każdy i tak pobiera swoje źródła równolegle
 CHECK_EVERY_S = 60.0   # jak często worker sprawdza, czy nadszedł nowy dzień albo pora ponowienia
 RETRY_S = 15 * 60.0
-SATELLITE_QUICK_BUDGET_S = 3.0   # tyle pierwsza wersja raportu czeka na zdjęcia; resztę dociąga osobne zadanie
+SATELLITE_QUICK_BUDGET_S = 0.0   # pierwsza wersja raportu nie czeka na zdjęcia; dociąga je osobne zadanie
 
 
 def field_id(inp: FieldInput) -> str:
@@ -86,7 +87,7 @@ class FieldWorker:
         try:
             inp = FieldInput.model_validate_json(field.input)
             # Pierwsza wersja raportu nie czeka na zdjęcia satelitarne: rolnik widzi ją od razu, a satelitę
-            # dokańcza osobne zadanie (_complete_satellite). Teren i tak liczy się osobno w TerrainJobs.
+            # dokańcza osobne zadanie (_complete_report). Teren i tak liczy się osobno w TerrainJobs.
             report = await self._builder.build(report_request(inp, day), satellite_budget_s=SATELLITE_QUICK_BUDGET_S,
                                                progress=stages.__setitem__)
         except (ReportUnavailable, InvalidAnalysisDate) as exc:
@@ -99,7 +100,7 @@ class FieldWorker:
             await asyncio.to_thread(self._repo.finish_ok, field, report.model_dump(mode="json"), day.isoformat(),
                                     time.time())
             if report.satellite.status == Status.pending:
-                self._spawn(self._complete_satellite(field, inp, day))
+                self._spawn(self._complete_report(field, inp, day))
         finally:
             if self._progress.get(field.id) is stages:
                 del self._progress[field.id]
@@ -109,7 +110,7 @@ class FieldWorker:
         self._followups.add(task)
         task.add_done_callback(self._followups.discard)
 
-    async def _complete_satellite(self, field: StoredField, inp: FieldInput, day: date) -> None:
+    async def _complete_report(self, field: StoredField, inp: FieldInput, day: date) -> None:
         """Druga faza raportu: komplet zdjęć satelitarnych. Frontend do tego czasu dociąga satelitę przez
         /api/satellite. Sceny pobieramy wspólnie (sentinel._submit), a pogoda, gleba i działka są już
         w pamięci podręcznej, więc liczy się tylko to, czego brakowało."""
@@ -123,6 +124,7 @@ class FieldWorker:
     async def run(self) -> None:
         """Pętla workera: liczy do WORKERS pól naraz, budzi się po zmianie pola albo co CHECK_EVERY_S."""
         await asyncio.to_thread(self._repo.requeue_running)
+        self._spawn(asyncio.to_thread(ml_bridge.warm_up))
         active: set[asyncio.Task] = set()
         while True:
             self._wake.clear()
