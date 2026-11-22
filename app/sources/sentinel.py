@@ -33,6 +33,7 @@ Funkcje są blokujące i importowalne poza aplikacją; aplikacja uruchamia je w 
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import threading
 import time
@@ -94,6 +95,7 @@ _client_lock = threading.Lock()
 _scene_pool = ThreadPoolExecutor(max_workers=SCENE_WORKERS, thread_name_prefix="s2-scene")
 _band_pool = ThreadPoolExecutor(max_workers=3 * MAX_BAND_SCENES * 2, thread_name_prefix="s2-band")
 _range_pool = ThreadPoolExecutor(max_workers=RANGE_WORKERS, thread_name_prefix="s2-range")
+log = logging.getLogger(__name__)
 _http = httpx.Client(timeout=httpx.Timeout(25.0, connect=10.0), headers={"User-Agent": USER_AGENT},
                      limits=httpx.Limits(max_connections=RANGE_WORKERS, max_keepalive_connections=RANGE_WORKERS))
 _inflight: dict[str, Future] = {}
@@ -392,6 +394,7 @@ def read_indices(scene: Scene, obs: Observation, context: dict) -> Observation:
         if obs.ndvi is not None and used_red.sum() >= MIN_PIXELS:
             obs.red = float(np.median(red[used_red]))
     except Exception:   # brak NDVI nie unieważnia NDMI
+        log.warning("NDVI sceny %s się nie policzyło", obs.scene_id, exc_info=True)
         obs.ndvi = None
     if obs.ndmi is None:
         obs.accepted = False
@@ -482,6 +485,7 @@ def observe(parcel_key: str, geometry: BaseGeometry, day: date, today: date | No
         try:
             done[scl_futures[future].id] = future.result()[0]
         except Exception:
+            log.warning("Maska SCL sceny %s się nie wczytała", scl_futures[future].id, exc_info=True)
             failed += 1
     if failed:
         result.notes.append(f"Nie udało się odczytać {failed} scen (błąd pobierania wycinka).")
@@ -514,6 +518,7 @@ def observe(parcel_key: str, geometry: BaseGeometry, day: date, today: date | No
         try:
             replaced[obs.scene_id] = future.result()
         except Exception as exc:
+            log.warning("Pasma sceny %s się nie wczytały", obs.scene_id, exc_info=True)
             obs.accepted = False
             obs.reject_reason = f"błąd odczytu pasm ({type(exc).__name__})"
     pending_ids = {band_futures[future].scene_id for future in not_finished}

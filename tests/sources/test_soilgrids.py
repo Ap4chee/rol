@@ -23,7 +23,7 @@ from app.sources.soilgrids import (
     weighted_mean,
 )
 
-REFERENCE = json.loads((Path(__file__).resolve().parent / "fixtures"
+REFERENCE = json.loads((Path(__file__).resolve().parents[1] / "fixtures"
                         / "soilgrids_niedrzwica_koscielna_580_2.json").read_text(encoding="utf-8"))
 PARCEL = shape(REFERENCE["parcel"]["geometry_wgs84"])
 
