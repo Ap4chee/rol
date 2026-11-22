@@ -9,6 +9,7 @@ import { measure, Stat } from '@/shared/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
 import { CauseList } from '@/shared/ui/cause-list';
 import { Section } from '@/shared/ui/section';
+import { usePrinting } from '@/shared/lib/printing';
 
 // przyczyny pogodowe: opad, przeniesiony zapas, parowanie, upał, zapotrzebowanie uprawy
 const WEATHER_CAUSE = /rain|precip|carry|et0|heat|temp|demand/;
@@ -21,6 +22,8 @@ export function WeatherTab({ report }) {
   const isToday = report.analysis_date >= today();
   const causes = (report.causes.items ?? []).filter((cause) => WEATHER_CAUSE.test(cause.key));
   const [range, setRange] = useState(null);
+  // kafelki prognozy pobierają się osobno i na wydruku bywały szkieletem; tabela niżej ma te same dni z raportu
+  const printing = usePrinting();
 
   const allForecast = water.forecast ?? [];
   const syncedForecast = range
@@ -29,10 +32,10 @@ export function WeatherTab({ report }) {
   const tableDays = syncedForecast.length ? syncedForecast : allForecast.slice(0, 7);
 
   const forecast = <Section key="forecast" title="Prognoza pogody">
-    <Card className="p-4 sm:p-5 md:p-6">
+    {!printing && <Card className="p-4 sm:p-5 md:p-6">
       <ForecastDays position={position} size="lg" onRangeChange={setRange}/>
-    </Card>
-    {tableDays.length > 0 && <Card className="mt-5 p-4 sm:p-5 md:p-6">
+    </Card>}
+    {tableDays.length > 0 && <Card className="mt-5 p-4 print:mt-0 sm:p-5 md:p-6">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-sans text-[15px] font-semibold tracking-tight text-neutral-900">Prognozowany zapas wody w glebie</h3>
         {range?.label && <span className="num text-[12.5px] text-neutral-500">{range.label}</span>}

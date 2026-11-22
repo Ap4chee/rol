@@ -9,6 +9,7 @@ import { SkeletonReveal } from '@/shared/ui/effects';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Button } from '@/shared/ui/button';
 import { Callout } from '@/shared/ui/callout';
+import { usePrinting } from '@/shared/lib/printing';
 import { Spinner } from '@/shared/ui/spinner';
 import { measure, Stat, StatGrid, wrapping } from '@/shared/ui/stat';
 import { Caption, Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
@@ -24,12 +25,14 @@ export function TerrainTab({ report, terrain, control }) {
   const pending = terrain?.status === 'pending';
   const causes = terrain?.causes ?? [];
   const details = terrain?.text ?? [];
+  // mapa w układzie wydruku pobiera kafle od nowa i często wychodziła szara: na wydruku tylko liczby i przyczyny
+  const printing = usePrinting();
   return <div className="flex flex-col gap-14">
     <div className="grid gap-12 lg:grid-cols-12">
-      <div className="min-w-0 lg:col-span-7">
+      {!printing && <div className="min-w-0 lg:col-span-7">
         <ParcelMap parcel={report.parcel} point={report.parcel ? null : report.request.point} terrain={terrain}/>
-      </div>
-      <Section title="Ukształtowanie i spływ" className="lg:col-span-5">
+      </div>}
+      <Section title="Ukształtowanie i spływ" className={printing ? 'lg:col-span-12' : 'lg:col-span-5'}>
         {/* wydruk z przycisku czeka (do limitu), aż teren się policzy, zamiast drukować szkielet */}
         <div className="flex flex-col gap-4" data-print-pending={pending && !control.failed ? '' : undefined}>
           <Note section={terrain} className="my-0"/>
