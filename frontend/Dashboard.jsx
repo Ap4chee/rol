@@ -223,10 +223,10 @@ const weekdays = new Intl.DateTimeFormat('pl-PL', { weekday: 'short', timeZone: 
 // Wiersze komórki dnia mają stałą wysokość: szkielet i prognoza zajmują tyle samo miejsca, więc odsłonięcie nie przesuwa treści.
 // `lg` dopasowuje się do szerokości kontenera: w wąskim (raport na telefonie) mniejsze komórki i parowanie bez podpisu w kolumnie.
 const SIZES = {
-  sm: { list: 'gap-1', cell: 'rounded-lg py-2', day: 'h-4 text-[10px]', icon: 'h-8', glyph: 'size-7', temp: 'h-5 text-[14px]',
+  sm: { list: 'gap-1', cell: 'rounded-lg py-2', day: 'h-4 text-[11.5px]', icon: 'h-8', glyph: 'size-7', temp: 'h-5 text-[14px]',
     rain: 'h-4 text-[10px]', bar: 'h-2.5 w-6' },
   lg: { list: 'gap-1 @xl/forecast:gap-2', cell: 'rounded-lg py-3 @xl/forecast:rounded-xl @xl/forecast:py-4',
-    day: 'h-5 text-[10px] @xl/forecast:text-[11px]', icon: 'h-10 @xl/forecast:h-12', glyph: 'size-9 @xl/forecast:size-11',
+    day: 'h-5 text-[11.5px] @xl/forecast:text-[12.5px]', icon: 'h-10 @xl/forecast:h-12', glyph: 'size-9 @xl/forecast:size-11',
     temp: 'h-7 text-[17px] @xl/forecast:h-8 @xl/forecast:text-[20px]', rain: 'h-5 text-[11px] @xl/forecast:text-[12.5px]',
     bar: 'h-3 w-7 @xl/forecast:h-3.5 @xl/forecast:w-9', et0: 'h-5 @xl/forecast:h-9' },
 };
@@ -254,7 +254,7 @@ function ForecastGrid({ days, big }) {
       const [icon, label] = weatherIcon(day.weather_code);
       const isToday = day.date === todayIso;
       return <li key={day.date} className={cn('flex min-w-0 flex-col items-center', s.cell, day.precipitation_mm >= 5 && 'bg-water-50')}>
-        <span className={cn('flex items-center font-mono font-medium uppercase tracking-[0.06em]', s.day, isToday ? 'text-neutral-900' : 'text-neutral-500')}>
+        <span className={cn('flex items-center font-medium', s.day, isToday ? 'text-neutral-900' : 'text-neutral-500')}>
           {isToday ? 'dziś' : weekdays.format(new Date(day.date + 'T12:00:00Z')).replace('.', '')}</span>
         <span className={cn('flex items-center', s.icon)}>
           {/* brak kodu pogody: kreska zamiast obrazka, żeby nie udawać zachmurzenia */}

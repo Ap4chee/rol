@@ -158,14 +158,11 @@
   transition-timing-function: var(--ease-out);
   &:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.97); }
 }
-/* Mikro-etykieta nad liczbą albo sekcją (styl Spectrum: mono, wersaliki, rozstrzelenie). */
+/* Mikro-etykieta nad liczbą albo sekcją: zwykły krój i wielkość liter (mono wersalikami wyglądało jak narzędzie techniczne). */
 @utility eyebrow {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  line-height: 1.2;
+  font-size: 12.5px;
+  line-height: 1.3;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--color-neutral-500);
 }
 /* Liczba z jednostką: równe szerokości cyfr, żeby kolumny się nie rozjeżdżały. */
