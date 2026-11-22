@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -17,18 +16,13 @@ from pathlib import Path
 import numpy as np
 
 from .features import WeatherSeries, doy_features
+from .runtime.registry import model_dir
 
-MODEL_DIR_ENV = "KOWR_SM_MODEL_DIR"
-MODEL_ROOT = Path(__file__).resolve().parent / "model_sm"
 ROOT_DEPTH_M = 1.0   # gleba w treningu: FC i WP średnie 0–100 cm (static.py)
 
 
 def default_model_dir() -> Path | None:
-    env = os.environ.get(MODEL_DIR_ENV)
-    if env:
-        return Path(env)
-    runs = sorted(p for p in MODEL_ROOT.glob("*") if (p / "model.joblib").exists())
-    return runs[-1] if runs else None
+    return model_dir("soil_moisture")
 
 
 @lru_cache(maxsize=2)

@@ -8,7 +8,6 @@ Bez danych wejściowych zwracamy powód zamiast prognozy (AGENTS.md, „Model ML
 from __future__ import annotations
 
 import json
-import os
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -17,16 +16,11 @@ import numpy as np
 
 from . import config as C
 from .features import NAN, FieldScenes, WeatherSeries, feature_row
-
-MODEL_DIR_ENV = "KOWR_ML_MODEL_DIR"
+from .runtime.registry import model_dir
 
 
 def default_model_dir() -> Path | None:
-    env = os.environ.get(MODEL_DIR_ENV)
-    if env:
-        return Path(env)
-    candidates = sorted(p for p in (Path(__file__).resolve().parent / "model").glob("*") if (p / "model.joblib").exists())
-    return candidates[-1] if candidates else None
+    return model_dir("ndmi")
 
 
 @lru_cache(maxsize=2)
