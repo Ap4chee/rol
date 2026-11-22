@@ -80,9 +80,11 @@ def main(argv: list[str]) -> None:
     is_fit = train_mask & ~is_val
 
     # Standaryzacja na zbiorze uczącym; braki -> 0 plus flaga braku.
-    mu = np.nanmean(stat_raw[is_fit], axis=0); sd = np.nanstd(stat_raw[is_fit], axis=0) + 1e-6
+    mu = np.nanmean(stat_raw[is_fit], axis=0)
+    sd = np.nanstd(stat_raw[is_fit], axis=0) + 1e-6
     stat = np.concatenate([np.nan_to_num((stat_raw - mu) / sd), missing], axis=1).astype(np.float32)
-    smu = seq[is_fit].reshape(-1, 4).mean(0); ssd = seq[is_fit].reshape(-1, 4).std(0) + 1e-6
+    smu = seq[is_fit].reshape(-1, 4).mean(0)
+    ssd = seq[is_fit].reshape(-1, 4).std(0) + 1e-6
     seq = ((seq - smu) / ssd).astype(np.float32)
 
     def tensors(mask):
@@ -95,7 +97,7 @@ def main(argv: list[str]) -> None:
         net = Net(stat.shape[1], hidden).to(dev)
         opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-4)
         best, best_state, bad = 1e9, None, 0
-        for epoch in range(EPOCHS):
+        for _epoch in range(EPOCHS):
             net.train()
             perm = torch.randperm(len(fit_t[2]), device=dev)
             for i in range(0, len(perm), BATCH):

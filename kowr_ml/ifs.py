@@ -156,6 +156,12 @@ def cached_extension(t: date) -> str:
     return f"{t} {'dociągnięte' if base else 'brak przebiegu'}"
 
 
+def root_zone_moisture(values: dict, missing: np.ndarray, step: int) -> np.ndarray:
+    """Wilgotność 0–100 cm z warstw 1–3 ważona ich grubością, w węzłach skupisk dla kroku `step`."""
+    layers = [values.get(f"swvl{i}@{step}", missing) for i in (1, 2, 3)]
+    return sum(x * cm for x, cm in zip(layers, LAYER_CM)) / 100.0
+
+
 def table():
     import pandas as pd
 
@@ -168,11 +174,6 @@ def table():
         ext = json.loads(ext_path.read_text()) if ext_path.exists() else {"values": {}, "cf_steps": []}
         v = {k: np.array(x) for k, x in {**run["values"], **ext["values"]}.items()}
         nan = np.full(len(C.CLUSTERS_FIRST), np.nan)
-
-        def sm(step):
-            layers = [v.get(f"swvl{i}@{step}", nan) for i in (1, 2, 3)]
-            return sum(x * cm for x, cm in zip(layers, LAYER_CM)) / 100.0
-
         for k in HORIZON_DAYS:
             end, start = 24 * k + 24, 24 * k
             # koniec doby z ensemble, a początek z HRES: początek też z ensemble (suma od startu tego samego przebiegu)
@@ -183,7 +184,8 @@ def table():
                 rows.append({"cluster": name, "issue_date": t.isoformat(), "lead": k, "grid": run["grid"],
                              "rain_mm": max(float(rain[c]), 0.0) if np.isfinite(rain[c]) else np.nan,
                              "t2m_c": float(v.get(f"2t@{24 * k + 12}", nan)[c]) - 273.15,
-                             "sm_0_100cm": float(sm(24 * k + 12)[c]), "sm_analysis": float(sm(0)[c])})
+                             "sm_0_100cm": float(root_zone_moisture(v, nan, 24 * k + 12)[c]),
+                             "sm_analysis": float(root_zone_moisture(v, nan, 0)[c])})
     return pd.DataFrame(rows)
 
 

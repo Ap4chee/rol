@@ -22,6 +22,7 @@ from sklearn.model_selection import GroupKFold
 
 from . import config as C
 from .sm_dataset import BIG_DRY, HORIZON_DAYS, ISSUE_STEP_DAYS, SM_FEATURES, SM_LAG_DAYS, SM_SEASONAL_FEATURES
+from .train import mae
 
 TARGET = "sm_delta"
 PRED_COLS = {"zero": "pred_zero", "seasonal": "pred_seasonal", "hgb": "pred_hgb"}

@@ -28,7 +28,7 @@ def fetch_cell(lat: float, lon: float) -> dict | None:
     """Odpowiedź Open-Meteo albo None po wyczerpaniu limitu dobowego."""
     params = {"latitude": round(lat, 2), "longitude": round(lon, 2), "start_date": C.WEATHER_START,
               "end_date": C.WEATHER_END, "daily": C.OPEN_METEO_DAILY, "timezone": "Europe/Warsaw"}
-    for attempt in range(12):
+    for _attempt in range(12):
         try:
             r = httpx.get(C.OPEN_METEO_ARCHIVE_URL, params=params, timeout=180)
         except httpx.HTTPError as e:
