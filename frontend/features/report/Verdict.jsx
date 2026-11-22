@@ -22,9 +22,6 @@ export function Verdict({ report, terrain, limited, onTab, intro }) {
   const latest = water.series?.at(-1);
   // próg stresu dotyczy rosnącej uprawy; poza sezonem pokazujemy sam zapas
   const threshold = water.in_season !== false && Number.isFinite(latest?.stress_threshold_pct) ? latest.stress_threshold_pct : null;
-  // zapas dla gleby lżejszej i cięższej (kwantyle SoilGrids), pokazany jako ramka na pasku
-  const variantPcts = (water.variants ?? []).map(waterPercent).filter((value) => value != null);
-  const range = variantPcts.length > 1 ? [Math.min(...variantPcts), Math.max(...variantPcts)] : null;
   const actions = GROUPS.flatMap((group) => groupActions(report.recommendations, terrain?.recommendations ?? [], group.key)
     .map((item) => ({ ...item, group: group.key })));
   const first = firstAction(actions.filter((item) => item.group !== 'irrigation'))
@@ -57,13 +54,10 @@ export function Verdict({ report, terrain, limited, onTab, intro }) {
           {pct == null && <span className="num text-neutral-500"> · {number(result.available_mm)} z {mm(result.taw_mm)}</span>}
         </p>
         {pct != null && <div className="mt-4 max-w-[480px]">
-          <Meter value={pct} color={statusFill(water)} marker={threshold ?? undefined} range={range ?? undefined}
+          <Meter value={pct} color={statusFill(water)} marker={threshold ?? undefined}
             label={`Zapas wody: ${number(result.available_mm)} z ${mm(result.taw_mm)}`}/>
           <div className="num mt-2.5 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[12.5px] text-neutral-500">
             <span>{number(result.available_mm)} z {mm(result.taw_mm)}</span>
-            {range && <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="h-3 w-4 rounded-[3px] border border-neutral-900/35 bg-neutral-900/[0.05]"/>
-              inna gleba: {number(range[0])}–{number(range[1])}%</span>}
             {threshold != null && <span className="inline-flex items-center gap-1.5">
               <span aria-hidden className="h-3 w-[2px] rounded-full bg-neutral-900"/>próg stresu {number(threshold)}%</span>}
           </div>
