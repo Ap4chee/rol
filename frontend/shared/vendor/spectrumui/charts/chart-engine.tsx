@@ -165,14 +165,14 @@ function Digit({ char, animate, duration }: { char: string; animate: boolean; du
       className="relative inline-block h-[1em] w-[1ch] overflow-hidden align-bottom leading-none"
     >
       <span
-        className="absolute inset-x-0 top-0 block"
+        className="rolling-strip absolute inset-x-0 top-0 block"
         style={{
           transform: `translateY(-${digit}em)`,
           transition: animate ? `transform ${duration}ms ${EASE}` : undefined,
         }}
       >
         {DIGITS.map((d) => (
-          <span key={d} className="block h-[1em] text-center leading-none">
+          <span key={d} data-on={d === char || undefined} className="block h-[1em] text-center leading-none">
             {d}
           </span>
         ))}

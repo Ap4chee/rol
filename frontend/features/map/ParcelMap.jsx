@@ -68,7 +68,16 @@ export function ParcelMap({ parcel, terrain, point, onPick, location }) {
       pick.current?.({ lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) });
     });
     instance.current = { map, osm, orto, borders, parcelSource, terrainSource, maskSource, locationSource, format: new ol.format.GeoJSON() };
-    return () => { instance.current = null; map.setTarget(undefined); map.dispose(); };
+    // Na wydruku ramka mapy ma inną szerokość niż na ekranie. Bez przeliczenia płótno zostaje w starym rozmiarze,
+    // skaluje się do szerokości strony i pod zdjęciem zostaje szary pas. Kafle z ekranu wystarczają, bo widok się zwęża.
+    const resize = () => { map.updateSize(); map.renderSync(); };
+    window.addEventListener('beforeprint', resize);
+    window.addEventListener('afterprint', resize);
+    return () => {
+      window.removeEventListener('beforeprint', resize);
+      window.removeEventListener('afterprint', resize);
+      instance.current = null; map.setTarget(undefined); map.dispose();
+    };
   }, [ol]);
 
   useEffect(() => {
